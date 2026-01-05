@@ -183,17 +183,23 @@ export function createApiRouter(deps: {
 	        }
 
 	        const sniffed = sniffImageExt(bytes);
+	        const sniffedMime =
+	          sniffed === '.png'
+	            ? 'image/png'
+	            : sniffed === '.jpg'
+	              ? 'image/jpeg'
+	              : sniffed === '.webp'
+	                ? 'image/webp'
+	                : sniffed === '.gif'
+	                  ? 'image/gif'
+	                  : null;
+
 	        if (!contentType || !contentType.toLowerCase().startsWith('image/')) {
-	          contentType =
-	            sniffed === '.png'
-	              ? 'image/png'
-	              : sniffed === '.jpg'
-	                ? 'image/jpeg'
-	                : sniffed === '.webp'
-	                  ? 'image/webp'
-	                  : sniffed === '.gif'
-	                    ? 'image/gif'
-	                    : 'application/octet-stream';
+	          contentType = sniffedMime || 'application/octet-stream';
+	        } else if (sniffedMime && contentType.toLowerCase() !== sniffedMime) {
+	          // Some CDNs lie about Content-Type (e.g. image/jpeg for a PNG). Prefer sniffed mime
+	          // so client-side file extensions match bytes and won't fail our upload validator.
+	          contentType = sniffedMime;
 	        }
 
 	        return new Response(bytes, {

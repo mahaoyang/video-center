@@ -94,6 +94,7 @@ export function createMjParamsPanel(store: Store<WorkflowState>) {
     setPreferredMjAspectRatio(fallback);
     setActiveArButton(fallback);
     if (arCurrent) arCurrent.textContent = `--ar ${fallback}`;
+    applyArToPrompt(fallback);
   });
 
   render(store.get());
