@@ -126,12 +126,12 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
             </div>
             <div class="flex flex-col">
               <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Synthesis Pending</span>
-              <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : 'Submitting...'}</span>
+              <span data-task-text="1" class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : 'Submitting...'}</span>
             </div>
           </div>
-          <div class="text-[12px] font-black text-studio-accent">${p}%</div>
+          <div class="text-[12px] font-black text-studio-accent"><span data-progress-text="1">${p}%</span></div>
         </div>
-        ${m.error ? `<div class="mt-6 text-[11px] text-red-300/90 font-mono">${escapeHtml(m.error)}</div>` : ''}
+        <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
       </div>
     `;
     return msg;
@@ -194,12 +194,12 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
             </div>
             <div class="flex flex-col">
               <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Upscale Pending</span>
-              <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : 'Submitting...'}</span>
+              <span data-task-text="1" class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : 'Submitting...'}</span>
             </div>
           </div>
-          <div class="text-[12px] font-black text-studio-accent">${p}%</div>
+          <div class="text-[12px] font-black text-studio-accent"><span data-progress-text="1">${p}%</span></div>
         </div>
-        ${m.error ? `<div class="mt-6 text-[11px] text-red-300/90 font-mono">${escapeHtml(m.error)}</div>` : ''}
+        <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
       </div>
     `;
     return msg;
@@ -260,7 +260,9 @@ function downloadJson(filename: string, data: unknown) {
 
 export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   const stream = byId<HTMLElement>('productionStream');
-  let lastMessages: StreamMessage[] | null = null;
+  const rendered = new Map<string, HTMLElement>();
+  const lastById = new Map<string, StreamMessage>();
+  let lastIds: string[] = [];
 
   function resolveMessageImageUrl(m: StreamMessage, state: WorkflowState): StreamMessage {
     if (m.imageUrl) return m;
@@ -271,21 +273,109 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     return { ...m, imageUrl: url };
   }
 
-  function renderAll(messages: StreamMessage[]) {
-    const stickToBottom = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 200;
-    clearRenderedMessages(stream);
-    const state = params.store.get();
-    for (const m of messages) {
-      stream.appendChild(renderMessage(resolveMessageImageUrl(m, state)));
+  function mountMessage(m: StreamMessage, state: WorkflowState): HTMLElement {
+    const resolved = resolveMessageImageUrl(m, state);
+    const el = renderMessage(resolved);
+    (el as any).dataset.messageId = resolved.id;
+    return el;
+  }
+
+  function updatePendingCard(el: HTMLElement, m: StreamMessage) {
+    const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
+    const progressEl = el.querySelector<HTMLElement>('[data-progress-text="1"]');
+    if (progressEl) progressEl.textContent = `${p}%`;
+
+    const taskEl = el.querySelector<HTMLElement>('[data-task-text="1"]');
+    if (taskEl) taskEl.textContent = m.taskId ? `TASK: ${m.taskId}` : 'Submitting...';
+
+    const errEl = el.querySelector<HTMLElement>('[data-error-text="1"]');
+    if (errEl) {
+      const has = Boolean(m.error && m.error.trim());
+      errEl.textContent = has ? m.error! : '';
+      errEl.classList.toggle('hidden', !has);
     }
+  }
+
+  function reconcile(messages: StreamMessage[]) {
+    const atBottom = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 200;
+    const nextIds = messages.map((m) => m.id);
+    const isAppend =
+      nextIds.length >= lastIds.length && lastIds.every((id, i) => nextIds[i] === id);
+
+    const state = params.store.get();
+    const nextSet = new Set(nextIds);
+
+    // Remove deleted messages
+    for (const [id, el] of rendered) {
+      if (!nextSet.has(id)) {
+        el.remove();
+        rendered.delete(id);
+        lastById.delete(id);
+      }
+    }
+
+    // Add / update messages (order is append-only in this app)
+    for (const m of messages) {
+      const id = m.id;
+      const resolved = resolveMessageImageUrl(m, state);
+      const prev = lastById.get(id);
+      const existing = rendered.get(id);
+
+      if (!existing) {
+        const el = mountMessage(resolved, state);
+        rendered.set(id, el);
+        lastById.set(id, resolved);
+        stream.appendChild(el);
+        continue;
+      }
+
+      if (!prev) {
+        const el = mountMessage(resolved, state);
+        existing.replaceWith(el);
+        rendered.set(id, el);
+        lastById.set(id, resolved);
+        continue;
+      }
+
+      // Replace only on state transitions; otherwise patch progress text in-place.
+      const generateTransition = prev.kind === 'generate' && prev.role === 'ai' && prev.gridImageUrl !== resolved.gridImageUrl;
+      const upscaleTransition = prev.kind === 'upscale' && prev.role === 'ai' && prev.upscaledImageUrl !== resolved.upscaledImageUrl;
+      const kindChanged = prev.kind !== resolved.kind || prev.role !== resolved.role;
+      const needsReplace =
+        kindChanged ||
+        generateTransition ||
+        upscaleTransition ||
+        (prev.kind === 'deconstruct' && (prev.text !== resolved.text || prev.imageUrl !== resolved.imageUrl)) ||
+        (prev.kind === 'generate' && prev.role === 'user' && prev.text !== resolved.text) ||
+        (prev.kind === 'upscale' && prev.role === 'user' && prev.text !== resolved.text);
+
+      if (needsReplace) {
+        const el = mountMessage(resolved, state);
+        existing.replaceWith(el);
+        rendered.set(id, el);
+        lastById.set(id, resolved);
+        continue;
+      }
+
+      if (resolved.role === 'ai' && (resolved.kind === 'generate' || resolved.kind === 'upscale')) {
+        updatePendingCard(existing, resolved);
+      }
+
+      lastById.set(id, resolved);
+    }
+
     ensureZeroState(stream, messages.length > 0);
-    if (stickToBottom) stream.scrollTop = stream.scrollHeight;
+    if (isAppend && atBottom) stream.scrollTop = stream.scrollHeight;
+    lastIds = nextIds;
   }
 
   function clearConversation() {
     if (!confirm('清空历史对话？（仅删除本地浏览器缓存，不影响 CDN）')) return;
     params.store.update((s) => ({ ...s, streamMessages: [] }));
     clearRenderedMessages(stream);
+    rendered.clear();
+    lastById.clear();
+    lastIds = [];
     ensureZeroState(stream, false);
   }
 
@@ -298,17 +388,14 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   (window as any).clearConversation = clearConversation;
   (window as any).saveConversation = saveConversation;
 
-  renderAll(params.store.get().streamMessages);
+  reconcile(params.store.get().streamMessages);
   const initialCountEl = document.getElementById('conversationCount');
   if (initialCountEl) initialCountEl.textContent = String(params.store.get().streamMessages.length || 0);
   params.store.subscribe((s) => {
-    if (s.streamMessages !== lastMessages) {
-      lastMessages = s.streamMessages;
-      renderAll(s.streamMessages);
-    }
+    reconcile(s.streamMessages);
     const countEl = document.getElementById('conversationCount');
     if (countEl) countEl.textContent = String(s.streamMessages.length || 0);
   });
 
-  return { renderAll, clearConversation, saveConversation };
+  return { clearConversation, saveConversation };
 }
