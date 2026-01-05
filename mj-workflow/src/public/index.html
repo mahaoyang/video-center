@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MJ 工作流 - Midjourney 图像生成</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script>
+    window.tailwind = window.tailwind || {};
+    window.tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'brand-green': '#1f2f22',
+            'brand-cream': '#f2f0e9',
+            'brand-accent': '#2d4a33',
+          },
+          fontFamily: {
+            'outfit': ['Outfit', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- FontAwesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <style>
+    :root {
+      --brand-green: #0a110d;
+      --brand-cream: #f8f7f2;
+      --brand-accent: #2d4a33;
+      --brand-highlight: #4a6b53;
+      --bg-surface: #ffffff;
+      --border-soft: rgba(10, 17, 13, 0.06);
+      --border-medium: rgba(10, 17, 13, 0.12);
+    }
+
+    body {
+      background-color: var(--brand-cream);
+      color: var(--brand-green);
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: -0.01em;
+    }
+
+    /* Layout & Surface */
+    .jo-surface {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-soft);
+      backdrop-filter: blur(10px);
+    }
+
+    .step-card {
+      transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+      border: 1px solid var(--border-soft);
+      background: var(--bg-surface);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .step-card.active {
+      border-color: var(--border-medium);
+      box-shadow:
+        0 20px 40px -10px rgba(10, 17, 13, 0.05),
+        0 0 0 1px rgba(10, 17, 13, 0.02);
+      transform: translateY(-4px);
+      z-index: 10;
+    }
+
+    .step-card.completed {
+      background: rgba(255, 255, 255, 0.6);
+      border-color: transparent;
+    }
+
+    /* Buttons */
+    .jo-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 0.875rem 1.75rem;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+      cursor: pointer;
+      user-select: none;
+      border: 1px solid transparent;
+    }
+
+    .jo-btn-primary {
+      background: var(--brand-green);
+      color: white;
+      box-shadow: 0 4px 12px rgba(10, 17, 13, 0.1);
+    }
+
+    .jo-btn-primary:hover:not(:disabled) {
+      background: var(--brand-accent);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(10, 17, 13, 0.15);
+    }
+
+    .jo-btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .jo-btn-primary:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      filter: grayscale(1);
+    }
+
+    .jo-btn-secondary {
+      background: white;
+      border: 1.5px solid var(--brand-green);
+      color: var(--brand-green);
+    }
+
+    .jo-btn-secondary:hover:not(:disabled) {
+      background: var(--brand-green);
+      color: white;
+    }
+
+    .jo-btn-quiet {
+      background: rgba(10, 17, 13, 0.04);
+      color: var(--brand-green);
+      border: 1px solid transparent;
+    }
+
+    .jo-btn-quiet:hover {
+      background: rgba(10, 17, 13, 0.08);
+    }
+
+    /* Inputs */
+    .jo-input {
+      border: 1px solid var(--border-medium);
+      background: white;
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      font-size: 0.875rem;
+      transition: all 0.2s ease;
+      outline: none;
+    }
+
+    .jo-input:focus {
+      border-color: var(--brand-green);
+      box-shadow: 0 0 0 4px rgba(10, 17, 13, 0.05);
+    }
+
+    /* Dropzone */
+    .dropzone {
+      border: 2px dashed var(--border-medium);
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .dropzone:hover {
+      border-color: var(--brand-accent);
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    .dropzone.dragover {
+      border-color: var(--brand-green);
+      background: white;
+      box-shadow: 0 20px 40px rgba(10, 17, 13, 0.06);
+    }
+
+    /* Image Grid & Items */
+    .image-grid-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 16px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+      border: 2px solid transparent;
+    }
+
+    .image-grid-item:hover {
+      transform: scale(1.02);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .image-grid-item.selected {
+      border-color: var(--brand-green);
+      box-shadow: 0 0 0 4px rgba(10, 17, 13, 0.1);
+    }
+
+    .image-grid-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Progress Bar */
+    .prog-track {
+      height: 4px;
+      background: rgba(10, 17, 13, 0.05);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .prog-fill {
+      height: 100%;
+      background: var(--brand-green);
+      transition: width 0.8s cubic-bezier(0.65, 0, 0.35, 1);
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--brand-cream);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(10, 17, 13, 0.1);
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(10, 17, 13, 0.2);
+    }
+
+    /* Floating Labels / Badges */
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: var(--brand-green);
+      color: white;
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-fade-in {
+      animation: fadeIn 0.6s ease forwards;
+    }
+
+    .loading-shimmer {
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: -200% 0;
+      }
+
+      100% {
+        background-position: 200% 0;
+      }
+    }
+
+    .loading {
+      width: 24px;
+      height: 24px;
+      border: 2px solid rgba(10, 17, 13, 0.1);
+      border-top-color: var(--brand-green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .step-card,
+      .jo-btn,
+      .image-grid-item {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+
+<body class="antialiased">
+  <!-- Main Container -->
+  <div class="max-w-[1280px] mx-auto px-6 py-12 md:py-20">
+
+    <!-- Top Navigation -->
+    <div class="flex items-center justify-between mb-20 animate-fade-in">
+      <div class="flex items-center gap-4">
+        <div
+          class="w-10 h-10 rounded-xl bg-brand-green flex items-center justify-center text-white shadow-lg shadow-brand-green/20">
+          <i class="fas fa-layer-group text-sm"></i>
+        </div>
+        <div>
+          <h2 class="text-sm font-bold tracking-tight uppercase leading-none">MJ Workflow</h2>
+          <span class="text-[10px] opacity-40 font-medium tracking-widest uppercase">Creative Intelligence</span>
+        </div>
+      </div>
+      <nav class="hidden md:flex items-center gap-10 text-[10px] font-bold uppercase tracking-[0.2em] opacity-50">
+        <a href="#" class="hover:text-brand-green hover:opacity-100 transition-all">Workflow</a>
+        <a href="#" class="hover:text-brand-green hover:opacity-100 transition-all">Gallery</a>
+        <a href="#" class="hover:text-brand-green hover:opacity-100 transition-all">Documentation</a>
+        <button class="jo-btn jo-btn-primary !px-5 !py-2.5 !rounded-lg text-[9px]">New Project</button>
+      </nav>
+    </div>
+
+    <!-- Header Section -->
+    <header class="mb-24 animate-fade-in" style="animation-delay: 0.1s">
+      <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-12">
+        <div class="max-w-3xl">
+          <span class="badge mb-6 inline-block">v4.5 Enterprise</span>
+          <h1 class="text-7xl md:text-9xl font-bold tracking-tighter uppercase leading-[0.85] mb-10">
+            Design<br /><span class="text-brand-highlight/20">Without</span><br />Limits.
+          </h1>
+          <div class="flex flex-col md:flex-row gap-10 md:items-center">
+            <p class="text-sm font-medium opacity-50 max-w-sm leading-relaxed uppercase tracking-wide">
+              A high-performance pipeline for Midjourney, engineered for professional creative teams.
+            </p>
+            <div class="h-px w-16 bg-brand-green/10 hidden md:block"></div>
+            <a href="#" class="text-[10px] uppercase tracking-[0.2em] font-bold flex items-center gap-3 group">
+              View Changelog
+              <i class="fas fa-chevron-right text-[8px] group-hover:translate-x-1 transition-transform"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sophisticated progress -->
+      <div class="mt-20">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <span id="workflowStepText" class="text-[11px] font-bold uppercase tracking-widest text-brand-green">Step
+              01</span>
+            <span class="h-1 w-1 rounded-full bg-brand-green/20"></span>
+            <span class="text-[11px] font-bold uppercase tracking-widest opacity-30">Image Synthesis</span>
+          </div>
+          <div class="flex gap-2">
+            <div class="w-1.5 h-1.5 rounded-full bg-brand-green"></div>
+            <div class="w-1.5 h-1.5 rounded-full bg-brand-green/10"></div>
+            <div class="w-1.5 h-1.5 rounded-full bg-brand-green/10"></div>
+          </div>
+        </div>
+        <div class="prog-track">
+          <div id="workflowProgressBar" class="prog-fill" style="width: 14.28%"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Workflow Engine Area -->
+    <div class="space-y-12">
+
+      <!-- Workflow Engine Area -->
+      <div class="space-y-24">
+
+        <!-- Step 1: Upload -->
+        <section id="step1" class="step-card active rounded-[2rem] p-10 md:p-14 mb-10">
+          <div class="flex flex-col lg:flex-row gap-16">
+            <div class="lg:w-[35%]">
+              <span class="text-[10px] uppercase tracking-[0.4em] font-extrabold text-brand-highlight/40 mb-6 block">01
+                / Source Dataset</span>
+              <h2 class="text-4xl font-bold tracking-tight mb-6 leading-tight">上传图片 <span
+                  class="text-sm font-normal opacity-30 italic">Optional</span></h2>
+              <p class="text-[13px] opacity-50 leading-relaxed mb-10 font-medium">
+                上传后会进入“上传历史 / 垫图库”，后续在 Step 3 里选择用于垫图 / sref / cref。
+              </p>
+              <div class="flex flex-wrap gap-4">
+                <button onclick="skipToStep3()" class="jo-btn jo-btn-secondary !rounded-xl">
+                  Skip to prompt
+                </button>
+                <button id="step1UseHistoryBtn" onclick="nextStep(2)" class="jo-btn jo-btn-secondary !rounded-xl hidden">
+                  Use history
+                </button>
+              </div>
+            </div>
+
+            <div class="lg:w-[65%]">
+              <div id="uploadDropzone"
+                class="dropzone relative rounded-[2rem] aspect-[16/9] flex flex-col items-center justify-center border-dashed border-2 cursor-pointer group">
+                <input type="file" id="imageUpload" accept="image/*"
+                  class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                <div
+                  class="flex flex-col items-center group-hover:scale-105 transition-transform duration-500 pointer-events-none">
+                  <div
+                    class="w-16 h-16 rounded-full bg-brand-green/5 flex items-center justify-center mb-6 group-hover:bg-brand-green group-hover:text-white transition-colors">
+                    <i class="fas fa-plus text-lg"></i>
+                  </div>
+                  <p class="text-[10px] uppercase tracking-[0.2em] opacity-40 font-bold">Import Visual Anchor</p>
+                </div>
+              </div>
+
+              <div id="uploadedImagePreview" class="hidden mt-10 animate-fade-in">
+                <div class="relative rounded-2xl overflow-hidden shadow-2xl">
+                  <img id="previewImg" class="w-full grayscale-[0.3] hover:grayscale-0 transition-all duration-1000" />
+                  <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                </div>
+                <div class="mt-8">
+                  <button id="step1Next" onclick="nextStep(2)" class="jo-btn jo-btn-primary w-full !py-5 !rounded-2xl">
+                    Define Semantic Parameters
+                    <i class="fas fa-chevron-right ml-3 text-[8px]"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 2: Reverse Engineering -->
+        <section id="step2" class="step-card rounded-[2rem] p-10 md:p-14 mb-10 opacity-40">
+          <div class="flex flex-col lg:flex-row gap-16">
+            <div class="lg:w-[35%]">
+              <span class="text-[10px] uppercase tracking-[0.4em] font-extrabold text-brand-highlight/40 mb-6 block">02
+                / Interrogation</span>
+              <h2 class="text-4xl font-bold tracking-tight mb-6 leading-tight">反推提示词</h2>
+              <p class="text-[13px] opacity-50 leading-relaxed font-medium">
+                Utilizing advanced vision models to deconstruct the image into descriptive tokens and style vectors.
+              </p>
+            </div>
+
+            <div class="lg:w-[65%]">
+              <div class="mb-8 p-6 rounded-2xl bg-brand-cream/50 border border-brand-green/5">
+                <div class="flex items-center justify-between gap-3 mb-4">
+                  <div class="flex items-center gap-2">
+                    <i class="fas fa-images text-[10px] opacity-40"></i>
+                    <span class="text-[9px] uppercase font-bold tracking-widest opacity-40">Source Image (History)</span>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <button id="clearUploadHistoryBtn" type="button"
+                      class="text-[9px] uppercase tracking-widest font-bold opacity-30 hover:opacity-100 transition-opacity">
+                      <i class="fas fa-broom mr-2"></i>Clear Library
+                    </button>
+                    <button id="clearActiveImageBtn" type="button"
+                      class="text-[9px] uppercase tracking-widest font-bold opacity-30 hover:opacity-100 transition-opacity">
+                      <i class="fas fa-times-circle mr-2"></i>Clear Active
+                    </button>
+                  </div>
+                </div>
+                <div id="activeImageList" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <!-- Dynamically populated -->
+                </div>
+                <div class="text-[10px] uppercase tracking-widest opacity-30 mt-4">
+                  Choose one image from upload history for prompt reverse/vision.
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6">
+                <div class="bg-brand-cream/50 p-6 rounded-2xl border border-brand-green/5">
+                  <div class="flex items-center gap-2 mb-4">
+                    <i class="fas fa-brain text-[10px] opacity-40"></i>
+                    <span class="text-[9px] uppercase font-bold tracking-widest opacity-40">Descriptor Engine</span>
+                  </div>
+                  <select id="describeEngineSelect" class="jo-input w-full mb-4 !rounded-xl !bg-white/70" disabled>
+                    <option value="gemini">Gemini Interrogator (默认)</option>
+                    <option value="vision:gpt-5.2-chat-latest">GPT-5.2 Vision</option>
+                    <option value="vision:claude-sonnet-4-5-20250929">Claude Sonnet 4.5 Vision</option>
+                    <option value="mj">Midjourney Describe</option>
+                  </select>
+                  <button id="describeBtn" onclick="describePrompt()" class="jo-btn jo-btn-primary w-full !rounded-xl"
+                    disabled>
+                    Describe
+                  </button>
+                </div>
+              </div>
+
+              <div id="describedPrompt"
+                class="hidden mt-10 p-8 rounded-2xl bg-brand-green text-white shadow-2xl animate-fade-in">
+                <div class="flex items-center justify-between mb-6">
+                  <span class="text-[9px] uppercase tracking-[0.3em] font-black opacity-40">Extracted Prompt
+                    Tokens</span>
+                  <i class="fas fa-quote-right opacity-20"></i>
+                </div>
+                <p id="promptText" class="text-xl md:text-2xl font-light leading-snug italic mb-10"></p>
+                <div class="flex justify-end">
+                  <button id="step2Next" onclick="nextStep(3)"
+                    class="jo-btn jo-btn-secondary !bg-white !text-brand-green !border-white w-full !py-5 !rounded-xl">
+                    Refine Parameters
+                    <i class="fas fa-chevron-right ml-3 text-[8px]"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 3: Prompt Engineering -->
+        <section id="step3" class="step-card rounded-[2rem] p-10 md:p-14 mb-10 opacity-40">
+          <div class="flex flex-col lg:flex-row gap-16">
+            <div class="lg:w-[35%]">
+              <span class="text-[10px] uppercase tracking-[0.4em] font-extrabold text-brand-highlight/40 mb-6 block">03
+                / Refinement</span>
+              <h2 class="text-4xl font-bold tracking-tight mb-6 leading-tight">编辑提示词</h2>
+              <p class="text-[13px] opacity-50 leading-relaxed font-medium">
+                Fine-tune your creative intent. Layer details, adjust atmospheric lighting, and define final output
+                aspect ratios.
+              </p>
+            </div>
+
+            <div class="lg:w-[65%]">
+              <div class="mb-10 p-8 bg-brand-cream/50 rounded-[1.5rem] border border-brand-green/5">
+                <div class="flex items-center justify-between gap-3 mb-6">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] uppercase tracking-widest font-black text-brand-green">上传历史 / 垫图库</span>
+                    <span class="px-2 py-0.5 rounded bg-brand-green text-white text-[8px] font-bold">MULTI</span>
+                  </div>
+                  <button id="clearRefsBtn" type="button"
+                    class="text-[9px] uppercase tracking-widest font-bold opacity-30 hover:opacity-100 transition-opacity">
+                    <i class="fas fa-trash-alt mr-2"></i>Clear List
+                  </button>
+                </div>
+                <div id="referenceList" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+
+              <div class="relative group">
+                <div
+                  class="absolute -top-3 left-6 px-3 py-1 bg-brand-green text-white text-[9px] font-bold uppercase tracking-widest rounded shadow-lg z-10 transition-transform group-focus-within:-translate-y-1 pointer-events-none">
+                  Target Prompt</div>
+                <textarea id="promptInput"
+                  class="w-full h-56 bg-white/70 border border-brand-green/10 rounded-[1.5rem] p-8 text-lg font-light focus:outline-none focus:border-brand-green/30 focus:shadow-2xl focus:shadow-brand-green/5 transition-all resize-none mb-8 placeholder:opacity-20"
+                  placeholder="Dream something incredible..." disabled></textarea>
+              </div>
+
+              <div class="mb-10 p-8 bg-brand-cream/50 rounded-[1.5rem] border border-brand-green/5">
+                <div class="flex items-center justify-between gap-3 mb-4">
+                  <div class="text-[10px] uppercase tracking-widest font-black text-brand-green">MJ 参数</div>
+                  <button id="mjClearArBtn" type="button"
+                    class="text-[9px] uppercase tracking-widest font-bold opacity-30 hover:opacity-100 transition-opacity">
+                    <i class="fas fa-eraser mr-2"></i>Clear AR
+                  </button>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mb-4">
+                  <div class="text-xs opacity-60 font-semibold mr-2">--ar</div>
+                  <button type="button" data-ar="1:1"
+                    class="mj-ar-btn px-3 py-1 rounded-full text-[11px] font-semibold bg-white/70 border border-brand-green/10 hover:border-brand-green/30 transition-colors">
+                    1:1
+                  </button>
+                  <button type="button" data-ar="16:9"
+                    class="mj-ar-btn px-3 py-1 rounded-full text-[11px] font-semibold bg-white/70 border border-brand-green/10 hover:border-brand-green/30 transition-colors">
+                    16:9
+                  </button>
+                  <button type="button" data-ar="9:16"
+                    class="mj-ar-btn px-3 py-1 rounded-full text-[11px] font-semibold bg-white/70 border border-brand-green/10 hover:border-brand-green/30 transition-colors">
+                    9:16
+                  </button>
+                  <button type="button" data-ar="4:3"
+                    class="mj-ar-btn px-3 py-1 rounded-full text-[11px] font-semibold bg-white/70 border border-brand-green/10 hover:border-brand-green/30 transition-colors">
+                    4:3
+                  </button>
+                  <button type="button" data-ar="3:2"
+                    class="mj-ar-btn px-3 py-1 rounded-full text-[11px] font-semibold bg-white/70 border border-brand-green/10 hover:border-brand-green/30 transition-colors">
+                    3:2
+                  </button>
+                  <span id="mjArCurrent" class="ml-auto text-[11px] font-semibold opacity-50"></span>
+                </div>
+                <div id="mjDetectedParams" class="flex flex-wrap gap-2"></div>
+              </div>
+
+              <div class="mb-10 p-8 bg-brand-cream/50 rounded-[1.5rem] border border-brand-green/5">
+                <div class="flex items-center justify-between gap-3 mb-4">
+                  <div class="text-[10px] uppercase tracking-widest font-black text-brand-green">MJ Prompt Preview</div>
+                  <button id="copyMjPromptBtn" type="button"
+                    class="text-[9px] uppercase tracking-widest font-bold opacity-30 hover:opacity-100 transition-opacity">
+                    <i class="fas fa-copy mr-2"></i>Copy
+                  </button>
+                </div>
+                <textarea id="mjPromptPreview" readonly
+                  class="w-full h-28 bg-white/70 border border-brand-green/10 rounded-2xl p-6 text-xs focus:outline-none resize-none opacity-70"></textarea>
+              </div>
+
+              <button id="step3Next" onclick="generateImage()"
+                class="jo-btn jo-btn-primary w-full !py-6 !rounded-2xl !text-sm !font-bold">
+                <i class="fas fa-bolt mr-3 text-brand-highlight"></i>
+                Initiate Generation Sequence
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 4: Latent Synthesis -->
+        <section id="step4" class="step-card rounded-[2rem] p-10 md:p-14 mb-10 opacity-40">
+          <div class="flex flex-col lg:flex-row gap-16">
+            <div class="lg:w-[35%]">
+              <span class="text-[10px] uppercase tracking-[0.4em] font-extrabold text-brand-highlight/40 mb-6 block">04
+                / Latent Diffusion</span>
+              <h2 class="text-4xl font-bold tracking-tight mb-6 leading-tight">生成结果</h2>
+              <p class="text-[13px] opacity-50 leading-relaxed font-medium">
+                The diffusion model is currently iterating through the latent space. Synthesizing four unique
+                high-fidelity interpretations.
+              </p>
+            </div>
+
+            <div class="lg:w-[65%]">
+              <div id="generatingStatus"
+                class="hidden py-24 text-center bg-brand-cream/30 rounded-[2rem] border border-brand-green/5 relative overflow-hidden">
+                <div class="loading-shimmer absolute inset-0 opacity-10"></div>
+                <div class="relative z-10">
+                  <div
+                    class="loading mb-8 mx-auto w-16 h-16 !border-[3px] !border-brand-green/10 !border-t-brand-green">
+                  </div>
+                  <p class="text-[11px] uppercase tracking-[0.3em] font-black opacity-40 mb-3">夢を見る / DREAMING</p>
+                  <p id="progressText" class="text-6xl font-black tracking-tighter opacity-10">0%</p>
+                </div>
+              </div>
+
+              <div id="gridImageContainer" class="hidden animate-fade-in">
+                <div class="relative rounded-[2rem] overflow-hidden shadow-2xl group">
+                  <img id="gridImage"
+                    class="w-full grayscale-[0.1] group-hover:grayscale-0 transition-all duration-700" />
+                  <div class="absolute inset-0 ring-1 ring-inset ring-black/10 rounded-[2rem]"></div>
+                </div>
+                <button onclick="nextStep(5)" class="jo-btn jo-btn-primary w-full mt-10 !py-6 !rounded-2xl !text-sm">
+                  Proceed to Variant Selection
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 5: Selection -->
+        <section id="step5" class="step-card rounded-[2rem] p-10 md:p-14 mb-10 opacity-40">
+          <div class="flex flex-col lg:flex-row gap-16">
+            <div class="lg:w-[35%]">
+              <span class="text-[10px] uppercase tracking-[0.4em] font-extrabold text-brand-highlight/40 mb-6 block">05
+                / Variant Selection</span>
+              <h2 class="text-4xl font-bold tracking-tight mb-6 leading-tight">选择图片</h2>
+              <p class="text-[13px] opacity-50 leading-relaxed font-medium">
+                Deconstruct the quadrant. Choose the variant that perfectly aligns with your creative vision for final
+                upscaling.
+              </p>
+            </div>
+
+            <div class="lg:w-[65%]">
+              <div id="splitImages" class="grid grid-cols-2 gap-6 animate-fade-in">
+                <!-- Dynamically populated -->
+              </div>
+
+              <button id="step5Next" onclick="upscaleSelected()"
+                class="jo-btn jo-btn-primary w-full mt-12 !py-6 !rounded-2xl !text-sm" disabled>
+                Finalize and Upscale Choice
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 6: Finalization -->
+        <section id="step6" class="step-card rounded-[2rem] p-10 md:p-14 mb-10 opacity-40">
+          <div class="flex flex-col lg:flex-row gap-16">
+            <div class="lg:w-[35%]">
+              <span class="text-[10px] uppercase tracking-[0.4em] font-extrabold text-brand-highlight/40 mb-6 block">06
+                / Intelligence Upscale</span>
+              <h2 class="text-4xl font-bold tracking-tight mb-6 leading-tight">扩图处理</h2>
+              <p class="text-[13px] opacity-50 leading-relaxed font-medium">
+                Executing pixel-perfect enhancement. You can optionally apply semantic edits before final export.
+              </p>
+            </div>
+
+            <div class="lg:w-[65%]">
+              <div id="upscalingStatus"
+                class="hidden py-24 text-center bg-brand-cream/30 rounded-[2.5rem] border border-brand-green/5 relative overflow-hidden">
+                <div class="loading-shimmer absolute inset-0 opacity-10"></div>
+                <div class="relative z-10">
+                  <div
+                    class="loading mb-8 mx-auto w-16 h-16 !border-[3px] !border-brand-green/10 !border-t-brand-green">
+                  </div>
+                  <p class="text-[11px] uppercase tracking-[0.3em] font-black opacity-40">Refining Pixels</p>
+                </div>
+              </div>
+
+              <div id="upscaledImageContainer" class="hidden animate-fade-in">
+                <div class="relative rounded-[2rem] overflow-hidden shadow-2xl mb-10">
+                  <img id="upscaledImage" class="w-full" />
+                </div>
+
+                <!-- Gemini Edit (Optional) -->
+                <div class="p-8 bg-brand-cream/50 rounded-[2rem] border border-brand-green/5 mb-10">
+                  <div class="flex items-center gap-2 mb-6">
+                    <span class="badge !bg-brand-highlight">AI Co-Processor</span>
+                    <span class="text-[9px] uppercase font-bold tracking-widest opacity-40">Semantic Refinement
+                      (Optional)</span>
+                  </div>
+                  <textarea id="geminiEditPrompt"
+                    class="w-full h-28 bg-white/70 border border-brand-green/10 rounded-2xl p-6 text-sm focus:outline-none focus:border-brand-green/30 transition-all resize-none mb-6 placeholder:opacity-30"
+                    placeholder="Provide natural language instructions (e.g., 'Make the background a sunset coast')"></textarea>
+                  <button id="geminiEditBtn" onclick="geminiEditUpscaled()"
+                    class="jo-btn jo-btn-secondary w-full !rounded-xl">
+                    <i class="fas fa-magic mr-3 opacity-50"></i>Gemini Neural Edit
+                  </button>
+                  <div id="geminiEditResult" class="hidden mt-8 animate-fade-in">
+                    <img id="geminiEditedImg" class="w-full rounded-2xl shadow-xl" />
+                  </div>
+                </div>
+
+                <button onclick="nextStep(7)" class="jo-btn jo-btn-primary w-full !py-6 !rounded-2xl !text-sm">
+                  Finalize and Export Asset
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 7: Export -->
+        <section id="step7" class="step-card rounded-[2rem] p-10 md:p-14 mb-10 opacity-40">
+          <div class="flex flex-col lg:flex-row gap-16">
+            <div class="lg:w-[35%]">
+              <span class="text-[10px] uppercase tracking-[0.4em] font-extrabold text-brand-highlight/40 mb-6 block">07
+                / Digital Export</span>
+              <h2 class="text-4xl font-bold tracking-tight mb-6 leading-tight">下载图片</h2>
+              <p class="text-[13px] opacity-50 leading-relaxed font-medium">
+                Your creative artifact is finalized and ready for high-fidelity distribution.
+              </p>
+            </div>
+
+            <div class="lg:w-[65%]">
+              <div class="flex flex-col gap-6">
+                <button onclick="downloadFinalImage()"
+                  class="jo-btn jo-btn-primary !py-8 !rounded-2xl !text-base group">
+                  <i class="fas fa-file-download mr-4 group-hover:translate-y-1 transition-transform"></i>
+                  Download Final Production Asset
+                </button>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <button onclick="resetWorkflow()" class="jo-btn jo-btn-secondary !rounded-xl">
+                    <i class="fas fa-redo mr-3 text-brand-green/30"></i>Start New Process
+                  </button>
+                  <button onclick="scrollToTop()" class="jo-btn jo-btn-quiet !rounded-xl">
+                    <i class="fas fa-history mr-3 opacity-30"></i>Audit History
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- History -->
+        <section id="history" class="step-card rounded-[2rem] p-10 md:p-14 opacity-40">
+          <div class="flex flex-col lg:flex-row gap-16">
+            <div class="lg:w-[35%]">
+              <span
+                class="text-[10px] uppercase tracking-[0.4em] font-extrabold text-brand-highlight/40 mb-6 block">Vault</span>
+              <h2 class="text-4xl font-bold tracking-tight mb-6 leading-tight">历史记录</h2>
+              <p class="text-[13px] opacity-50 leading-relaxed font-medium">
+                Locally encrypted history and project snapshots.
+              </p>
+            </div>
+
+            <div class="lg:w-[65%]">
+              <div id="historyList" class="space-y-6">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Footer -->
+      <footer class="mt-48 pb-20 border-t border-brand-green/5 pt-20">
+        <div class="flex flex-col md:flex-row items-center justify-between gap-10">
+          <div class="flex items-center gap-4 grayscale opacity-30">
+            <div
+              class="w-8 h-8 rounded bg-brand-green flex items-center justify-center text-white font-black text-[10px]">
+              MJ</div>
+            <span class="text-[9px] uppercase tracking-[0.4em] font-bold">Workflow Intelligence v4.5</span>
+          </div>
+          <p class="text-[9px] uppercase tracking-[0.4em] opacity-30 font-bold">© 2026 MJ Workflow Center • Midjourney
+            Core Pipeline</p>
+          <div class="flex gap-8 text-[9px] uppercase tracking-widest font-black opacity-30">
+            <a href="#" class="hover:opacity-100 transition-opacity">Cloud Status</a>
+            <a href="#" class="hover:opacity-100 transition-opacity">Privacy</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="/assets/app.js"></script>
+</body>
+
+</html>
