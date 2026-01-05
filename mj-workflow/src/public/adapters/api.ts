@@ -13,14 +13,32 @@ export interface ApiClient {
 
 function unwrapJsonStringOnce(value: unknown): unknown {
   if (typeof value !== 'string') return value;
-  const text = value.replace(/^\uFEFF/, '').trim();
-  if (!text) return value;
-  if (!(text.startsWith('{') || text.startsWith('['))) return value;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return value;
+  const raw = value.replace(/^\uFEFF/, '').trim();
+  if (!raw) return value;
+
+  const tryParse = (text: string) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return undefined;
+    }
+  };
+
+  if (raw.startsWith('{') || raw.startsWith('[')) {
+    const parsed = tryParse(raw);
+    return parsed === undefined ? value : parsed;
   }
+
+  // Some upstreams prepend junk before a JSON object; attempt to parse the JSON-ish substring.
+  const firstBrace = raw.indexOf('{');
+  const firstBracket = raw.indexOf('[');
+  const start =
+    firstBrace === -1 ? firstBracket : firstBracket === -1 ? firstBrace : Math.min(firstBrace, firstBracket);
+  if (start === -1) return value;
+
+  const tail = raw.slice(start);
+  const parsed = tryParse(tail);
+  return parsed === undefined ? value : parsed;
 }
 
 function normalizeUpstreamPayload(payload: any): any {

@@ -2,13 +2,30 @@ function unwrapJsonString(value: unknown, maxDepth = 2): any {
   let cur: any = value;
   for (let i = 0; i < maxDepth; i++) {
     if (typeof cur !== 'string') break;
-    const text = cur.replace(/\uFEFF/g, '').trim();
-    if (!(text.startsWith('{') || text.startsWith('['))) break;
-    try {
-      cur = JSON.parse(text);
-    } catch {
-      break;
+    const raw = cur.replace(/\uFEFF/g, '').trim();
+    if (!raw) break;
+
+    const tryParse = (text: string) => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return undefined;
+      }
+    };
+
+    let parsed: any | undefined;
+    if (raw.startsWith('{') || raw.startsWith('[')) {
+      parsed = tryParse(raw);
+    } else {
+      const firstBrace = raw.indexOf('{');
+      const firstBracket = raw.indexOf('[');
+      const start =
+        firstBrace === -1 ? firstBracket : firstBracket === -1 ? firstBrace : Math.min(firstBrace, firstBracket);
+      if (start !== -1) parsed = tryParse(raw.slice(start));
     }
+
+    if (parsed === undefined) break;
+    cur = parsed;
   }
   if (cur && typeof cur === 'object') {
     const result = (cur as any).result;
@@ -36,6 +53,15 @@ export function getUpstreamErrorMessage(payload: any): string | null {
 
 export function getSubmitTaskId(payload: any): string | null {
   const p = unwrapJsonString(payload);
+  if (typeof p === 'string') {
+    const raw = p.replace(/\uFEFF/g, '').trim();
+    const m =
+      raw.match(/"result"\s*:\s*"([^"]+)"/) ||
+      raw.match(/"taskId"\s*:\s*"([^"]+)"/) ||
+      raw.match(/"result"\s*:\s*(\d+)/) ||
+      raw.match(/"taskId"\s*:\s*(\d+)/);
+    if (m?.[1]) return String(m[1]);
+  }
   const result = (p as any)?.result;
   if (typeof result === 'string' || typeof result === 'number') return String(result);
   if (typeof result?.taskId === 'string' || typeof result?.taskId === 'number') return String(result.taskId);
