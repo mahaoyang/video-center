@@ -26,6 +26,14 @@ export interface WorkflowHistoryItem {
 export type StreamMessageRole = 'user' | 'ai';
 export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale';
 
+export type PlannerMessageRole = 'user' | 'ai';
+export interface PlannerMessage {
+  id: string;
+  createdAt: number;
+  role: PlannerMessageRole;
+  text: string;
+}
+
 export interface StreamMessage {
   id: string;
   createdAt: number;
@@ -75,6 +83,9 @@ export interface WorkflowState {
   history: WorkflowHistoryItem[];
 
   streamMessages: StreamMessage[];
+
+  // Pure chat mode for prompt planning
+  plannerMessages: PlannerMessage[];
 }
 
 export function createInitialWorkflowState(): WorkflowState {
@@ -86,5 +97,6 @@ export function createInitialWorkflowState(): WorkflowState {
     selectedReferenceIds: [],
     history: [],
     streamMessages: [],
+    plannerMessages: [],
   };
 }

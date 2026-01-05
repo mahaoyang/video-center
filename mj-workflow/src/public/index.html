@@ -395,6 +395,12 @@
             <span class="text-[8px] font-black uppercase tracking-[0.2em]">Matrix</span>
           </div>
 
+          <div onclick="togglePlanner(true)"
+            class="flex items-center gap-2 opacity-30 hover:opacity-100 cursor-pointer transition-all group">
+            <i class="fas fa-comments text-[10px] group-hover:text-studio-accent"></i>
+            <span class="text-[8px] font-black uppercase tracking-[0.2em]">Planner</span>
+          </div>
+
           <div onclick="scrollToHistory()"
             class="flex items-center gap-2 opacity-30 hover:opacity-100 cursor-pointer transition-all ml-auto group">
             <i class="fas fa-folder-open text-[10px] group-hover:text-studio-accent"></i>
@@ -496,6 +502,48 @@
     </div>
   </div>
 
+  <!-- THE PLANNER OVERLAY (Pure Chat Mode) -->
+  <div id="plannerOverlay" class="fixed inset-0 z-[200] pointer-events-none group">
+    <div id="plannerBackdrop" onclick="togglePlanner(false)"
+      class="absolute inset-0 bg-black/60 backdrop-blur-md opacity-0 transition-opacity duration-700"></div>
+    <div id="plannerPanel"
+      class="absolute right-0 top-0 bottom-0 w-full max-w-2xl bg-studio-panel border-l border-white/5 translate-x-full transition-transform duration-700 ease-in-out p-10 overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between mb-8">
+        <div class="flex items-center gap-4">
+          <i class="fas fa-comments text-studio-accent text-xs"></i>
+          <span class="text-[12px] font-black uppercase tracking-[0.4em]">Planner Chat</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="plannerClear" type="button"
+            class="btn-studio btn-studio-outline !px-4 !py-2 !text-[8px] !rounded-xl hover:text-white hover:border-red-500/30 hover:text-red-300">
+            Clear
+          </button>
+          <button onclick="togglePlanner(false)"
+            class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/5 transition-all">
+            <i class="fas fa-times text-xs opacity-30"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="plannerMessages" class="flex-1 overflow-y-auto pr-2 flex flex-col gap-4 scrollbar-hide"></div>
+
+      <div class="mt-6 glass-panel p-2.5 rounded-[2.2rem] border border-white/5 bg-studio-panel/70">
+        <div class="flex items-end gap-3 p-1">
+          <textarea id="plannerInput"
+            class="flex-1 bg-transparent border-none focus:ring-0 p-4 text-sm placeholder:opacity-20 resize-none min-h-[56px] max-h-48 leading-relaxed font-medium"
+            placeholder="和模型一起规划多组分镜（Ctrl+Enter 发送）..."></textarea>
+          <button id="plannerSend" type="button"
+            class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-studio-accent text-studio-bg hover:scale-105 active:scale-95 transition-all shadow-[0_0_25px_rgba(197,243,65,0.25)]">
+            <i class="fas fa-paper-plane text-xs"></i>
+          </button>
+        </div>
+        <div class="px-5 pb-3 text-[9px] font-mono opacity-30">
+          说明：点击 AI 回复里的 “Add Shot” 会把对应分镜提示词填入主输入框，可再编辑后生图。
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TINY HUD FOOTER -->
   <div
     class="fixed bottom-4 left-6 pointer-events-none opacity-20 text-[8px] font-black uppercase tracking-[0.4em] z-[50]">
@@ -545,9 +593,29 @@
       }
     }
 
+    function togglePlanner(open) {
+      const overlay = document.getElementById('plannerOverlay');
+      const panel = document.getElementById('plannerPanel');
+      const backdrop = document.getElementById('plannerBackdrop');
+      if (!overlay || !panel || !backdrop) return;
+
+      if (open) {
+        overlay.classList.remove('pointer-events-none');
+        panel.classList.remove('translate-x-full');
+        backdrop.classList.add('opacity-100');
+        document.body.style.overflow = 'hidden';
+      } else {
+        overlay.classList.add('pointer-events-none');
+        panel.classList.add('translate-x-full');
+        backdrop.classList.remove('opacity-100');
+        document.body.style.overflow = '';
+      }
+    }
+
     // Bridge the button
     window.scrollToHistory = () => toggleVault(true);
     window.toggleMatrix = toggleMatrix;
+    window.togglePlanner = togglePlanner;
 
     // Aspect Ratio Logic
     document.querySelectorAll('.mj-ar-btn').forEach(btn => {

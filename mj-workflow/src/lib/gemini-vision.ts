@@ -7,6 +7,7 @@ import sharp from 'sharp';
 
 export interface GeminiVisionClient {
   imageToPrompt(imageUrl: string): Promise<string>;
+  chat(messages: Array<{ role: string; content: string }>): Promise<string>;
   editImage(imageUrl: string, editPrompt: string): Promise<string | null>;
 }
 
@@ -87,6 +88,39 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
         }
+      });
+
+      return response.text?.trim() || '';
+    },
+
+    async chat(messages: Array<{ role: string; content: string }>): Promise<string> {
+      const transcript = (messages || [])
+        .map((m) => {
+          const role = String(m?.role || 'user').toUpperCase();
+          const content = String(m?.content || '').trim();
+          if (!content) return '';
+          return `${role}: ${content}`;
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      const system = [
+        'You are a storyboard and prompt-planning assistant.',
+        'Help the user plan multiple shots/scenes (分镜) as Midjourney-ready prompts.',
+        'When returning multiple prompts, output them as a numbered list, one prompt per line.',
+        'Do not wrap in code blocks.',
+      ].join('\n');
+
+      const response = await getAi().models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [
+          {
+            parts: [{ text: `${system}\n\n${transcript}`.trim() }],
+          },
+        ],
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
       });
 
       return response.text?.trim() || '';

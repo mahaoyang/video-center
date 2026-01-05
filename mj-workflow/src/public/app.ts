@@ -14,6 +14,7 @@ import { createStreamHistory } from './blocks/stream-history';
 import { createStreamActions } from './blocks/stream-actions';
 import { createDescribeEnginePicker } from './blocks/describe-engine-picker';
 import { createGeminiEditBlock } from './blocks/gemini-edit';
+import { createPlannerChat } from './blocks/planner-chat';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -27,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.mjCrefImageUrl = persisted.mjCrefImageUrl;
   initial.activeImageId = persisted.activeImageId;
   initial.streamMessages = persisted.streamMessages || [];
+  initial.plannerMessages = persisted.plannerMessages || [];
 
   // Set stage to active immediately for stream UI
   initial.step = 4;
@@ -47,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   createStreamActions({ api, store });
   createStreamHistory({ store });
+  createPlannerChat({ api, store });
 
   // Global Exports for HTML
   (window as any).deconstructAssets = describe.deconstructAssets;

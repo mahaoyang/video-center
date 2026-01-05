@@ -428,6 +428,24 @@ export function createApiRouter(deps: {
       }
     }
 
+    if (pathname === '/api/gemini/chat' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+        const body = await readJson<{ messages?: Array<{ role?: string; content?: string }> }>(req);
+        const messages = Array.isArray(body.messages) ? body.messages : [];
+        if (!messages.length) return jsonError({ status: 400, description: 'messages 不能为空' });
+        const text = await deps.gemini.chat(
+          messages.map((m) => ({ role: String(m.role || 'user'), content: String(m.content || '') }))
+        );
+        return json({ code: 0, description: '成功', result: { text } });
+      } catch (error) {
+        console.error('Gemini chat error:', error);
+        return jsonError({ status: 500, description: 'Gemini 对话失败', error });
+      }
+    }
+
     if (pathname === '/api/gemini/edit' && req.method === 'POST') {
       try {
         if (!deps.auth.geminiConfigured) {

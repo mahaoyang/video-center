@@ -1,5 +1,5 @@
 import type { Store } from '../state/store';
-import type { ReferenceImage, StreamMessage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
+import type { PlannerMessage, ReferenceImage, StreamMessage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { randomId } from '../atoms/id';
 
 const STORAGE_KEY = 'mj-workflow:persist:v1';
@@ -43,6 +43,12 @@ type Persisted = {
     upscaledImageUrl?: string;
     progress?: number;
     error?: string;
+  }>;
+  plannerMessages?: Array<{
+    id: string;
+    createdAt: number;
+    role: string;
+    text: string;
   }>;
 };
 
@@ -109,6 +115,12 @@ function toPersisted(state: WorkflowState): Persisted {
       progress: typeof m.progress === 'number' ? m.progress : undefined,
       error: typeof m.error === 'string' ? m.error : undefined,
     })),
+    plannerMessages: state.plannerMessages.slice(-200).map((m) => ({
+      id: m.id,
+      createdAt: m.createdAt,
+      role: m.role,
+      text: m.text,
+    })),
   };
 }
 
@@ -121,9 +133,10 @@ export function loadPersistedState(): {
   mjCrefImageUrl?: string;
   activeImageId?: string;
   streamMessages: StreamMessage[];
+  plannerMessages: PlannerMessage[];
 } {
   const parsed = safeParse(localStorage.getItem(STORAGE_KEY));
-  if (!parsed) return { history: [], referenceImages: [], selectedReferenceIds: [], streamMessages: [] };
+  if (!parsed) return { history: [], referenceImages: [], selectedReferenceIds: [], streamMessages: [], plannerMessages: [] };
 
   const referenceImages: ReferenceImage[] = parsed.referenceLibrary.map((r: any) => ({
     id: r.id || randomId('ref'),
@@ -170,6 +183,16 @@ export function loadPersistedState(): {
     }))
     .slice(-200);
 
+  const plannerMessages: PlannerMessage[] = (parsed.plannerMessages || [])
+    .map((m: any) => ({
+      id: m.id || randomId('msg'),
+      createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
+      role: m.role === 'ai' ? 'ai' : 'user',
+      text: typeof m.text === 'string' ? m.text : '',
+    }))
+    .filter((m) => Boolean(m.text && m.text.trim()))
+    .slice(-200);
+
   return {
     history,
     referenceImages,
@@ -179,6 +202,7 @@ export function loadPersistedState(): {
     mjCrefImageUrl: typeof (parsed as any).mjCrefImageUrl === 'string' ? (parsed as any).mjCrefImageUrl : undefined,
     activeImageId: typeof (parsed as any).activeImageId === 'string' ? (parsed as any).activeImageId : undefined,
     streamMessages,
+    plannerMessages,
   };
 }
 
