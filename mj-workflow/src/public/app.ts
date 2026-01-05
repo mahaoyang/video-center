@@ -12,6 +12,7 @@ import { createMjPromptPreview } from './blocks/mj-prompt-preview';
 import { createMjParamsPanel } from './blocks/mj-params-panel';
 import { createStreamHistory } from './blocks/stream-history';
 import { createStreamActions } from './blocks/stream-actions';
+import { createDescribeEnginePicker } from './blocks/describe-engine-picker';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -35,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   createHistoryView(store);
   createMjPromptPreview(store);
   createMjParamsPanel(store);
+  createDescribeEnginePicker();
   startPersistence(store);
 
   const describe = createDescribeBlock({ api, store });
