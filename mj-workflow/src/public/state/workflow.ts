@@ -19,7 +19,7 @@ export interface WorkflowHistoryItem {
   prompt: string;
   taskId: string;
   gridImageUrl?: string;
-  references: Array<Pick<ReferenceImage, 'id' | 'name' | 'createdAt' | 'url'>>;
+  references: Array<Pick<ReferenceImage, 'id' | 'name' | 'createdAt' | 'url' | 'cdnUrl' | 'localUrl'>>;
   upscaledImages: string[];
 }
 

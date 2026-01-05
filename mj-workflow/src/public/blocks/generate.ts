@@ -143,7 +143,14 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
       const stateAfter = params.store.get();
       const selectedRefs = stateAfter.referenceImages
         .filter((r) => stateAfter.selectedReferenceIds.includes(r.id))
-        .map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt, url: r.url || r.cdnUrl || r.localUrl }));
+        .map((r) => ({
+          id: r.id,
+          name: r.name,
+          createdAt: r.createdAt,
+          url: r.url,
+          cdnUrl: r.cdnUrl,
+          localUrl: r.localUrl,
+        }));
 
       params.store.update((prev) => ({
         ...prev,

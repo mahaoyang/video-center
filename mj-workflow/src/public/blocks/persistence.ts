@@ -12,7 +12,7 @@ type Persisted = {
     prompt: string;
     taskId: string;
     gridImageUrl?: string;
-    references: Array<{ id: string; name: string; createdAt: number; url?: string }>;
+    references: Array<{ id: string; name: string; createdAt: number; url?: string; cdnUrl?: string; localUrl?: string }>;
     upscaledImages: string[];
   }>;
   referenceLibrary: Array<{
@@ -64,7 +64,14 @@ function toPersisted(state: WorkflowState): Persisted {
       prompt: h.prompt,
       taskId: h.taskId,
       gridImageUrl: h.gridImageUrl,
-      references: h.references.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt, url: r.url })),
+      references: h.references.map((r) => ({
+        id: r.id,
+        name: r.name,
+        createdAt: r.createdAt,
+        url: r.url,
+        cdnUrl: (r as any).cdnUrl,
+        localUrl: (r as any).localUrl,
+      })),
       upscaledImages: h.upscaledImages.slice(-10),
     })),
     referenceLibrary: referenceLibrary.slice(-40),
@@ -103,7 +110,14 @@ export function loadPersistedState(): {
     prompt: h.prompt || '',
     taskId: h.taskId || '',
     gridImageUrl: h.gridImageUrl,
-    references: h.references || [],
+    references: (h.references || []).map((r: any) => ({
+      id: r.id || randomId('ref'),
+      name: r.name || 'reference',
+      createdAt: r.createdAt || Date.now(),
+      url: typeof r.url === 'string' ? r.url : undefined,
+      cdnUrl: typeof r.cdnUrl === 'string' ? r.cdnUrl : undefined,
+      localUrl: typeof r.localUrl === 'string' ? r.localUrl : undefined,
+    })),
     upscaledImages: h.upscaledImages || [],
   }));
 
