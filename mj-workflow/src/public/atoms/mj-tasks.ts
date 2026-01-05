@@ -19,18 +19,38 @@ export async function pollTaskUntilImageUrl(params: {
       const upstreamError = getUpstreamErrorMessage(data);
       if (upstreamError) throw new Error(upstreamError);
 
-      const imageUrl = data?.imageUrl ?? data?.result?.imageUrl;
+      const imageUrl =
+        data?.imageUrl ??
+        data?.result?.imageUrl ??
+        data?.properties?.imageUrl ??
+        data?.result?.properties?.imageUrl ??
+        data?.result?.image ??
+        data?.properties?.image;
       if (typeof imageUrl === 'string' && imageUrl.trim()) {
         return { done: true, value: imageUrl };
       }
 
-      const status = String(data?.status ?? data?.result?.status ?? '');
-      const failReason = data?.failReason ?? data?.result?.failReason;
+      const status = String(
+        data?.status ??
+          data?.result?.status ??
+          data?.properties?.status ??
+          data?.result?.properties?.status ??
+          ''
+      );
+      const failReason =
+        data?.failReason ??
+        data?.result?.failReason ??
+        data?.properties?.failReason ??
+        data?.result?.properties?.failReason;
       if (status === 'FAILURE' || failReason) {
         throw new Error(String(failReason || '任务失败'));
       }
 
-      const progressRaw = data?.progress ?? data?.result?.progress;
+      const progressRaw =
+        data?.progress ??
+        data?.result?.progress ??
+        data?.properties?.progress ??
+        data?.result?.properties?.progress;
       if (params.onProgress && progressRaw !== undefined && progressRaw !== null) {
         const n =
           typeof progressRaw === 'number'
@@ -60,12 +80,13 @@ export async function pollTaskUntilFinalPrompt(params: {
       const upstreamError = getUpstreamErrorMessage(task);
       if (upstreamError) throw new Error(upstreamError);
 
-      const status = String(task?.status || '');
-      if (status === 'FAILURE' || task?.failReason) {
-        throw new Error(String(task?.failReason || '任务失败'));
+      const status = String(task?.status ?? task?.result?.status ?? task?.properties?.status ?? '');
+      const failReason = task?.failReason ?? task?.result?.failReason ?? task?.properties?.failReason;
+      if (status === 'FAILURE' || failReason) {
+        throw new Error(String(failReason || '任务失败'));
       }
 
-      const progressRaw = task?.progress;
+      const progressRaw = task?.progress ?? task?.result?.progress ?? task?.properties?.progress;
       if (params.onProgress && progressRaw !== undefined && progressRaw !== null) {
         const n =
           typeof progressRaw === 'number'
@@ -76,7 +97,7 @@ export async function pollTaskUntilFinalPrompt(params: {
         if (Number.isFinite(n)) params.onProgress(n);
       }
 
-      const p = task?.properties;
+      const p = task?.properties ?? task?.result?.properties ?? task?.result;
       const finalPrompt = typeof p?.finalPrompt === 'string' ? p.finalPrompt.trim() : '';
       const finalZhPrompt = typeof p?.finalZhPrompt === 'string' ? p.finalZhPrompt.trim() : '';
       const text = finalPrompt || finalZhPrompt;
