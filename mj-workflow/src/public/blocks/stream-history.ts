@@ -168,16 +168,16 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
 	            (i) => `
 		          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
 		            <img data-preview-src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full h-auto block" />
-		            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
+		            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
 		              <button data-stream-action="pad" data-index="${i}"
-		                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center">
+		                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center pointer-events-auto">
 		                <i class="fas fa-plus text-xs"></i>
-	              </button>
-	              <button data-stream-action="upscale" data-index="${i}"
-	                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
-	                <i class="fas fa-arrow-up-right-dots text-xs"></i>
-	              </button>
-	            </div>
+		              </button>
+		              <button data-stream-action="upscale" data-index="${i}"
+		                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center pointer-events-auto">
+		                <i class="fas fa-arrow-up-right-dots text-xs"></i>
+		              </button>
+		            </div>
 	            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
 	          </div>
 	        `
@@ -237,12 +237,12 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
 	            (i) => `
 		          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
 		            <img data-preview-src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full h-auto block" />
-		            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
+		            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
 		              <button data-stream-action="select" data-index="${i}"
-		                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+		                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center pointer-events-auto">
 		                <i class="fas fa-plus text-xs"></i>
-	              </button>
-	            </div>
+		              </button>
+		            </div>
 	            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
 	          </div>
 	        `
