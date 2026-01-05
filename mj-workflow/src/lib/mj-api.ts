@@ -49,6 +49,30 @@ async function fetchUpstreamJson(url: string, init: RequestInit): Promise<any> {
     return body.json;
   }
 
+  // Some upstreams incorrectly return JSON with text/plain; attempt to parse the text.
+  if (typeof body.text === 'string') {
+    const raw = body.text.replace(/^\uFEFF/, '').trim();
+    const tryParse = (text: string) => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return undefined;
+      }
+    };
+
+    let parsed: any | undefined;
+    if (raw.startsWith('{') || raw.startsWith('[')) {
+      parsed = tryParse(raw);
+    } else {
+      const firstBrace = raw.indexOf('{');
+      const firstBracket = raw.indexOf('[');
+      const start =
+        firstBrace === -1 ? firstBracket : firstBracket === -1 ? firstBrace : Math.min(firstBrace, firstBracket);
+      if (start !== -1) parsed = tryParse(raw.slice(start));
+    }
+    if (parsed !== undefined) return parsed;
+  }
+
   // Non-JSON fallback: convert to our envelope-ish shape so frontend can show a message.
   const description = body.text?.trim() || `Upstream request failed: ${res.status} ${res.statusText}`;
   return { code: -1, description, error: { status: res.status, statusText: res.statusText } };
