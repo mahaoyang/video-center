@@ -49,37 +49,6 @@ function createImgWithFallback(params: { urls: string[]; className: string; alt?
   return wrapper;
 }
 
-function isLikelyUrl(value: string): boolean {
-  const v = value.trim();
-  return v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/') || v.startsWith('data:');
-}
-
-function normalizeHistoryImageUrl(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const v = value.trim();
-  if (!v) return undefined;
-  if (isLikelyUrl(v)) return v;
-  if (v.startsWith('{') && v.endsWith('}')) {
-    try {
-      const parsed = JSON.parse(v) as any;
-      const candidates = [
-        parsed?.result,
-        parsed?.result?.imageUrl,
-        parsed?.result?.url,
-        parsed?.result?.cdnUrl,
-        parsed?.imageUrl,
-        parsed?.url,
-      ];
-      for (const c of candidates) {
-        if (typeof c === 'string' && isLikelyUrl(c)) return c.trim();
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return undefined;
-}
-
 function renderHistoryItem(item: WorkflowHistoryItem, refLookup: Map<string, ReferenceImage>, onRestore: (item: WorkflowHistoryItem) => void): HTMLElement {
   const card = document.createElement('div');
   card.className = 'studio-panel p-8 group relative overflow-hidden transition-all duration-500 hover:border-studio-accent/30';
@@ -124,11 +93,10 @@ function renderHistoryItem(item: WorkflowHistoryItem, refLookup: Map<string, Ref
   resultsGrid.className = 'grid grid-cols-4 gap-3';
 
   const addImg = (url: string, label: string) => {
-    const normalized = normalizeHistoryImageUrl(url);
     const wrapper = document.createElement('div');
     wrapper.className = 'relative group/img cursor-pointer';
     const inner = createImgWithFallback({
-      urls: uniqueStrings([normalized]),
+      urls: uniqueStrings([url]),
       aspect: 'square',
       className: 'w-full h-full object-cover transform transition-transform duration-700 group-hover/img:scale-110 grayscale group-hover/img:grayscale-0',
       alt: label,
