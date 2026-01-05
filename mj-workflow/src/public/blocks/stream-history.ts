@@ -203,6 +203,7 @@ function downloadJson(filename: string, data: unknown) {
 
 export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   const stream = byId<HTMLElement>('productionStream');
+  let lastSig = '';
 
   function resolveMessageImageUrl(m: StreamMessage, state: WorkflowState): StreamMessage {
     if (m.imageUrl) return m;
@@ -242,9 +243,13 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   const initialCountEl = document.getElementById('conversationCount');
   if (initialCountEl) initialCountEl.textContent = String(params.store.get().streamMessages.length || 0);
   params.store.subscribe((s) => {
+    const sig = `${s.streamMessages.length}:${s.streamMessages.at(-1)?.id || ''}`;
+    if (sig !== lastSig) {
+      lastSig = sig;
+      renderAll(s.streamMessages);
+    }
     const countEl = document.getElementById('conversationCount');
     if (countEl) countEl.textContent = String(s.streamMessages.length || 0);
-    ensureZeroState(stream, s.streamMessages.length > 0);
   });
 
   return { renderAll, clearConversation, saveConversation };

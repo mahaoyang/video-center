@@ -34,6 +34,17 @@ async function fetchUpstreamJson(url: string, init: RequestInit): Promise<any> {
   const body = await readResponseBody(res);
 
   if (body.json !== null) {
+    // Some upstreams mistakenly wrap JSON as a JSON-string. Attempt to unwrap once.
+    if (typeof body.json === 'string') {
+      const text = body.json.trim();
+      if (text.startsWith('{') || text.startsWith('[')) {
+        try {
+          return JSON.parse(text);
+        } catch {
+          // keep original string
+        }
+      }
+    }
     // Preserve upstream payload even on non-2xx; many upstream APIs return JSON errors.
     return body.json;
   }

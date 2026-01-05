@@ -17,13 +17,13 @@ function ensurePanel(): {
   const container = document.createElement('div');
   container.id = 'mjNotifyPanel';
   container.className =
-    'fixed bottom-4 right-4 left-4 md:left-auto md:w-[720px] z-[9999] hidden rounded-2xl border border-brand-green/10 bg-white/90 backdrop-blur p-4 shadow-2xl shadow-brand-green/10';
+    'fixed bottom-4 right-4 left-4 md:left-auto md:w-[720px] z-[9999] hidden rounded-2xl border border-white/10 bg-studio-panel/85 text-studio-text backdrop-blur-xl p-4 shadow-2xl';
 
   const header = document.createElement('div');
   header.className = 'flex items-center justify-between gap-3 mb-3';
 
   const title = document.createElement('div');
-  title.className = 'text-xs uppercase tracking-widest font-bold opacity-60';
+  title.className = 'text-[10px] uppercase tracking-[0.3em] font-black opacity-50';
   title.textContent = 'Message';
 
   const actions = document.createElement('div');
@@ -31,12 +31,14 @@ function ensurePanel(): {
 
   const copyBtn = document.createElement('button');
   copyBtn.dataset.action = 'copy';
-  copyBtn.className = 'jo-btn jo-btn-secondary text-[10px] uppercase tracking-widest px-4 py-2';
+  copyBtn.className =
+    'px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black uppercase tracking-widest';
   copyBtn.textContent = 'Copy';
 
   const closeBtn = document.createElement('button');
   closeBtn.dataset.action = 'close';
-  closeBtn.className = 'jo-btn jo-btn-quiet text-[10px] uppercase tracking-widest px-4 py-2';
+  closeBtn.className =
+    'px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-white/20 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest';
   closeBtn.textContent = 'Close';
 
   actions.appendChild(copyBtn);
@@ -46,7 +48,7 @@ function ensurePanel(): {
 
   const pre = document.createElement('pre');
   pre.className =
-    'whitespace-pre-wrap break-words text-sm leading-relaxed p-4 rounded-xl bg-brand-cream/40 border border-brand-green/5 max-h-[40vh] overflow-auto select-text';
+    'whitespace-pre-wrap break-words text-sm leading-relaxed p-4 rounded-xl bg-black/30 border border-white/10 max-h-[40vh] overflow-auto select-text text-studio-text';
   pre.textContent = '';
 
   container.appendChild(header);
