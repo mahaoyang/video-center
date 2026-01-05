@@ -39,6 +39,9 @@ export interface StreamMessage {
   taskId?: string;
   gridImageUrl?: string;
   upscaledImageUrl?: string;
+
+  progress?: number; // 0..100 for async tasks
+  error?: string;
 }
 
 export interface WorkflowState {
@@ -49,7 +52,10 @@ export interface WorkflowState {
   uploadedImageUrl?: string;
 
   referenceImages: ReferenceImage[];
-  selectedReferenceIds: string[]; // for MJ imagine (multi-select)
+  selectedReferenceIds: string[]; // multi-select buffer (used by Deconstruct)
+
+  // MJ prompt "PAD" (垫图) - single image reference
+  mjPadRefId?: string;
 
   // Active image for Step2 (describe/vision)
   activeImageId?: string;

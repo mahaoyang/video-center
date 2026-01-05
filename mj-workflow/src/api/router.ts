@@ -7,6 +7,7 @@ import { json, jsonError, readJson } from '../http/json';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 
 function extractAssistantText(raw: any): string {
   try {
@@ -84,6 +85,27 @@ function normalizeImageExt(ext: string): string {
   return lower;
 }
 
+function isPrivateIpv4(host: string): boolean {
+  const m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return false;
+  const a = Number(m[1]), b = Number(m[2]);
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  return false;
+}
+
+function isUnsafeHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (!h) return true;
+  if (h === 'localhost' || h === '::1') return true;
+  if (isPrivateIpv4(h)) return true;
+  return false;
+}
+
 export function createApiRouter(deps: {
   mjApi: MJApi;
   chatApi: YunwuChatApi;
@@ -110,6 +132,89 @@ export function createApiRouter(deps: {
 
     if (pathname === '/api/health' && req.method === 'GET') {
       return json({ ok: true, auth: deps.auth, meta: deps.meta });
+    }
+
+    if (pathname === '/api/slice' && req.method === 'GET') {
+      try {
+        const url = new URL(req.url);
+        const src = String(url.searchParams.get('src') || '').trim();
+        const indexRaw = String(url.searchParams.get('index') || '').trim();
+        const index = Number(indexRaw);
+        if (!src) return jsonError({ status: 400, description: '缺少 src' });
+        if (![1, 2, 3, 4].includes(index)) return jsonError({ status: 400, description: 'index 必须为 1-4' });
+
+        let bytes: Uint8Array;
+        if (src.startsWith('/uploads/')) {
+          const key = basename(src);
+          if (!key || key.includes('..')) return jsonError({ status: 400, description: 'src 非法' });
+          const filePath = join(deps.uploads.dir, key);
+          const file = Bun.file(filePath);
+          if (!(await file.exists())) return jsonError({ status: 404, description: '图片不存在' });
+          const ab = await file.arrayBuffer();
+          bytes = new Uint8Array(ab);
+        } else {
+          let absolute: URL;
+          try {
+            absolute = new URL(src);
+          } catch {
+            absolute = new URL(src, req.url);
+          }
+          if (!['http:', 'https:'].includes(absolute.protocol)) {
+            return jsonError({ status: 400, description: '仅支持 http/https 图片' });
+          }
+          if (isUnsafeHost(absolute.hostname)) {
+            return jsonError({ status: 400, description: '禁止访问内网地址' });
+          }
+          const resp = await fetch(absolute.toString(), { signal: AbortSignal.timeout(15000) });
+          if (!resp.ok) return jsonError({ status: 502, description: `拉取图片失败: ${resp.status}` });
+          const ab = await resp.arrayBuffer();
+          bytes = new Uint8Array(ab);
+        }
+
+        const img = sharp(bytes);
+        const meta = await img.metadata();
+        const w = meta.width || 0;
+        const h = meta.height || 0;
+        if (!w || !h) return jsonError({ status: 400, description: '无法解析图片尺寸' });
+
+        // Avoid sharp extract errors on tiny images (e.g. 1x1 test fixtures).
+        if (w < 2 || h < 2) {
+          const out = await img.png().toBuffer();
+          return new Response(out, {
+            headers: {
+              'Content-Type': 'image/png',
+              'Cache-Control': 'public, max-age=3600',
+            },
+          });
+        }
+
+        const halfW = Math.floor(w / 2);
+        const halfH = Math.floor(h / 2);
+        const leftW = halfW;
+        const rightW = w - halfW;
+        const topH = halfH;
+        const bottomH = h - halfH;
+
+        const region =
+          index === 1
+            ? { left: 0, top: 0, width: leftW, height: topH }
+            : index === 2
+              ? { left: halfW, top: 0, width: rightW, height: topH }
+              : index === 3
+                ? { left: 0, top: halfH, width: leftW, height: bottomH }
+                : { left: halfW, top: halfH, width: rightW, height: bottomH };
+
+        const out = await img.extract(region).png().toBuffer();
+        return new Response(out, {
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=3600',
+          },
+        });
+      } catch (error) {
+        console.error('Slice error:', error);
+        return jsonError({ status: 500, description: '切图失败', error });
+      }
     }
 
     if (pathname === '/api/upload' && req.method === 'POST') {

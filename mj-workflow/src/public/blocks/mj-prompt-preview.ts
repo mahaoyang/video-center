@@ -11,18 +11,18 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
   const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement | null;
   if (!promptInput) return;
 
-  const preview = document.getElementById('mjPromptPreview') as HTMLTextAreaElement | null;
+  const preview = document.getElementById('mjPromptPreview') as HTMLElement | null;
   const stats = document.getElementById('mjWrapperStats') as HTMLElement | null;
 
   function compute(state: WorkflowState): string {
     const basePrompt = (promptInput.value.trim() || (state.prompt || '').trim()).trim();
 
-    const selectedRefs = state.referenceImages.filter((r) => state.selectedReferenceIds.includes(r.id));
-    const refUrls = selectedRefs.map((r) => r.cdnUrl || r.url).filter(isHttpUrl);
+    const padRef = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
+    const padUrl = isHttpUrl(padRef?.cdnUrl) ? padRef?.cdnUrl : isHttpUrl(padRef?.url) ? padRef?.url : undefined;
 
     return buildMjPrompt({
       basePrompt,
-      padImages: refUrls,
+      padImages: padUrl ? [padUrl] : [],
       srefImageUrl: state.mjSrefImageUrl,
       crefImageUrl: state.mjCrefImageUrl,
     });
@@ -30,16 +30,15 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
 
   function render(state: WorkflowState) {
     const text = compute(state);
-    if (preview) preview.value = text;
+    if (preview) preview.textContent = text;
 
     if (stats) {
-      const selectedRefs = state.referenceImages.filter((r) => state.selectedReferenceIds.includes(r.id));
-      const urlCount = selectedRefs.filter((r) => isHttpUrl(r.cdnUrl || r.url)).length;
-      const base64Count = selectedRefs.filter((r) => !isHttpUrl(r.cdnUrl || r.url) && Boolean(r.base64)).length;
+      const padRef = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
+      const hasPadUrl = Boolean(isHttpUrl(padRef?.cdnUrl || padRef?.url));
       const sref = isHttpUrl(state.mjSrefImageUrl) ? state.mjSrefImageUrl : '';
       const cref = isHttpUrl(state.mjCrefImageUrl) ? state.mjCrefImageUrl : '';
       stats.textContent =
-        `PAD(URL): ${urlCount}  PAD(base64): ${base64Count}` +
+        `PAD(URL): ${hasPadUrl ? 1 : 0}  PAD(base64): -` +
         (sref ? `  SREF: ✓` : `  SREF: -`) +
         (cref ? `  CREF: ✓` : `  CREF: -`);
     }

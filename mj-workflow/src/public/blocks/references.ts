@@ -104,12 +104,10 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
   const container = byId<HTMLElement>('referenceList');
   const clearBtn = document.getElementById('clearRefsBtn') as HTMLButtonElement | null;
 
-  function toggleReference(id: string) {
+  function togglePad(id: string) {
     params.store.update((s) => {
-      const selected = new Set(s.selectedReferenceIds);
-      if (selected.has(id)) selected.delete(id);
-      else selected.add(id);
-      return { ...s, selectedReferenceIds: Array.from(selected) };
+      const next = s.mjPadRefId === id ? undefined : id;
+      return { ...s, mjPadRefId: next };
     });
   }
 
@@ -144,18 +142,18 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
     params.store.update((s) => {
       const nextRefs = s.referenceImages.filter((r) => r.id !== ref.id);
       const nextSelected = s.selectedReferenceIds.filter((id) => id !== ref.id);
+      const nextPad = s.mjPadRefId === ref.id ? undefined : s.mjPadRefId;
 
       const publicUrls = [ref.cdnUrl, ref.url].filter(Boolean) as string[];
       const mjSrefImageUrl = s.mjSrefImageUrl && publicUrls.includes(s.mjSrefImageUrl) ? undefined : s.mjSrefImageUrl;
       const mjCrefImageUrl = s.mjCrefImageUrl && publicUrls.includes(s.mjCrefImageUrl) ? undefined : s.mjCrefImageUrl;
 
-      return { ...s, referenceImages: nextRefs, selectedReferenceIds: nextSelected, mjSrefImageUrl, mjCrefImageUrl };
+      return { ...s, referenceImages: nextRefs, selectedReferenceIds: nextSelected, mjPadRefId: nextPad, mjSrefImageUrl, mjCrefImageUrl };
     });
   }
 
   function render(state: WorkflowState) {
     container.innerHTML = '';
-    const selectedSet = new Set(state.selectedReferenceIds);
     const refs = state.referenceImages.slice().reverse();
 
     for (const r of refs) {
@@ -164,8 +162,8 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
         renderReferenceItem({
           reference: r,
           state,
-          selectedAsPad: selectedSet.has(r.id),
-          onTogglePad: () => toggleReference(r.id),
+          selectedAsPad: state.mjPadRefId === r.id,
+          onTogglePad: () => togglePad(r.id),
           onSetSref: () => setSlot('sref', url),
           onSetCref: () => setSlot('cref', url),
           onDelete: () => void deleteReference(r),
@@ -182,11 +180,11 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
   }
 
   clearBtn?.addEventListener('click', () => {
-    params.store.update((s) => ({ ...s, selectedReferenceIds: [] }));
+    params.store.update((s) => ({ ...s, mjPadRefId: undefined }));
   });
 
   render(params.store.get());
   params.store.subscribe(render);
 
-  return { toggleReference };
+  return { togglePad };
 }

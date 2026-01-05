@@ -212,7 +212,13 @@
 <body class="selection:bg-studio-accent selection:text-black">
 
   <!-- PURE-STREAM WORKSPACE -->
-  <div class="min-h-screen h-[100dvh] flex flex-col items-center bg-studio-bg overflow-hidden relative">
+  <div class="min-h-[100dvh] h-[100dvh] flex flex-col items-center bg-studio-bg overflow-hidden relative">
+    <!-- BACKGROUND LAYERS -->
+    <div class="pointer-events-none absolute inset-0 overflow-hidden">
+      <div class="absolute -top-56 left-1/2 -translate-x-1/2 w-[980px] h-[980px] rounded-full bg-studio-accent/10 blur-[140px]"></div>
+      <div class="absolute -bottom-64 -right-64 w-[900px] h-[900px] rounded-full bg-white/5 blur-[160px]"></div>
+      <div class="absolute inset-0 opacity-[0.06]" style="background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.28) 1px, transparent 0); background-size: 36px 36px;"></div>
+    </div>
 
     <!-- THE INFINITE CANVAS -->
     <main id="productionStream"
@@ -394,8 +400,8 @@
           <div class="flex items-center justify-between gap-4">
             <label class="text-[9px] font-black uppercase tracking-widest opacity-30">MJ 包装器</label>
           </div>
-          <textarea id="mjPromptPreview" readonly
-            class="w-full min-h-[140px] bg-white/[0.02] border border-white/10 rounded-2xl p-5 text-[11px] font-mono leading-relaxed focus:border-studio-accent/50 transition-all resize-y"></textarea>
+          <div id="mjPromptPreview"
+            class="w-full min-h-[140px] max-h-[40vh] overflow-auto bg-white/[0.02] border border-white/10 rounded-2xl p-5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words select-none"></div>
           <div id="mjWrapperStats" class="text-[9px] font-mono opacity-40 leading-relaxed"></div>
           <div class="text-[9px] opacity-30 leading-relaxed">
             说明：PAD 图、SREF/CREF 仅使用公网可访问的 URL（优先 CDN）；本地 <code>/uploads</code> 不会写入包装器。

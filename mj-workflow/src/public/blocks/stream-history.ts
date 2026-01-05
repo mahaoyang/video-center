@@ -22,6 +22,10 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+function escapeJsString(value: string): string {
+  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 function renderDeconstructMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
   msg.dataset.streamMessage = '1';
@@ -89,95 +93,126 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
   }
 
   const taskId = m.taskId || '';
-  const imageUrl = m.gridImageUrl || '';
-  msg.className = 'group relative animate-fade-in-up';
-  msg.innerHTML = `
-    <div class="relative rounded-[3rem] overflow-hidden border border-white/5 shadow-3xl bg-black/40 backdrop-blur-sm">
-      <img src="${escapeHtml(imageUrl)}" class="w-full grayscale group-hover:grayscale-0 transition-all duration-[6s] hover:scale-105" referrerpolicy="no-referrer" />
-      <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-700 flex flex-col justify-end p-12">
-        <div class="flex items-center justify-between">
-          <div class="flex flex-col">
-            <span class="text-[11px] font-black uppercase tracking-[0.5em] text-studio-accent mb-2">Synthesis Finalized</span>
-            <span class="text-[9px] font-mono opacity-40">FRAGMENT_ID: ${escapeHtml(taskId.slice(0, 8))} // STABLE_READY</span>
+  const src = m.gridImageUrl;
+  if (!src) {
+    const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
+    msg.className = 'group animate-fade-in-up';
+    msg.innerHTML = `
+      <div class="glass-panel p-10 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl">
+        <div class="flex items-center justify-between gap-6">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Synthesis Pending</span>
+              <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : 'Submitting...'}</span>
+            </div>
           </div>
-          <div class="flex gap-3 p-2 glass-panel rounded-2xl border border-white/10" id="gridActions_${escapeHtml(taskId)}"></div>
+          <div class="text-[12px] font-black text-studio-accent">${p}%</div>
         </div>
-        <div class="mt-10 flex justify-end">
-          <button id="upscaleBtn_${escapeHtml(taskId)}" disabled
-            class="btn-studio btn-studio-primary !px-14 !h-16 !text-[11px] !rounded-2xl shadow-3xl scale-95 group-hover:scale-100 transition-all duration-500">
-            INITIATE ENHANCEMENT <i class="fas fa-microchip ml-4"></i>
-          </button>
+        ${m.error ? `<div class="mt-6 text-[11px] text-red-300/90 font-mono">${escapeHtml(m.error)}</div>` : ''}
+      </div>
+    `;
+    return msg;
+  }
+
+  msg.className = 'group animate-fade-in-up';
+  msg.innerHTML = `
+    <div class="glass-panel p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
+      <div class="flex items-center justify-between">
+        <div class="flex flex-col">
+          <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Synthesis Finalized</span>
+          <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : ''}</span>
         </div>
+        <div class="text-[9px] font-black uppercase tracking-widest opacity-30">2x2 Grid</div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        ${[1, 2, 3, 4]
+          .map(
+            (i) => `
+          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black group/tile">
+            <img src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full aspect-square object-cover" />
+            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
+              <button onclick="window.streamAddPadFromSlice?.('${escapeJsString(src)}', ${i})"
+                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center">
+                <i class="fas fa-plus text-xs"></i>
+              </button>
+              <button onclick="window.streamUpscaleFromGrid?.('${escapeJsString(taskId)}', ${i})"
+                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+                <i class="fas fa-arrow-up-right-dots text-xs"></i>
+              </button>
+            </div>
+            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
+          </div>
+        `
+          )
+          .join('')}
       </div>
     </div>
   `;
-
-  queueMicrotask(() => {
-    const init = (window as any).initCardSelection as ((taskId: string, gridUrl: string) => void) | undefined;
-    if (init && taskId && imageUrl) init(taskId, imageUrl);
-  });
-
   return msg;
 }
 
 function renderUpscaleMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
   msg.dataset.streamMessage = '1';
-  const id = m.taskId || m.id;
-  const imageUrl = m.upscaledImageUrl || '';
-  msg.className = 'group animate-fade-in-up space-y-12';
-  msg.innerHTML = `
-    <div class="flex items-center gap-4 opacity-40">
-      <div class="w-8 h-8 rounded-full bg-studio-accent/10 flex items-center justify-center border border-studio-accent/20">
-        <i class="fas fa-microchip text-[10px] text-studio-accent"></i>
-      </div>
-      <div class="flex flex-col">
-        <span class="text-[10px] font-black uppercase tracking-[0.3em]">Neural Enhancement Complete</span>
-        <span class="text-[8px] font-mono opacity-60">High-Fidelity Reconstruction Protocol</span>
-      </div>
-    </div>
-
-    <div class="relative rounded-[3.5rem] overflow-hidden border border-white/5 shadow-3xl bg-black">
-      <img src="${escapeHtml(imageUrl)}" class="w-full" referrerpolicy="no-referrer" />
-      <div class="absolute top-8 right-8 flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-        <button onclick="window.downloadTarget('${escapeHtml(imageUrl)}')"
-          class="w-12 h-12 flex items-center justify-center rounded-2xl glass-panel border border-white/20 hover:bg-studio-accent hover:text-studio-bg transition-all">
-          <i class="fas fa-download text-xs"></i>
-        </button>
-      </div>
-    </div>
-
-    <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
-      <div class="absolute top-0 right-0 p-8 opacity-[0.02] pointer-events-none">
-        <i class="fas fa-bezier-curve text-8xl"></i>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-end">
-        <div class="lg:col-span-8 space-y-8">
-          <div class="flex items-center gap-3">
-            <span class="text-[9px] font-black uppercase tracking-widest opacity-30">AI Co-Processor</span>
-            <div class="h-px flex-1 bg-white/5"></div>
-          </div>
-          <textarea id="editPrompt_${escapeHtml(id)}"
-            class="w-full h-28 bg-white/[0.02] border border-white/5 rounded-3xl p-5 text-sm focus:border-studio-accent/50 transition-all resize-none placeholder:opacity-10"
-            placeholder="Enter semantic refinement instructions..."></textarea>
-          <button onclick="window.geminiEditCard('${escapeHtml(id)}', '${escapeHtml(imageUrl)}')"
-            class="btn-studio btn-studio-outline w-full !py-5 !text-[10px] !rounded-[1.5rem] hover:bg-studio-accent/5">
-            EXECUTE SEMANTIC PATCH
-          </button>
-        </div>
-        <div class="lg:col-span-4 flex flex-col gap-4">
-          <div class="p-6 rounded-3xl border border-white/5 bg-white/[0.01]">
-            <span class="text-[8px] font-black uppercase tracking-widest opacity-20 block mb-4">Asset Specs</span>
-            <div class="space-y-3">
-              <div class="flex justify-between text-[8px] font-mono opacity-40"><span>FORMAT</span><span>PNG/RGBA</span></div>
-              <div class="flex justify-between text-[8px] font-mono opacity-40"><span>UPSCALED</span><span>4X/STABLE</span></div>
+  const taskId = m.taskId || '';
+  const id = taskId || m.id;
+  const src = m.upscaledImageUrl;
+  if (!src) {
+    const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
+    msg.className = 'group animate-fade-in-up';
+    msg.innerHTML = `
+      <div class="glass-panel p-10 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl">
+        <div class="flex items-center justify-between gap-6">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Upscale Pending</span>
+              <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : 'Submitting...'}</span>
             </div>
           </div>
+          <div class="text-[12px] font-black text-studio-accent">${p}%</div>
         </div>
+        ${m.error ? `<div class="mt-6 text-[11px] text-red-300/90 font-mono">${escapeHtml(m.error)}</div>` : ''}
+      </div>
+    `;
+    return msg;
+  }
+
+  msg.className = 'group animate-fade-in-up';
+  msg.innerHTML = `
+    <div class="glass-panel p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
+      <div class="flex items-center justify-between">
+        <div class="flex flex-col">
+          <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Upscale Complete</span>
+          <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : ''}</span>
+        </div>
+        <div class="text-[9px] font-black uppercase tracking-widest opacity-30">Pick</div>
       </div>
 
-      <div id="editResult_${escapeHtml(id)}" class="hidden pt-12 mt-12 border-t border-white/5 animate-fade-in-up"></div>
+      <div class="grid grid-cols-2 gap-4">
+        ${[1, 2, 3, 4]
+          .map(
+            (i) => `
+          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black group/tile">
+            <img src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full aspect-square object-cover" />
+            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
+              <button onclick="window.streamSelectFromSlice?.('${escapeJsString(src)}', ${i})"
+                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+                <i class="fas fa-plus text-xs"></i>
+              </button>
+            </div>
+            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
+          </div>
+        `
+          )
+          .join('')}
+      </div>
     </div>
   `;
   return msg;
@@ -203,24 +238,26 @@ function downloadJson(filename: string, data: unknown) {
 
 export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   const stream = byId<HTMLElement>('productionStream');
-  let lastSig = '';
+  let lastMessages: StreamMessage[] | null = null;
 
   function resolveMessageImageUrl(m: StreamMessage, state: WorkflowState): StreamMessage {
     if (m.imageUrl) return m;
     if (!m.refId) return m;
     const ref = state.referenceImages.find((r) => r.id === m.refId);
-    const url = ref?.cdnUrl || ref?.url || ref?.localUrl;
+    const url = ref?.cdnUrl || ref?.url || ref?.localUrl || ref?.dataUrl;
     if (!url) return m;
     return { ...m, imageUrl: url };
   }
 
   function renderAll(messages: StreamMessage[]) {
+    const stickToBottom = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 200;
     clearRenderedMessages(stream);
     const state = params.store.get();
     for (const m of messages) {
       stream.appendChild(renderMessage(resolveMessageImageUrl(m, state)));
     }
     ensureZeroState(stream, messages.length > 0);
+    if (stickToBottom) stream.scrollTop = stream.scrollHeight;
   }
 
   function clearConversation() {
@@ -243,9 +280,8 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   const initialCountEl = document.getElementById('conversationCount');
   if (initialCountEl) initialCountEl.textContent = String(params.store.get().streamMessages.length || 0);
   params.store.subscribe((s) => {
-    const sig = `${s.streamMessages.length}:${s.streamMessages.at(-1)?.id || ''}`;
-    if (sig !== lastSig) {
-      lastSig = sig;
+    if (s.streamMessages !== lastMessages) {
+      lastMessages = s.streamMessages;
       renderAll(s.streamMessages);
     }
     const countEl = document.getElementById('conversationCount');

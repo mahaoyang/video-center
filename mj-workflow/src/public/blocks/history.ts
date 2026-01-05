@@ -2,6 +2,7 @@ import type { Store } from '../state/store';
 import type { ReferenceImage } from '../state/workflow';
 import type { WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
+import { randomId } from '../atoms/id';
 
 function uniqueStrings(values: Array<string | undefined | null>): string[] {
   const out: string[] = [];
@@ -35,7 +36,7 @@ function createImgWithFallback(params: { urls: string[]; className: string; alt?
     if (!next) {
       wrapper.innerHTML = '';
       const placeholder = document.createElement('div');
-      placeholder.className = 'w-full h-full flex items-center justify-center text-[10px] font-semibold opacity-40 bg-white/70';
+      placeholder.className = 'w-full h-full flex items-center justify-center text-[10px] font-semibold opacity-40 bg-studio-panel border border-white/5';
       placeholder.textContent = '图片失效';
       wrapper.appendChild(placeholder);
       return;
@@ -128,23 +129,37 @@ export function createHistoryView(store: Store<WorkflowState>) {
   (window as any).clearHistory = clearHistory;
 
   function onRestore(item: WorkflowHistoryItem) {
-    store.update((s) => ({
-      ...s,
-      prompt: item.prompt,
-      selectedReferenceIds: item.references.map(r => r.id),
-      // Set step to 3 to orchestrate again
-      step: 3
-    }));
-
-    // Smooth scroll to top components
-    const step3 = document.getElementById('step3');
-    if (step3) step3.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    // Explicitly update DOM for prompt input
+    const prompt = item.prompt;
     const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement | null;
     if (promptInput) {
-      promptInput.value = item.prompt;
+      promptInput.value = prompt;
+      promptInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
+
+    store.update((s) => {
+      const first = item.references?.[0];
+      if (!first) return { ...s, prompt, step: 4 };
+
+      const existing = s.referenceImages.find((r) => r.id === first.id);
+      if (existing) {
+        return { ...s, prompt, mjPadRefId: existing.id, step: 4 };
+      }
+
+      const url = first.cdnUrl || first.url || first.localUrl;
+      if (!url) return { ...s, prompt, step: 4 };
+
+      const id = randomId('ref');
+      return {
+        ...s,
+        prompt,
+        referenceImages: [
+          ...s.referenceImages,
+          { id, name: first.name || 'restored', createdAt: Date.now(), url, cdnUrl: first.cdnUrl, localUrl: first.localUrl },
+        ],
+        mjPadRefId: id,
+        step: 4,
+      };
+    });
   }
 
   function render(state: WorkflowState) {

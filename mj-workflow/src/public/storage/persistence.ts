@@ -26,6 +26,7 @@ type Persisted = {
     localKey?: string;
   }>;
   selectedReferenceIds: string[];
+  mjPadRefId?: string;
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
   activeImageId?: string;
@@ -40,6 +41,8 @@ type Persisted = {
     taskId?: string;
     gridImageUrl?: string;
     upscaledImageUrl?: string;
+    progress?: number;
+    error?: string;
   }>;
 };
 
@@ -88,6 +91,7 @@ function toPersisted(state: WorkflowState): Persisted {
     })),
     referenceLibrary: referenceLibrary.slice(-40),
     selectedReferenceIds: state.selectedReferenceIds.slice(),
+    mjPadRefId: state.mjPadRefId,
     mjSrefImageUrl: state.mjSrefImageUrl,
     mjCrefImageUrl: state.mjCrefImageUrl,
     activeImageId: state.activeImageId,
@@ -102,6 +106,8 @@ function toPersisted(state: WorkflowState): Persisted {
       taskId: m.taskId,
       gridImageUrl: m.gridImageUrl,
       upscaledImageUrl: m.upscaledImageUrl,
+      progress: typeof m.progress === 'number' ? m.progress : undefined,
+      error: typeof m.error === 'string' ? m.error : undefined,
     })),
   };
 }
@@ -110,6 +116,7 @@ export function loadPersistedState(): {
   history: WorkflowHistoryItem[];
   referenceImages: ReferenceImage[];
   selectedReferenceIds: string[];
+  mjPadRefId?: string;
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
   activeImageId?: string;
@@ -158,6 +165,8 @@ export function loadPersistedState(): {
       taskId: typeof m.taskId === 'string' ? m.taskId : undefined,
       gridImageUrl: typeof m.gridImageUrl === 'string' ? m.gridImageUrl : undefined,
       upscaledImageUrl: typeof m.upscaledImageUrl === 'string' ? m.upscaledImageUrl : undefined,
+      progress: typeof m.progress === 'number' ? m.progress : undefined,
+      error: typeof m.error === 'string' ? m.error : undefined,
     }))
     .slice(-200);
 
@@ -165,6 +174,7 @@ export function loadPersistedState(): {
     history,
     referenceImages,
     selectedReferenceIds: parsed.selectedReferenceIds || [],
+    mjPadRefId: typeof (parsed as any).mjPadRefId === 'string' ? (parsed as any).mjPadRefId : undefined,
     mjSrefImageUrl: typeof (parsed as any).mjSrefImageUrl === 'string' ? (parsed as any).mjSrefImageUrl : undefined,
     mjCrefImageUrl: typeof (parsed as any).mjCrefImageUrl === 'string' ? (parsed as any).mjCrefImageUrl : undefined,
     activeImageId: typeof (parsed as any).activeImageId === 'string' ? (parsed as any).activeImageId : undefined,

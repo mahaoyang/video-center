@@ -29,20 +29,25 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       hide(byId('deconstructTrigger'));
     }
 
-    if (padCount) padCount.textContent = String(s.selectedReferenceIds.length || 0);
+    if (padCount) padCount.textContent = s.mjPadRefId ? '1' : '0';
 
     s.referenceImages.forEach((img) => {
       const isSelected = s.selectedReferenceIds.includes(img.id);
+      const isPad = s.mjPadRefId === img.id;
 
       const item = document.createElement('div');
       item.className =
-        'relative flex-shrink-0 w-16 pt-2 group animate-pop-in cursor-pointer transition-all duration-300 ' +
+        'group/ref relative flex-shrink-0 w-16 pt-3 animate-pop-in cursor-pointer transition-all duration-300 ' +
         '-ml-10 first:ml-0 group-hover:ml-2 group-hover:first:ml-0 hover:z-20 hover:-translate-y-1';
 
       const frame = document.createElement('div');
       frame.className =
         'relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 ' +
-        (isSelected ? 'ring-2 ring-studio-accent border-studio-accent/30' : '');
+        (isPad
+          ? 'ring-2 ring-studio-accent border-studio-accent/30'
+          : isSelected
+            ? 'ring-1 ring-white/20 border-white/20'
+            : '');
 
       const previewUrl = img.dataUrl || img.cdnUrl || img.url || img.localUrl || '';
       const thumb = document.createElement('img');
@@ -54,8 +59,8 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       const del = document.createElement('button');
       del.type = 'button';
       del.className =
-        'absolute right-0 top-2 translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-black/40 border border-white/10 text-white/60 flex items-center justify-center shadow-xl z-30 ' +
-        'opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/70 hover:border-red-400/30 hover:text-white';
+        'absolute right-0 top-2 translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-studio-panel/80 border border-white/10 text-white/60 flex items-center justify-center shadow-xl z-30 ' +
+        'opacity-0 group-hover/ref:opacity-100 transition-opacity hover:bg-red-500/70 hover:border-red-400/30 hover:text-white';
       del.innerHTML = '<i class="fas fa-times text-[9px]"></i>';
       del.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -64,23 +69,21 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
 
       const padOverlay = document.createElement('div');
       padOverlay.className =
-        'absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20';
+        'absolute inset-0 flex items-center justify-center opacity-0 group-hover/ref:opacity-100 transition-opacity z-20';
 
       const padBtn = document.createElement('button');
       padBtn.type = 'button';
       padBtn.className =
         'w-10 h-10 rounded-2xl border border-white/10 bg-black/55 backdrop-blur flex items-center justify-center ' +
-        (isSelected
+        (isPad
           ? 'text-studio-bg bg-studio-accent border-studio-accent shadow-[0_0_18px_rgba(197,243,65,0.25)]'
           : 'text-white/80 hover:border-studio-accent/40 hover:text-studio-accent');
-      padBtn.innerHTML = isSelected ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
+      padBtn.innerHTML = isPad ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
       padBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         store.update((state) => {
-          const selected = new Set(state.selectedReferenceIds);
-          if (selected.has(img.id)) selected.delete(img.id);
-          else selected.add(img.id);
-          return { ...state, selectedReferenceIds: Array.from(selected) };
+          const next = state.mjPadRefId === img.id ? undefined : img.id;
+          return { ...state, mjPadRefId: next };
         });
       });
 
@@ -111,6 +114,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       referenceImages: s.referenceImages.filter((r) => r.id !== id),
       selectedReferenceIds: s.selectedReferenceIds.filter((rid) => rid !== id),
       activeImageId: s.activeImageId === id ? undefined : s.activeImageId,
+      mjPadRefId: s.mjPadRefId === id ? undefined : s.mjPadRefId,
       mjSrefImageUrl: s.mjSrefImageUrl && refPublicUrls.includes(s.mjSrefImageUrl) ? undefined : s.mjSrefImageUrl,
       mjCrefImageUrl: s.mjCrefImageUrl && refPublicUrls.includes(s.mjCrefImageUrl) ? undefined : s.mjCrefImageUrl,
     }));
@@ -148,6 +152,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
         },
       ],
       selectedReferenceIds: [...s.selectedReferenceIds, referenceId],
+      mjPadRefId: referenceId,
     }));
 
     renderTray();

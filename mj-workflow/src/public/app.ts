@@ -2,9 +2,7 @@ import { createApiClient } from './adapters/api';
 import { createDescribeBlock } from './blocks/describe';
 import { createExportBlock } from './blocks/export';
 import { createGenerateBlock } from './blocks/generate';
-import { createSelectionBlock } from './blocks/select';
 import { initUpload } from './blocks/upload';
-import { createUpscaleBlock } from './blocks/upscale';
 import { createReferencePicker } from './blocks/references';
 import { createInitialWorkflowState } from './state/workflow';
 import { createStore } from './state/store';
@@ -13,6 +11,7 @@ import { loadPersistedState, startPersistence } from './storage/persistence';
 import { createMjPromptPreview } from './blocks/mj-prompt-preview';
 import { createMjParamsPanel } from './blocks/mj-params-panel';
 import { createStreamHistory } from './blocks/stream-history';
+import { createStreamActions } from './blocks/stream-actions';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -21,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.history = persisted.history;
   initial.referenceImages = persisted.referenceImages;
   initial.selectedReferenceIds = persisted.selectedReferenceIds || [];
+  initial.mjPadRefId = persisted.mjPadRefId;
   initial.mjSrefImageUrl = persisted.mjSrefImageUrl;
   initial.mjCrefImageUrl = persisted.mjCrefImageUrl;
   initial.activeImageId = persisted.activeImageId;
@@ -37,12 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
   createMjParamsPanel(store);
   startPersistence(store);
 
-  createSelectionBlock(store);
   const describe = createDescribeBlock({ api, store });
   const generate = createGenerateBlock({ api, store, activateStep: (s) => { } });
-  const upscale = createUpscaleBlock({ api, store, activateStep: (s) => { } });
   const exportBlock = createExportBlock(store);
 
+  createStreamActions({ api, store });
   createStreamHistory({ store });
 
   // Global Exports for HTML
@@ -53,8 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (zero) zero.style.display = 'none';
     generate.generateImage();
   };
-
-  (window as any).upscaleSelected = upscale.upscaleSelected;
   (window as any).downloadFinalImage = exportBlock.downloadFinalImage;
   (window as any).resetWorkflow = () => {
     if (confirm('Clear current session?')) {
