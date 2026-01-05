@@ -53,6 +53,12 @@ def getimg(uid):
 
 def gen_img():
     conn = http.client.HTTPSConnection("yunwu.ai")
+    # NOTE (yunwu.ai /mj/submit/imagine):
+    # - HTTP 200
+    # - Content-Type: text/plain; charset=utf-8  (body is still JSON)
+    # - Body example:
+    #   {"code":1,"description":"提交成功","result":"1767652132905893","properties":{"discordInstanceId":"...","discordChannelId":"..."}}
+    # - `result` is the taskId; then query progress via GET /mj/task/{taskId}/fetch
     payload = json.dumps({
         "base64Array": [],
         "notifyHook": "",
