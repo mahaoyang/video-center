@@ -1,5 +1,4 @@
 import type { Store } from '../state/store';
-import type { ReferenceImage } from '../state/workflow';
 import type { WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
 import { randomId } from '../atoms/id';
@@ -49,73 +48,117 @@ function createImgWithFallback(params: { urls: string[]; className: string; alt?
   return wrapper;
 }
 
-function renderHistoryItem(item: WorkflowHistoryItem, refLookup: Map<string, ReferenceImage>, onRestore: (item: WorkflowHistoryItem) => void): HTMLElement {
+function renderHistoryItem(params: {
+  item: WorkflowHistoryItem;
+  onRestore: (item: WorkflowHistoryItem) => void;
+  onDelete: (taskId: string) => void;
+}): HTMLElement {
+  const item = params.item;
   const card = document.createElement('div');
-  card.className = 'studio-panel p-8 group relative overflow-hidden transition-all duration-500 hover:border-studio-accent/30';
+  card.className = 'studio-panel p-6 group relative overflow-hidden transition-all duration-500 hover:border-studio-accent/30';
 
-  // Header
-  const header = document.createElement('div');
-  header.className = 'flex items-center justify-between mb-6';
+  const timeStr = new Date(item.createdAt).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const idShort = item.taskId ? item.taskId.slice(-6).toUpperCase() : '------';
 
-  const timeStr = new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  header.innerHTML = `
-    <div class="flex flex-col">
-      <span class="text-[9px] font-black uppercase tracking-[0.2em] text-studio-accent opacity-40">${timeStr} // ARCHIVE</span>
+  const main = document.createElement('div');
+  main.className = 'flex gap-6 items-start';
+
+  // Preview
+  const previewWrap = document.createElement('div');
+  previewWrap.className = 'relative w-28 h-28 flex-shrink-0 rounded-2xl overflow-hidden border border-white/10 bg-black/30';
+
+  const previewUrls = uniqueStrings([item.gridImageUrl, item.upscaledImages.at(-1)]);
+  const preview = createImgWithFallback({
+    urls: previewUrls,
+    aspect: 'square',
+    className: 'w-full h-full object-cover',
+    alt: 'preview',
+  });
+  previewWrap.appendChild(preview);
+
+  const hoverActions = document.createElement('div');
+  hoverActions.className =
+    'absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2';
+  hoverActions.innerHTML = `
+    <button data-action="restore" class="w-10 h-10 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+      <i class="fas fa-rotate-left text-[11px]"></i>
+    </button>
+    <button data-action="delete" class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:border-red-400/30 hover:text-red-300 hover:scale-105 transition-all flex items-center justify-center">
+      <i class="fas fa-trash text-[11px]"></i>
+    </button>
+  `;
+  previewWrap.appendChild(hoverActions);
+
+  // Info
+  const info = document.createElement('div');
+  info.className = 'flex-1 min-w-0';
+
+  const top = document.createElement('div');
+  top.className = 'flex items-start justify-between gap-4';
+  top.innerHTML = `
+    <div class="flex flex-col gap-2 min-w-0">
+      <div class="flex items-center gap-3">
+        <span class="text-[9px] font-black uppercase tracking-[0.25em] text-studio-accent/80">${timeStr}</span>
+        <span class="px-2 py-1 rounded-lg bg-white/5 text-[8px] font-mono text-white/30">ID:${idShort}</span>
+        <span class="px-2 py-1 rounded-lg bg-white/5 text-[8px] font-mono text-white/30">U:${item.upscaledImages.length}</span>
+      </div>
     </div>
   `;
 
-  const actions = document.createElement('div');
-  actions.className = 'flex items-center gap-3';
-
-  const restoreBtn = document.createElement('button');
-  restoreBtn.className = 'px-3 py-1.5 rounded-lg bg-studio-accent/10 text-studio-accent text-[9px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all hover:bg-studio-accent hover:text-black';
-  restoreBtn.innerHTML = '<i class="fas fa-rotate-left mr-2"></i>Restore';
-  restoreBtn.onclick = () => onRestore(item);
-
-  const badge = document.createElement('div');
-  badge.className = 'px-3 py-1 bg-white/5 text-white/20 text-[8px] font-mono rounded-md';
-  badge.textContent = `ID:${item.taskId.slice(-6).toUpperCase()}`;
-
-  actions.appendChild(restoreBtn);
-  actions.appendChild(badge);
-  header.appendChild(actions);
-
-  // Prompt
-  const promptBox = document.createElement('div');
-  promptBox.className = 'mb-8 p-4 bg-white/5 rounded-xl border border-white/5';
-  const promptText = document.createElement('p');
-  promptText.className = 'text-[11px] font-medium leading-relaxed opacity-40 italic line-clamp-2 group-hover:line-clamp-none transition-all';
+  const prompt = document.createElement('div');
+  prompt.className = 'mt-4 p-4 bg-white/5 rounded-2xl border border-white/5';
+  const promptText = document.createElement('div');
+  promptText.className = 'text-[11px] leading-relaxed text-white/70 line-clamp-2 group-hover:line-clamp-none transition-all break-words';
   promptText.textContent = item.prompt;
-  promptBox.appendChild(promptText);
+  prompt.appendChild(promptText);
 
-  // Results Grid
-  const resultsGrid = document.createElement('div');
-  resultsGrid.className = 'grid grid-cols-4 gap-3';
+  const strip = document.createElement('div');
+  strip.className = 'mt-4 flex items-center gap-2 overflow-x-auto scrollbar-hide';
 
-  const addImg = (url: string, label: string) => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'relative group/img cursor-pointer';
+  const thumb = (url: string, label: string) => {
+    const w = document.createElement('div');
+    w.className = 'relative w-14 h-14 flex-shrink-0 rounded-xl overflow-hidden border border-white/10 bg-black/20';
     const inner = createImgWithFallback({
       urls: uniqueStrings([url]),
       aspect: 'square',
-      className: 'w-full h-full object-cover transform transition-transform duration-700 group-hover/img:scale-110 grayscale group-hover/img:grayscale-0',
+      className: 'w-full h-full object-cover',
       alt: label,
     });
-    wrapper.appendChild(inner);
-
-    const tag = document.createElement('span');
+    w.appendChild(inner);
+    const tag = document.createElement('div');
     tag.className = 'absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 text-white text-[6px] font-black uppercase tracking-widest rounded';
     tag.textContent = label;
-    wrapper.appendChild(tag);
-    resultsGrid.appendChild(wrapper);
+    w.appendChild(tag);
+    return w;
   };
 
-  if (item.gridImageUrl) addImg(item.gridImageUrl, 'GRID');
-  item.upscaledImages.slice(0, 3).forEach((url, i) => addImg(url, `V${i + 1}`));
+  if (item.gridImageUrl) strip.appendChild(thumb(item.gridImageUrl, 'GRID'));
+  item.upscaledImages.slice(-6).forEach((u, i) => strip.appendChild(thumb(u, `U${Math.max(1, item.upscaledImages.length - 5 + i)}`)));
 
-  card.appendChild(header);
-  card.appendChild(promptBox);
-  card.appendChild(resultsGrid);
+  info.appendChild(top);
+  info.appendChild(prompt);
+  if (item.gridImageUrl || item.upscaledImages.length) info.appendChild(strip);
+
+  main.appendChild(previewWrap);
+  main.appendChild(info);
+  card.appendChild(main);
+
+  // Actions
+  const restoreBtn = previewWrap.querySelector<HTMLButtonElement>('button[data-action="restore"]');
+  restoreBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    params.onRestore(item);
+  });
+
+  const deleteBtn = previewWrap.querySelector<HTMLButtonElement>('button[data-action="delete"]');
+  deleteBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ok = confirm('删除该历史记录？');
+    if (!ok) return;
+    params.onDelete(item.taskId);
+  });
 
   return card;
 }
@@ -130,6 +173,10 @@ export function createHistoryView(store: Store<WorkflowState>) {
   }
 
   (window as any).clearHistory = clearHistory;
+
+  function onDelete(taskId: string) {
+    store.update((s) => ({ ...s, history: s.history.filter((h) => h.taskId !== taskId) }));
+  }
 
   function onRestore(item: WorkflowHistoryItem) {
     const prompt = item.prompt;
@@ -167,7 +214,6 @@ export function createHistoryView(store: Store<WorkflowState>) {
 
   function render(state: WorkflowState) {
     container.innerHTML = '';
-    const refLookup = new Map(state.referenceImages.map((r) => [r.id, r] as const));
     const items = state.history.slice().reverse();
     if (countEl) countEl.textContent = items.length.toString();
     const countSmall = document.getElementById('historyCountSmall');
@@ -199,7 +245,7 @@ export function createHistoryView(store: Store<WorkflowState>) {
         listWrapper.appendChild(dateHeader);
         lastDate = dateStr;
       }
-      listWrapper.appendChild(renderHistoryItem(item, refLookup, onRestore));
+      listWrapper.appendChild(renderHistoryItem({ item, onRestore, onDelete }));
     }
 
     container.appendChild(listWrapper);
