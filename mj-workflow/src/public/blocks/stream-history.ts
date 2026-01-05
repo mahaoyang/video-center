@@ -3,6 +3,7 @@ import type { StreamMessage, WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
 import { dispatchStreamTileEvent } from '../atoms/stream-events';
 import { setPromptInput } from '../atoms/prompt-input';
+import { openImagePreview } from '../atoms/image-preview';
 
 function clearRenderedMessages(stream: HTMLElement) {
   stream.querySelectorAll<HTMLElement>('[data-stream-message="1"]').forEach((el) => el.remove());
@@ -43,6 +44,19 @@ function bindStreamTileActions(root: HTMLElement, ctx: { src?: string; taskId?: 
         if (!ctx.src) return;
         dispatchStreamTileEvent({ action: 'select', src: ctx.src, index });
       }
+    });
+  });
+}
+
+function bindPreview(root: HTMLElement) {
+  root.querySelectorAll<HTMLImageElement>('img[data-preview-src]').forEach((img) => {
+    const src = img.dataset.previewSrc;
+    if (!src) return;
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openImagePreview(src);
     });
   });
 }
@@ -139,7 +153,7 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
 
   msg.className = 'group animate-fade-in-up';
   msg.innerHTML = `
-    <div class="glass-panel p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
+	    <div class="glass-panel p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
       <div class="flex items-center justify-between">
         <div class="flex flex-col">
           <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Synthesis Finalized</span>
@@ -152,12 +166,12 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
 	        ${[1, 2, 3, 4]
 	          .map(
 	            (i) => `
-	          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black group/tile">
-	            <img src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full aspect-square object-cover" />
-	            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
-	              <button data-stream-action="pad" data-index="${i}"
-	                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center">
-	                <i class="fas fa-plus text-xs"></i>
+		          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
+		            <img data-preview-src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full h-auto block" />
+		            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
+		              <button data-stream-action="pad" data-index="${i}"
+		                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center">
+		                <i class="fas fa-plus text-xs"></i>
 	              </button>
 	              <button data-stream-action="upscale" data-index="${i}"
 	                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
@@ -170,11 +184,12 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
 	          )
 	          .join('')}
 	      </div>
-	    </div>
-	  `;
-	  bindStreamTileActions(msg, { src, taskId });
-	  return msg;
-	}
+		    </div>
+		  `;
+		  bindStreamTileActions(msg, { src, taskId });
+		  bindPreview(msg);
+		  return msg;
+		}
 
 function renderUpscaleMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
@@ -220,12 +235,12 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
 	        ${[1, 2, 3, 4]
 	          .map(
 	            (i) => `
-	          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black group/tile">
-	            <img src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full aspect-square object-cover" />
-	            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
-	              <button data-stream-action="select" data-index="${i}"
-	                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
-	                <i class="fas fa-plus text-xs"></i>
+		          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
+		            <img data-preview-src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full h-auto block" />
+		            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
+		              <button data-stream-action="select" data-index="${i}"
+		                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+		                <i class="fas fa-plus text-xs"></i>
 	              </button>
 	            </div>
 	            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
@@ -234,11 +249,12 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
 	          )
 	          .join('')}
 	      </div>
-	    </div>
-	  `;
-	  bindStreamTileActions(msg, { src });
-	  return msg;
-	}
+		    </div>
+		  `;
+		  bindStreamTileActions(msg, { src });
+		  bindPreview(msg);
+		  return msg;
+		}
 
 function renderMessage(m: StreamMessage): HTMLElement {
   if (m.kind === 'deconstruct') return renderDeconstructMessage(m);
