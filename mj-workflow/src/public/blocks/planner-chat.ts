@@ -22,6 +22,24 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
   const send = byId<HTMLButtonElement>('plannerSend');
   const clear = byId<HTMLButtonElement>('plannerClear');
 
+  function appendUseButton(container: HTMLElement, prompt: string) {
+    const bar = document.createElement('div');
+    bar.className = 'mt-4 flex items-center gap-2';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className =
+      'px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black tracking-[0.1em] flex items-center gap-2';
+    b.innerHTML = `<i class="fas fa-plus text-[9px] opacity-60"></i><span>Use</span>`;
+    b.title = '填入主提示词输入框';
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setPromptInput(prompt);
+    });
+    bar.appendChild(b);
+    container.appendChild(bar);
+  }
+
   function render(messages: PlannerMessage[]) {
     list.innerHTML = '';
     for (const m of messages) {
@@ -41,7 +59,12 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
       if (m.role === 'ai') {
         const prompts = extractShotPrompts(m.text);
-        if (prompts.length) {
+        const raw = m.text.trim();
+        const isSinglePrompt = prompts.length === 1 && prompts[0]?.trim() === raw;
+
+        if (isSinglePrompt) {
+          appendUseButton(bubble, prompts[0] || raw);
+        } else if (prompts.length) {
           const bar = document.createElement('div');
           bar.className = 'mt-4 flex flex-wrap gap-2';
           for (let i = 0; i < prompts.length; i++) {
@@ -89,7 +112,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
     const user: PlannerMessage = { id: randomId('msg'), createdAt: Date.now(), role: 'user', text };
     const aiId = randomId('msg');
-    const pending: PlannerMessage = { id: aiId, createdAt: Date.now(), role: 'ai', text: '…' };
+    const pending: PlannerMessage = { id: aiId, createdAt: Date.now(), role: 'ai', text: 'Thinking…' };
     params.store.update((s) => ({ ...s, plannerMessages: [...s.plannerMessages, user, pending].slice(-200) }));
 
     try {
@@ -102,10 +125,20 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       const out = String(res?.result?.text || '').trim();
       if (!out) throw new Error('对话失败：空响应');
 
-      params.store.update((s) => ({
-        ...s,
-        plannerMessages: s.plannerMessages.map((m) => (m.id === aiId ? { ...m, text: out } : m)),
-      }));
+      const shots = extractShotPrompts(out);
+      if (shots.length > 1) {
+        const now = Date.now();
+        const split = shots.map((t, i) => ({ id: randomId('msg'), createdAt: now + i, role: 'ai' as const, text: t }));
+        params.store.update((s) => ({
+          ...s,
+          plannerMessages: [...s.plannerMessages.filter((m) => m.id !== aiId), ...split].slice(-200),
+        }));
+      } else {
+        params.store.update((s) => ({
+          ...s,
+          plannerMessages: s.plannerMessages.map((m) => (m.id === aiId ? { ...m, text: out } : m)),
+        }));
+      }
     } catch (e) {
       console.error('planner chat failed:', e);
       const msg = (e as Error)?.message || '对话失败';
