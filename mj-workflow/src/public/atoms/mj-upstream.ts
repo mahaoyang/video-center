@@ -58,13 +58,20 @@ export function getSubmitTaskId(payload: any): string | null {
     const m =
       raw.match(/"result"\s*:\s*"([^"]+)"/) ||
       raw.match(/"taskId"\s*:\s*"([^"]+)"/) ||
+      raw.match(/"id"\s*:\s*"([^"]+)"/) ||
       raw.match(/"result"\s*:\s*(\d+)/) ||
-      raw.match(/"taskId"\s*:\s*(\d+)/);
+      raw.match(/"taskId"\s*:\s*(\d+)/) ||
+      raw.match(/"id"\s*:\s*(\d+)/);
     if (m?.[1]) return String(m[1]);
   }
   const result = (p as any)?.result;
   if (typeof result === 'string' || typeof result === 'number') return String(result);
   if (typeof result?.taskId === 'string' || typeof result?.taskId === 'number') return String(result.taskId);
+  if (typeof result?.id === 'string' || typeof result?.id === 'number') return String(result.id);
   if (typeof (p as any)?.taskId === 'string' || typeof (p as any)?.taskId === 'number') return String((p as any).taskId);
+  if (typeof (p as any)?.id === 'string' || typeof (p as any)?.id === 'number') return String((p as any).id);
+  const props = (p as any)?.properties;
+  if (typeof props?.taskId === 'string' || typeof props?.taskId === 'number') return String(props.taskId);
+  if (typeof props?.id === 'string' || typeof props?.id === 'number') return String(props.id);
   return null;
 }

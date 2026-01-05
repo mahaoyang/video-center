@@ -18,14 +18,14 @@ function ensureModal(): {
 
   overlay.innerHTML = `
     <div class="absolute inset-0 bg-black/70 backdrop-blur-md"></div>
-    <div class="absolute inset-0 flex items-center justify-center p-6">
-      <div class="relative w-full max-w-5xl glass-panel rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden bg-studio-panel/70">
+    <div class="absolute inset-0 flex items-center justify-center p-2 sm:p-4">
+      <div class="relative w-[96vw] h-[92vh] max-w-none glass-panel rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden bg-studio-panel/70">
         <button data-action="close" type="button"
           class="absolute top-4 right-4 w-10 h-10 rounded-2xl bg-black/40 border border-white/10 text-white/70 hover:text-white hover:border-white/20 transition-all flex items-center justify-center z-10">
           <i class="fas fa-times text-[12px]"></i>
         </button>
-        <div class="w-full max-h-[80vh] bg-black/30">
-          <img id="imagePreviewImg" class="w-full h-full max-h-[80vh] object-contain block" referrerpolicy="no-referrer" />
+        <div class="w-full h-full bg-black/30">
+          <img id="imagePreviewImg" class="w-full h-full object-contain block" referrerpolicy="no-referrer" />
         </div>
       </div>
     </div>
@@ -57,4 +57,3 @@ export function openImagePreview(src: string) {
   img.src = src;
   overlay.classList.remove('hidden');
 }
-

@@ -21,9 +21,17 @@ export async function pollTaskUntilImageUrl(params: {
 
       const imageUrl =
         data?.imageUrl ??
+        data?.image_url ??
+        data?.imageURL ??
         data?.result?.imageUrl ??
+        data?.result?.image_url ??
+        data?.result?.imageURL ??
         data?.properties?.imageUrl ??
+        data?.properties?.image_url ??
+        data?.properties?.imageURL ??
         data?.result?.properties?.imageUrl ??
+        data?.result?.properties?.image_url ??
+        data?.result?.properties?.imageURL ??
         data?.result?.image ??
         data?.properties?.image;
       if (typeof imageUrl === 'string' && imageUrl.trim()) {

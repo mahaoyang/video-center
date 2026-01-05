@@ -2,6 +2,7 @@ import type { Store } from '../state/store';
 import type { WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
 import { randomId } from '../atoms/id';
+import { openImagePreview } from '../atoms/image-preview';
 
 function uniqueStrings(values: Array<string | undefined | null>): string[] {
   const out: string[] = [];
@@ -55,39 +56,50 @@ function renderHistoryItem(params: {
 }): HTMLElement {
   const item = params.item;
   const card = document.createElement('div');
-  card.className = 'studio-panel p-6 group relative overflow-hidden transition-all duration-500 hover:border-studio-accent/30';
+  card.className =
+    'group relative rounded-[2rem] border border-white/5 bg-white/[0.02] p-6 shadow-2xl transition-all duration-500 hover:border-studio-accent/25';
 
   const timeStr = new Date(item.createdAt).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   const idShort = item.taskId ? item.taskId.slice(-6).toUpperCase() : '------';
 
   const main = document.createElement('div');
-  main.className = 'flex gap-6 items-start';
+  main.className = 'flex gap-5 items-start';
 
   // Preview
   const previewWrap = document.createElement('div');
-  previewWrap.className = 'relative w-28 h-28 flex-shrink-0 rounded-2xl overflow-hidden border border-white/10 bg-black/30';
+  previewWrap.className =
+    'relative w-36 flex-shrink-0 rounded-2xl overflow-hidden border border-white/10 bg-black/30 aspect-[4/3]';
 
   const previewUrls = uniqueStrings([item.gridImageUrl, item.upscaledImages.at(-1)]);
   const preview = createImgWithFallback({
     urls: previewUrls,
-    aspect: 'square',
-    className: 'w-full h-full object-cover',
+    aspect: 'rect',
+    className: 'w-full h-full object-contain bg-black/20',
     alt: 'preview',
   });
   previewWrap.appendChild(preview);
 
   const hoverActions = document.createElement('div');
   hoverActions.className =
-    'absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2';
+    'absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity';
   hoverActions.innerHTML = `
-    <button data-action="restore" class="w-10 h-10 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
-      <i class="fas fa-rotate-left text-[11px]"></i>
-    </button>
-    <button data-action="delete" class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:border-red-400/30 hover:text-red-300 hover:scale-105 transition-all flex items-center justify-center">
-      <i class="fas fa-trash text-[11px]"></i>
-    </button>
+    <div class="absolute top-3 right-3 flex items-center gap-2">
+      <button data-action="restore" class="w-10 h-10 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+        <i class="fas fa-rotate-left text-[11px]"></i>
+      </button>
+      <button data-action="delete" class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:border-red-400/30 hover:text-red-300 hover:scale-105 transition-all flex items-center justify-center">
+        <i class="fas fa-trash text-[11px]"></i>
+      </button>
+    </div>
   `;
   previewWrap.appendChild(hoverActions);
+
+  previewWrap.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const src = item.upscaledImages.at(-1) || item.gridImageUrl;
+    if (src) openImagePreview(src);
+  });
 
   // Info
   const info = document.createElement('div');
@@ -100,7 +112,7 @@ function renderHistoryItem(params: {
       <div class="flex items-center gap-3">
         <span class="text-[9px] font-black uppercase tracking-[0.25em] text-studio-accent/80">${timeStr}</span>
         <span class="px-2 py-1 rounded-lg bg-white/5 text-[8px] font-mono text-white/30">ID:${idShort}</span>
-        <span class="px-2 py-1 rounded-lg bg-white/5 text-[8px] font-mono text-white/30">U:${item.upscaledImages.length}</span>
+        <span class="px-2 py-1 rounded-lg bg-white/5 text-[8px] font-mono text-white/30">UPSCALE:${item.upscaledImages.length}</span>
       </div>
     </div>
   `;
@@ -108,7 +120,7 @@ function renderHistoryItem(params: {
   const prompt = document.createElement('div');
   prompt.className = 'mt-4 p-4 bg-white/5 rounded-2xl border border-white/5';
   const promptText = document.createElement('div');
-  promptText.className = 'text-[11px] leading-relaxed text-white/70 line-clamp-2 group-hover:line-clamp-none transition-all break-words';
+  promptText.className = 'text-[11px] leading-relaxed text-white/70 line-clamp-3 group-hover:line-clamp-none transition-all break-words';
   promptText.textContent = item.prompt;
   prompt.appendChild(promptText);
 
@@ -117,11 +129,11 @@ function renderHistoryItem(params: {
 
   const thumb = (url: string, label: string) => {
     const w = document.createElement('div');
-    w.className = 'relative w-14 h-14 flex-shrink-0 rounded-xl overflow-hidden border border-white/10 bg-black/20';
+    w.className = 'relative w-14 h-14 flex-shrink-0 rounded-xl overflow-hidden border border-white/10 bg-black/20 cursor-pointer';
     const inner = createImgWithFallback({
       urls: uniqueStrings([url]),
       aspect: 'square',
-      className: 'w-full h-full object-cover',
+      className: 'w-full h-full object-contain bg-black/20',
       alt: label,
     });
     w.appendChild(inner);
@@ -129,6 +141,11 @@ function renderHistoryItem(params: {
     tag.className = 'absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 text-white text-[6px] font-black uppercase tracking-widest rounded';
     tag.textContent = label;
     w.appendChild(tag);
+    w.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openImagePreview(url);
+    });
     return w;
   };
 

@@ -22,6 +22,15 @@ async function fetchSliceAsFile(src: string, index: number): Promise<File> {
   return new File([blob], `mj-slice-${Date.now()}-${index}.png`, { type: 'image/png' });
 }
 
+async function fetchImageAsFile(src: string): Promise<File> {
+  const url = `/api/image?src=${encodeURIComponent(src)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`拉取图片失败: ${res.status}`);
+  const blob = await res.blob();
+  const ext = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : blob.type === 'image/gif' ? 'gif' : 'png';
+  return new File([blob], `mj-image-${Date.now()}.${ext}`, { type: blob.type || 'image/png' });
+}
+
 export function createStreamActions(params: { api: ApiClient; store: Store<WorkflowState> }) {
   async function addPadFromSlice(src: string, index: number) {
     try {
@@ -143,14 +152,56 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
     }
   }
 
+  async function selectFromUrl(src: string) {
+    try {
+      const file = await fetchImageAsFile(src);
+      const uploaded = await params.api.upload(file);
+      const result = uploaded?.result;
+      if (uploaded?.code !== 0 || !result?.url) throw new Error(uploaded?.description || '上传失败');
+
+      const url = String(result.url);
+      const referenceId = randomId('ref');
+      const createdAt = Date.now();
+      const cdnUrl = typeof result.cdnUrl === 'string' ? result.cdnUrl : undefined;
+      const localUrl = typeof result.localUrl === 'string' ? result.localUrl : undefined;
+
+      params.store.update((s) => ({
+        ...s,
+        upscaledImages: [...s.upscaledImages, url].slice(-10),
+        referenceImages: [
+          ...s.referenceImages,
+          {
+            id: referenceId,
+            name: `upscale-${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            createdAt,
+            url,
+            cdnUrl,
+            localUrl,
+            localPath: typeof result.localPath === 'string' ? result.localPath : undefined,
+            localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
+          },
+        ],
+        selectedReferenceIds: [...s.selectedReferenceIds, referenceId],
+        mjPadRefId: referenceId,
+      }));
+
+      showMessage('已加入图片栏并设为 PAD');
+    } catch (e) {
+      console.error('selectFromUrl failed:', e);
+      showError((e as Error)?.message || '加入失败');
+    }
+  }
+
   onStreamTileEvent((d) => {
     if (d.action === 'pad') void addPadFromSlice(d.src, d.index);
     if (d.action === 'upscale') void upscaleFromGrid(d.taskId, d.index);
     if (d.action === 'select') void selectFromSlice(d.src, d.index);
+    if (d.action === 'selectUrl') void selectFromUrl(d.src);
   });
 
   // Optional: expose for manual debugging
   (window as any).streamAddPadFromSlice = addPadFromSlice;
   (window as any).streamUpscaleFromGrid = upscaleFromGrid;
   (window as any).streamSelectFromSlice = selectFromSlice;
+  (window as any).streamSelectFromUrl = selectFromUrl;
 }

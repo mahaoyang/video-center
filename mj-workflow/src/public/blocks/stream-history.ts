@@ -27,22 +27,28 @@ function escapeHtml(value: string): string {
 
 function bindStreamTileActions(root: HTMLElement, ctx: { src?: string; taskId?: string }) {
   root.querySelectorAll<HTMLButtonElement>('button[data-stream-action]').forEach((btn) => {
-    const action = btn.dataset.streamAction as 'pad' | 'upscale' | 'select' | undefined;
+    const action = btn.dataset.streamAction as 'pad' | 'upscale' | 'select' | 'selectUrl' | undefined;
     const index = Number(btn.dataset.index || '');
-    if (!action || !Number.isFinite(index) || index < 1 || index > 4) return;
+    if (!action) return;
 
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       if (action === 'pad') {
+        if (!Number.isFinite(index) || index < 1 || index > 4) return;
         if (!ctx.src) return;
         dispatchStreamTileEvent({ action: 'pad', src: ctx.src, index });
       } else if (action === 'upscale') {
+        if (!Number.isFinite(index) || index < 1 || index > 4) return;
         if (!ctx.taskId) return;
         dispatchStreamTileEvent({ action: 'upscale', taskId: ctx.taskId, index });
       } else if (action === 'select') {
+        if (!Number.isFinite(index) || index < 1 || index > 4) return;
         if (!ctx.src) return;
         dispatchStreamTileEvent({ action: 'select', src: ctx.src, index });
+      } else if (action === 'selectUrl') {
+        if (!ctx.src) return;
+        dispatchStreamTileEvent({ action: 'selectUrl', src: ctx.src });
       }
     });
   });
@@ -228,27 +234,18 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
           <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Upscale Complete</span>
           <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : ''}</span>
         </div>
-        <div class="text-[9px] font-black uppercase tracking-widest opacity-30">Pick</div>
+        <div class="text-[9px] font-black uppercase tracking-widest opacity-30">Single</div>
       </div>
 
-	      <div class="grid grid-cols-2 gap-4">
-	        ${[1, 2, 3, 4]
-	          .map(
-	            (i) => `
-		          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
-		            <img data-preview-src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full h-auto block" />
-		            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
-		              <button data-stream-action="select" data-index="${i}"
-		                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center pointer-events-auto">
-		                <i class="fas fa-plus text-xs"></i>
-		              </button>
-		            </div>
-	            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
-	          </div>
-	        `
-	          )
-	          .join('')}
-	      </div>
+      <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
+        <img data-preview-src="${escapeHtml(src)}" src="${escapeHtml(src)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
+        <div class="absolute top-4 right-4 opacity-0 group-hover/tile:opacity-100 transition-opacity">
+          <button data-stream-action="selectUrl"
+            class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+            <i class="fas fa-plus text-xs"></i>
+          </button>
+        </div>
+      </div>
 		    </div>
 		  `;
 		  bindStreamTileActions(msg, { src });

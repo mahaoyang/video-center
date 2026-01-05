@@ -125,20 +125,94 @@ export function createApiRouter(deps: {
     runtime: 'dev' | 'dist';
     tokenSources?: unknown;
   };
-}): (req: Request) => Promise<Response> {
-  return async (req: Request): Promise<Response> => {
-    const url = new URL(req.url);
-    const { pathname } = url;
+	}): (req: Request) => Promise<Response> {
+	  return async (req: Request): Promise<Response> => {
+	    const url = new URL(req.url);
+	    const { pathname } = url;
 
-    if (pathname === '/api/health' && req.method === 'GET') {
-      return json({ ok: true, auth: deps.auth, meta: deps.meta });
-    }
+	    if (pathname === '/api/health' && req.method === 'GET') {
+	      return json({ ok: true, auth: deps.auth, meta: deps.meta });
+	    }
 
-    if (pathname === '/api/slice' && req.method === 'GET') {
-      try {
-        const url = new URL(req.url);
-        const src = String(url.searchParams.get('src') || '').trim();
-        const indexRaw = String(url.searchParams.get('index') || '').trim();
+	    if (pathname === '/api/image' && req.method === 'GET') {
+	      try {
+	        const src = String(url.searchParams.get('src') || '').trim();
+	        if (!src) return jsonError({ status: 400, description: '缺少 src' });
+
+	        let bytes: Uint8Array;
+	        let contentType: string | null = null;
+
+	        if (src.startsWith('/uploads/')) {
+	          const key = basename(src);
+	          if (!key || key.includes('..')) return jsonError({ status: 400, description: 'src 非法' });
+	          const filePath = join(deps.uploads.dir, key);
+	          const file = Bun.file(filePath);
+	          if (!(await file.exists())) return jsonError({ status: 404, description: '图片不存在' });
+	          const ab = await file.arrayBuffer();
+	          bytes = new Uint8Array(ab);
+
+	          const ext = normalizeImageExt(extname(key));
+	          contentType =
+	            ext === '.png'
+	              ? 'image/png'
+	              : ext === '.jpg'
+	                ? 'image/jpeg'
+	                : ext === '.webp'
+	                  ? 'image/webp'
+	                  : ext === '.gif'
+	                    ? 'image/gif'
+	                    : null;
+	        } else {
+	          let absolute: URL;
+	          try {
+	            absolute = new URL(src);
+	          } catch {
+	            absolute = new URL(src, req.url);
+	          }
+	          if (!['http:', 'https:'].includes(absolute.protocol)) {
+	            return jsonError({ status: 400, description: '仅支持 http/https 图片' });
+	          }
+	          if (isUnsafeHost(absolute.hostname)) {
+	            return jsonError({ status: 400, description: '禁止访问内网地址' });
+	          }
+	          const resp = await fetch(absolute.toString(), { signal: AbortSignal.timeout(15000) });
+	          if (!resp.ok) return jsonError({ status: 502, description: `拉取图片失败: ${resp.status}` });
+	          contentType = resp.headers.get('content-type');
+	          const ab = await resp.arrayBuffer();
+	          bytes = new Uint8Array(ab);
+	        }
+
+	        const sniffed = sniffImageExt(bytes);
+	        if (!contentType || !contentType.toLowerCase().startsWith('image/')) {
+	          contentType =
+	            sniffed === '.png'
+	              ? 'image/png'
+	              : sniffed === '.jpg'
+	                ? 'image/jpeg'
+	                : sniffed === '.webp'
+	                  ? 'image/webp'
+	                  : sniffed === '.gif'
+	                    ? 'image/gif'
+	                    : 'application/octet-stream';
+	        }
+
+	        return new Response(bytes, {
+	          headers: {
+	            'Content-Type': contentType,
+	            'Cache-Control': 'public, max-age=3600',
+	          },
+	        });
+	      } catch (error) {
+	        console.error('Image proxy error:', error);
+	        return jsonError({ status: 500, description: '拉取图片失败', error });
+	      }
+	    }
+
+	    if (pathname === '/api/slice' && req.method === 'GET') {
+	      try {
+	        const url = new URL(req.url);
+	        const src = String(url.searchParams.get('src') || '').trim();
+	        const indexRaw = String(url.searchParams.get('index') || '').trim();
         const index = Number(indexRaw);
         if (!src) return jsonError({ status: 400, description: '缺少 src' });
         if (![1, 2, 3, 4].includes(index)) return jsonError({ status: 400, description: 'index 必须为 1-4' });

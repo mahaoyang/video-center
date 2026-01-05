@@ -208,10 +208,17 @@ export function loadPersistedState(): {
 
 export function startPersistence(store: Store<WorkflowState>) {
   let last = '';
+  let disabled = false;
   store.subscribe((state) => {
-    const persisted = JSON.stringify(toPersisted(state));
-    if (persisted === last) return;
-    last = persisted;
-    localStorage.setItem(STORAGE_KEY, persisted);
+    if (disabled) return;
+    try {
+      const persisted = JSON.stringify(toPersisted(state));
+      if (persisted === last) return;
+      localStorage.setItem(STORAGE_KEY, persisted);
+      last = persisted;
+    } catch (error) {
+      disabled = true;
+      console.warn('[mj-workflow] persistence disabled:', error);
+    }
   });
 }
