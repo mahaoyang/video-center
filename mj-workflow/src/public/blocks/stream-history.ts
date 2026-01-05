@@ -61,7 +61,7 @@ function renderDeconstructMessage(m: StreamMessage): HTMLElement {
   } else {
     msg.className = 'group animate-fade-in-up';
     msg.innerHTML = `
-      <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden bg-studio-panel/60">
+      <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60">
         <div class="flex items-center gap-4 mb-8 opacity-40">
           <i class="fas fa-fingerprint text-studio-accent text-xs"></i>
           <span class="text-[10px] font-black uppercase tracking-[0.3em]">Deconstruction Complete</span>
