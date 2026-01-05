@@ -1,9 +1,12 @@
-import type { ApiClient } from '../adapters/api';
-import { poll } from '../atoms/poll';
-import { getUpstreamErrorMessage } from './upstream';
+import { poll } from './poll';
+import { getUpstreamErrorMessage } from './mj-upstream';
+
+export interface TaskQueryApi {
+  task(taskId: string): Promise<any>;
+}
 
 export async function pollTaskUntilImageUrl(params: {
-  api: ApiClient;
+  api: TaskQueryApi;
   taskId: string;
   onProgress?: (progress: number) => void;
 }): Promise<string> {
@@ -44,7 +47,7 @@ export async function pollTaskUntilImageUrl(params: {
 }
 
 export async function pollTaskUntilFinalPrompt(params: {
-  api: ApiClient;
+  api: TaskQueryApi;
   taskId: string;
   onProgress?: (progress: number) => void;
 }): Promise<string> {
@@ -83,4 +86,3 @@ export async function pollTaskUntilFinalPrompt(params: {
     },
   });
 }
-

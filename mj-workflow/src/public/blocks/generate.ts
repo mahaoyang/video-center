@@ -6,8 +6,8 @@ import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { randomId } from '../atoms/id';
 import { buildMjPrompt } from '../atoms/mj-prompt';
-import { pollTaskUntilImageUrl } from '../headless/tasks';
-import { getSubmitTaskId, getUpstreamErrorMessage } from '../headless/upstream';
+import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
+import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 
 export function createGenerateBlock(params: { api: ApiClient; store: Store<WorkflowState>; activateStep: (step: any) => void }) {
   function escapeHtml(value: string): string {

@@ -4,8 +4,8 @@ import type { ReferenceImage, WorkflowState } from '../state/workflow';
 import { pretty } from '../atoms/format';
 import { byId, setDisabled, show } from '../atoms/ui';
 import { showError } from '../atoms/notify';
-import { pollTaskUntilFinalPrompt } from '../headless/tasks';
-import { getSubmitTaskId, getUpstreamErrorMessage } from '../headless/upstream';
+import { pollTaskUntilFinalPrompt } from '../atoms/mj-tasks';
+import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { urlToBase64 } from '../atoms/file';
 
 function tryPrefillPrompt(store: Store<WorkflowState>) {
