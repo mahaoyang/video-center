@@ -3,6 +3,7 @@ import { showError, showMessage } from '../atoms/notify';
 import { randomId } from '../atoms/id';
 import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
+import { onStreamTileEvent } from '../atoms/stream-events';
 import type { Store } from '../state/store';
 import type { StreamMessage, WorkflowState } from '../state/workflow';
 
@@ -22,7 +23,7 @@ async function fetchSliceAsFile(src: string, index: number): Promise<File> {
 }
 
 export function createStreamActions(params: { api: ApiClient; store: Store<WorkflowState> }) {
-  (window as any).streamAddPadFromSlice = async (src: string, index: number) => {
+  async function addPadFromSlice(src: string, index: number) {
     try {
       const file = await fetchSliceAsFile(src, index);
       const uploaded = await params.api.upload(file);
@@ -57,9 +58,9 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       console.error('streamAddPadFromSlice failed:', e);
       showError((e as Error)?.message || '加入垫图失败');
     }
-  };
+  }
 
-  (window as any).streamUpscaleFromGrid = async (taskId: string, index: number) => {
+  async function upscaleFromGrid(taskId: string, index: number) {
     if (!taskId) return;
     const msgId = randomId('msg');
     try {
@@ -100,9 +101,9 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       showError(msg);
       updateMessageById(params.store, msgId, { error: msg });
     }
-  };
+  }
 
-  (window as any).streamSelectFromSlice = async (src: string, index: number) => {
+  async function selectFromSlice(src: string, index: number) {
     try {
       const file = await fetchSliceAsFile(src, index);
       const uploaded = await params.api.upload(file);
@@ -140,5 +141,16 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       console.error('streamSelectFromSlice failed:', e);
       showError((e as Error)?.message || '选图失败');
     }
-  };
+  }
+
+  onStreamTileEvent((d) => {
+    if (d.action === 'pad') void addPadFromSlice(d.src, d.index);
+    if (d.action === 'upscale') void upscaleFromGrid(d.taskId, d.index);
+    if (d.action === 'select') void selectFromSlice(d.src, d.index);
+  });
+
+  // Optional: expose for manual debugging
+  (window as any).streamAddPadFromSlice = addPadFromSlice;
+  (window as any).streamUpscaleFromGrid = upscaleFromGrid;
+  (window as any).streamSelectFromSlice = selectFromSlice;
 }

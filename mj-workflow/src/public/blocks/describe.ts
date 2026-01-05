@@ -49,18 +49,6 @@ async function resolveBase64ForDescribe(r: ReferenceImage): Promise<string | und
 }
 
 export function createDescribeBlock(params: { api: ApiClient; store: Store<WorkflowState> }) {
-
-  function fillPrompt(text: string) {
-    const input = byId<HTMLTextAreaElement>('promptInput');
-    if (!input) return;
-    input.value = text;
-    input.focus();
-    input.style.height = 'auto';
-    input.style.height = input.scrollHeight + 'px';
-  }
-
-  (window as any).fillPrompt = fillPrompt;
-
   async function deconstructAssets() {
     const selector = byId<HTMLSelectElement>('describeEngineSelect');
     const engine = selector?.value || 'gemini';

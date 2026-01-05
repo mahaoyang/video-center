@@ -1,6 +1,8 @@
 import type { Store } from '../state/store';
 import type { StreamMessage, WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
+import { dispatchStreamTileEvent } from '../atoms/stream-events';
+import { setPromptInput } from '../atoms/prompt-input';
 
 function clearRenderedMessages(stream: HTMLElement) {
   stream.querySelectorAll<HTMLElement>('[data-stream-message="1"]').forEach((el) => el.remove());
@@ -22,8 +24,27 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function escapeJsString(value: string): string {
-  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+function bindStreamTileActions(root: HTMLElement, ctx: { src?: string; taskId?: string }) {
+  root.querySelectorAll<HTMLButtonElement>('button[data-stream-action]').forEach((btn) => {
+    const action = btn.dataset.streamAction as 'pad' | 'upscale' | 'select' | undefined;
+    const index = Number(btn.dataset.index || '');
+    if (!action || !Number.isFinite(index) || index < 1 || index > 4) return;
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (action === 'pad') {
+        if (!ctx.src) return;
+        dispatchStreamTileEvent({ action: 'pad', src: ctx.src, index });
+      } else if (action === 'upscale') {
+        if (!ctx.taskId) return;
+        dispatchStreamTileEvent({ action: 'upscale', taskId: ctx.taskId, index });
+      } else if (action === 'select') {
+        if (!ctx.src) return;
+        dispatchStreamTileEvent({ action: 'select', src: ctx.src, index });
+      }
+    });
+  });
 }
 
 function renderDeconstructMessage(m: StreamMessage): HTMLElement {
@@ -61,8 +82,7 @@ function renderDeconstructMessage(m: StreamMessage): HTMLElement {
     const chip = msg.querySelector('.group\\/chip') as HTMLElement | null;
     if (chip) {
       chip.addEventListener('click', () => {
-        const fn = (window as any).fillPrompt as ((text: string) => void) | undefined;
-        if (fn && m.text) fn(m.text);
+        if (m.text) setPromptInput(m.text);
       });
     }
   }
@@ -128,32 +148,33 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
         <div class="text-[9px] font-black uppercase tracking-widest opacity-30">2x2 Grid</div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
-        ${[1, 2, 3, 4]
-          .map(
-            (i) => `
-          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black group/tile">
-            <img src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full aspect-square object-cover" />
-            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
-              <button onclick="window.streamAddPadFromSlice?.('${escapeJsString(src)}', ${i})"
-                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center">
-                <i class="fas fa-plus text-xs"></i>
-              </button>
-              <button onclick="window.streamUpscaleFromGrid?.('${escapeJsString(taskId)}', ${i})"
-                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
-                <i class="fas fa-arrow-up-right-dots text-xs"></i>
-              </button>
-            </div>
-            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
-          </div>
-        `
-          )
-          .join('')}
-      </div>
-    </div>
-  `;
-  return msg;
-}
+	      <div class="grid grid-cols-2 gap-4">
+	        ${[1, 2, 3, 4]
+	          .map(
+	            (i) => `
+	          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black group/tile">
+	            <img src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full aspect-square object-cover" />
+	            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
+	              <button data-stream-action="pad" data-index="${i}"
+	                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center">
+	                <i class="fas fa-plus text-xs"></i>
+	              </button>
+	              <button data-stream-action="upscale" data-index="${i}"
+	                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+	                <i class="fas fa-arrow-up-right-dots text-xs"></i>
+	              </button>
+	            </div>
+	            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
+	          </div>
+	        `
+	          )
+	          .join('')}
+	      </div>
+	    </div>
+	  `;
+	  bindStreamTileActions(msg, { src, taskId });
+	  return msg;
+	}
 
 function renderUpscaleMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
@@ -195,28 +216,29 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
         <div class="text-[9px] font-black uppercase tracking-widest opacity-30">Pick</div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
-        ${[1, 2, 3, 4]
-          .map(
-            (i) => `
-          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black group/tile">
-            <img src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full aspect-square object-cover" />
-            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
-              <button onclick="window.streamSelectFromSlice?.('${escapeJsString(src)}', ${i})"
-                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
-                <i class="fas fa-plus text-xs"></i>
-              </button>
-            </div>
-            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
-          </div>
-        `
-          )
-          .join('')}
-      </div>
-    </div>
-  `;
-  return msg;
-}
+	      <div class="grid grid-cols-2 gap-4">
+	        ${[1, 2, 3, 4]
+	          .map(
+	            (i) => `
+	          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black group/tile">
+	            <img src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full aspect-square object-cover" />
+	            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3">
+	              <button data-stream-action="select" data-index="${i}"
+	                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
+	                <i class="fas fa-plus text-xs"></i>
+	              </button>
+	            </div>
+	            <div class="absolute top-3 left-3 px-2 py-1 rounded-xl bg-black/60 border border-white/10 text-[9px] font-black">V${i}</div>
+	          </div>
+	        `
+	          )
+	          .join('')}
+	      </div>
+	    </div>
+	  `;
+	  bindStreamTileActions(msg, { src });
+	  return msg;
+	}
 
 function renderMessage(m: StreamMessage): HTMLElement {
   if (m.kind === 'deconstruct') return renderDeconstructMessage(m);
