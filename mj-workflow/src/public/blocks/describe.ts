@@ -67,16 +67,18 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
       for (let i = 0; i < selected.length; i++) {
         const r = selected[i]!;
         const previewUrl = bestPreviewUrl(r);
+        const userMsgId = randomId('msg');
 
         params.store.update((st) => ({
           ...st,
           streamMessages: [
             ...st.streamMessages,
             {
-              id: randomId('msg'),
+              id: userMsgId,
               createdAt: Date.now(),
               role: 'user',
               kind: 'deconstruct',
+              text: 'Deconstructing…',
               imageUrl: previewUrl || undefined,
               refId: r.id,
             } satisfies StreamMessage,
@@ -141,6 +143,11 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
               refId: r.id,
             } satisfies StreamMessage,
           ].slice(-200),
+        }));
+
+        params.store.update((st) => ({
+          ...st,
+          streamMessages: st.streamMessages.map((m) => (m.id === userMsgId ? { ...m, text: 'Deconstruct ✓' } : m)),
         }));
       }
     } catch (error) {

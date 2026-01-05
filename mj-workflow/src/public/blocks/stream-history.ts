@@ -75,7 +75,7 @@ function renderDeconstructMessage(m: StreamMessage): HTMLElement {
     msg.innerHTML = `
       <div class="max-w-xl glass-panel px-7 py-5 rounded-[2rem] border border-white/5 shadow-2xl bg-studio-panel/40 backdrop-blur-md relative">
         <div class="text-[9px] font-black uppercase tracking-[0.4em] text-studio-accent mb-3 opacity-60">Neural Inquiry</div>
-        <p class="text-xs font-mono opacity-80 italic">Analyze context and deconstruct visual roots...</p>
+        <p class="text-xs font-mono opacity-80 italic">${escapeHtml(m.text || 'Deconstructing…')}</p>
       </div>
     `;
   } else {
