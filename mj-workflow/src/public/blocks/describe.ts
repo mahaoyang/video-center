@@ -2,9 +2,10 @@ import type { ApiClient } from '../adapters/api';
 import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { pretty } from '../atoms/format';
-import { poll } from '../atoms/poll';
 import { byId, setDisabled, show } from '../atoms/ui';
 import { showError } from '../atoms/notify';
+import { pollTaskUntilFinalPrompt } from '../headless/tasks';
+import { getSubmitTaskId, getUpstreamErrorMessage } from '../headless/upstream';
 
 function tryPrefillPrompt(store: Store<WorkflowState>) {
   const prompt = store.get().prompt;
@@ -55,25 +56,6 @@ function toAbsoluteIfLocalPath(url: string): string {
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
   if (url.startsWith('/')) return `${window.location.origin}${url}`;
   return url;
-}
-
-function getUpstreamErrorMessage(payload: any): string | null {
-  const err = payload?.error;
-  if (err?.message_zh || err?.message) return String(err.message_zh || err.message);
-  const code = payload?.code;
-  if (typeof code === 'number' && code !== 0 && code !== 1) {
-    if (typeof payload?.description === 'string' && payload.description) return payload.description;
-    return '上游接口返回错误';
-  }
-  return null;
-}
-
-function getSubmitTaskId(payload: any): string | null {
-  const result = payload?.result;
-  if (typeof result === 'string' || typeof result === 'number') return String(result);
-  if (typeof result?.taskId === 'string' || typeof result?.taskId === 'number') return String(result.taskId);
-  if (typeof payload?.taskId === 'string' || typeof payload?.taskId === 'number') return String(payload.taskId);
-  return null;
 }
 
 export function createDescribeBlock(params: { api: ApiClient; store: Store<WorkflowState> }) {
@@ -133,37 +115,11 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
       const taskId = getSubmitTaskId(data);
       if (!taskId) throw new Error(pretty(data) || '反推失败：未返回任务ID');
 
-      const prompt = await poll<string>({
-        intervalMs: 2000,
-        maxAttempts: 120,
-        run: async () => {
-          const task = await params.api.task(taskId);
-
-          const taskError = getUpstreamErrorMessage(task);
-          if (taskError) throw new Error(taskError);
-
-          const status = String(task?.status || '');
-          if (status === 'FAILURE' || task?.failReason) {
-            throw new Error(String(task?.failReason || '任务失败'));
-          }
-
-          const progressRaw = task?.progress;
-          const n =
-            typeof progressRaw === 'number'
-              ? progressRaw
-              : typeof progressRaw === 'string'
-                ? Number(String(progressRaw).replace('%', '').trim())
-                : NaN;
-          if (Number.isFinite(n)) {
-            btn.innerHTML = `<span class="loading mr-2"></span>反推中... ${n}%`;
-          }
-
-          const p = task?.properties;
-          const finalPrompt = typeof p?.finalPrompt === 'string' ? p.finalPrompt.trim() : '';
-          const finalZhPrompt = typeof p?.finalZhPrompt === 'string' ? p.finalZhPrompt.trim() : '';
-          const text = finalPrompt || finalZhPrompt;
-          if (text) return { done: true, value: text };
-          return { done: false };
+      const prompt = await pollTaskUntilFinalPrompt({
+        api: params.api,
+        taskId,
+        onProgress: (n) => {
+          btn.innerHTML = `<span class="loading mr-2"></span>反推中... ${n}%`;
         },
       });
 

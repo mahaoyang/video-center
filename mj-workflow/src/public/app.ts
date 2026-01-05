@@ -10,7 +10,7 @@ import { createReferencePicker } from './blocks/references';
 import { createInitialWorkflowState } from './state/workflow';
 import { createStore } from './state/store';
 import { createHistoryView } from './blocks/history';
-import { loadPersistedState, startPersistence } from './blocks/persistence';
+import { loadPersistedState, startPersistence } from './storage/persistence';
 import { createMjPromptPreview } from './blocks/mj-prompt-preview';
 import { createActiveImagePicker } from './blocks/active-image-picker';
 import { createMjParamsPanel } from './blocks/mj-params-panel';

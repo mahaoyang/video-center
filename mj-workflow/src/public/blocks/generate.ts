@@ -1,72 +1,13 @@
 import type { ApiClient } from '../adapters/api';
 import { pretty } from '../atoms/format';
-import { poll } from '../atoms/poll';
 import { byId, hide, show } from '../atoms/ui';
 import { showError } from '../atoms/notify';
 import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { randomId } from '../atoms/id';
 import { buildMjPrompt } from '../atoms/mj-prompt';
-
-function getUpstreamErrorMessage(payload: any): string | null {
-  const err = payload?.error;
-  if (err?.message_zh || err?.message) return String(err.message_zh || err.message);
-  const code = payload?.code;
-  if (typeof code === 'number' && code !== 0 && code !== 1) {
-    if (typeof payload?.description === 'string' && payload.description) return payload.description;
-    return '上游接口返回错误';
-  }
-  return null;
-}
-
-function getSubmitTaskId(payload: any): string | null {
-  const result = payload?.result;
-  if (typeof result === 'string' || typeof result === 'number') return String(result);
-  if (typeof result?.taskId === 'string' || typeof result?.taskId === 'number') return String(result.taskId);
-  if (typeof payload?.taskId === 'string' || typeof payload?.taskId === 'number') return String(payload.taskId);
-  return null;
-}
-
-async function pollTaskUntilImageUrl(params: {
-  api: ApiClient;
-  taskId: string;
-  onProgress?: (progress: number) => void;
-}): Promise<string> {
-  return await poll<string>({
-    intervalMs: 2000,
-    maxAttempts: 120,
-    run: async () => {
-      const data = await params.api.task(params.taskId);
-
-      const upstreamError = getUpstreamErrorMessage(data);
-      if (upstreamError) throw new Error(upstreamError);
-
-      const imageUrl = data?.imageUrl ?? data?.result?.imageUrl;
-      if (typeof imageUrl === 'string' && imageUrl.trim()) {
-        return { done: true, value: imageUrl };
-      }
-
-      const status = String(data?.status ?? data?.result?.status ?? '');
-      const failReason = data?.failReason ?? data?.result?.failReason;
-      if (status === 'FAILURE' || failReason) {
-        throw new Error(String(failReason || '任务失败'));
-      }
-
-      const progressRaw = data?.progress ?? data?.result?.progress;
-      if (params.onProgress && progressRaw !== undefined && progressRaw !== null) {
-        const n =
-          typeof progressRaw === 'number'
-            ? progressRaw
-            : typeof progressRaw === 'string'
-              ? Number(String(progressRaw).replace('%', '').trim())
-              : NaN;
-        if (Number.isFinite(n)) params.onProgress(n);
-      }
-
-      return { done: false };
-    },
-  });
-}
+import { pollTaskUntilImageUrl } from '../headless/tasks';
+import { getSubmitTaskId, getUpstreamErrorMessage } from '../headless/upstream';
 
 export function createGenerateBlock(params: { api: ApiClient; store: Store<WorkflowState>; activateStep: (step: any) => void }) {
   function isHttpUrl(value: string | undefined): value is string {

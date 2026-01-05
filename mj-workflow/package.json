@@ -9,6 +9,7 @@
     "build:server": "bun build src/index.ts --outdir ./dist --target bun",
     "build:web": "bun build src/public/app.ts --outdir ./dist/public/assets --target browser --format esm",
     "build:public": "mkdir -p dist/public/assets && cp src/public/index.html dist/public/index.html",
+    "check:imports": "bun run scripts/check-imports.ts",
     "start": "bun run dist/index.js"
   },
   "dependencies": {
