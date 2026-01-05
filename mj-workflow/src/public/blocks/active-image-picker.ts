@@ -16,66 +16,31 @@ function renderItem(params: {
   onSelect: () => void;
   onDelete: () => void;
 }): HTMLElement {
-  const div = document.createElement('button');
-  div.type = 'button';
-  div.className =
-    'group relative overflow-hidden rounded-2xl border transition-all duration-500 text-left ' +
-    (params.selected
-      ? 'border-brand-green bg-white shadow-2xl shadow-brand-green/10 scale-[0.98]'
-      : 'border-brand-green/5 bg-white/40 hover:border-brand-green/20 hover:bg-white/60');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'group relative aspect-square rounded-xl overflow-hidden border border-studio-border hover:border-studio-accent transition-all duration-300 ' +
+    (params.selected ? 'ring-2 ring-studio-accent' : '');
 
   const img = document.createElement('img');
-  img.className = 'w-full h-32 object-cover';
+  img.className = 'w-full h-full object-cover cursor-pointer opacity-50 group-hover:opacity-100 transition-opacity';
   img.src = bestPreviewUrl(params.reference);
-  img.alt = params.reference.name;
+  img.onclick = () => params.onSelect();
 
-  const label = document.createElement('div');
-  label.className = 'p-3';
+  const delBtn = document.createElement('button');
+  delBtn.className = 'absolute top-1 right-1 w-5 h-5 rounded-md bg-red-500/20 text-red-500 text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white';
+  delBtn.innerHTML = '<i class="fas fa-times"></i>';
+  delBtn.onclick = (e) => { e.stopPropagation(); params.onDelete(); };
 
-  const top = document.createElement('div');
-  top.className = 'flex items-center justify-between gap-2';
+  wrapper.appendChild(img);
+  wrapper.appendChild(delBtn);
 
-  const name = document.createElement('div');
-  name.className = 'text-xs font-semibold uppercase tracking-widest opacity-70 truncate';
-  name.textContent = params.reference.name || 'image';
+  if (params.selected) {
+    const check = document.createElement('div');
+    check.className = 'absolute bottom-1 right-1 w-4 h-4 rounded-full bg-studio-accent text-black flex items-center justify-center text-[8px] shadow-xl';
+    check.innerHTML = '<i class="fas fa-check"></i>';
+    wrapper.appendChild(check);
+  }
 
-  const badge = document.createElement('div');
-  badge.className = 'badge ' + (params.selected ? '!bg-brand-green' : '!bg-brand-green/5 !text-brand-green/40');
-  badge.textContent = params.selected ? 'Active' : 'Use';
-
-  top.appendChild(name);
-  top.appendChild(badge);
-
-  const meta = document.createElement('div');
-  meta.className = 'text-[10px] uppercase tracking-widest opacity-40 mt-2';
-  const dt = new Date(params.reference.createdAt);
-  meta.textContent = `${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`;
-
-  label.appendChild(top);
-  label.appendChild(meta);
-
-  const actions = document.createElement('div');
-  actions.className = 'mt-3 flex gap-2';
-
-  const del = document.createElement('button');
-  del.type = 'button';
-  del.className =
-    'flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black transition-all border bg-white/70 text-red-600/70 border-red-500/10 hover:border-red-500/30';
-  del.textContent = '删除';
-  del.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    params.onDelete();
-  });
-  actions.appendChild(del);
-
-  label.appendChild(actions);
-
-  div.appendChild(img);
-  div.appendChild(label);
-
-  div.addEventListener('click', () => params.onSelect());
-  return div;
+  return wrapper;
 }
 
 export function createActiveImagePicker(params: { store: Store<WorkflowState>; api: ApiClient }) {

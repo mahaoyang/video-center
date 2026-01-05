@@ -1,7 +1,7 @@
 import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
-import { clearAspectRatio, parseMjParams, removeMjParams, setAspectRatio } from '../atoms/mj-params';
+import { clearAspectRatio, parseMjParams, removeMjParams } from '../atoms/mj-params';
 
 function formatParam(name: string, value: string | true): string {
   if (value === true) return `--${name}`;
@@ -28,14 +28,14 @@ export function createMjParamsPanel(store: Store<WorkflowState>) {
     const prompt = getPromptText(promptInput, state);
     const parsed = parseMjParams(prompt);
     const ar = parsed.map['ar'] ?? parsed.map['aspect'];
-    if (arCurrent) arCurrent.textContent = typeof ar === 'string' ? `当前：${ar}` : '';
+    if (arCurrent) arCurrent.textContent = typeof ar === 'string' ? `--ar ${ar}` : '';
 
     detected.innerHTML = '';
     for (const p of parsed.params) {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className =
-        'px-3 py-1 rounded-full text-[11px] font-semibold bg-white/70 border border-brand-green/10 hover:border-brand-green/30 transition-colors';
+        'px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all';
       chip.textContent = `${formatParam(p.name, p.value)} ×`;
       chip.addEventListener('click', () => {
         const next = removeMjParams(getPromptText(promptInput, store.get()), [p.name]);
@@ -45,15 +45,6 @@ export function createMjParamsPanel(store: Store<WorkflowState>) {
     }
   }
 
-  document.querySelectorAll<HTMLButtonElement>('.mj-ar-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const ratio = btn.dataset.ar;
-      if (!ratio) return;
-      const next = setAspectRatio(getPromptText(promptInput, store.get()), ratio);
-      applyToPrompt(promptInput, next);
-    });
-  });
-
   clearArBtn?.addEventListener('click', () => {
     const next = clearAspectRatio(getPromptText(promptInput, store.get()));
     applyToPrompt(promptInput, next);
@@ -62,4 +53,3 @@ export function createMjParamsPanel(store: Store<WorkflowState>) {
   render(store.get());
   store.subscribe(render);
 }
-

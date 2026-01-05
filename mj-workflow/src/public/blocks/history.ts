@@ -48,105 +48,143 @@ function createImgWithFallback(params: { urls: string[]; className: string; alt?
   return wrapper;
 }
 
-function renderHistoryItem(item: WorkflowHistoryItem, refLookup: Map<string, ReferenceImage>): HTMLElement {
+function renderHistoryItem(item: WorkflowHistoryItem, refLookup: Map<string, ReferenceImage>, onRestore: (item: WorkflowHistoryItem) => void): HTMLElement {
   const card = document.createElement('div');
-  card.className = 'rounded-[1.5rem] border border-brand-green/5 bg-white p-6 shadow-sm hover:shadow-xl transition-all duration-500';
+  card.className = 'studio-panel p-8 group relative overflow-hidden transition-all duration-500 hover:border-studio-accent/30';
 
+  // Header
   const header = document.createElement('div');
-  header.className = 'flex items-start justify-between gap-6 mb-6';
+  header.className = 'flex items-center justify-between mb-6';
 
-  const left = document.createElement('div');
-  const title = document.createElement('div');
-  title.className = 'text-[10px] uppercase tracking-[0.2em] font-black opacity-30 mb-2';
-  title.textContent = new Date(item.createdAt).toLocaleString();
-  const prompt = document.createElement('div');
-  prompt.className = 'text-sm font-medium leading-relaxed text-brand-green/80 break-words line-clamp-2 hover:line-clamp-none transition-all';
-  prompt.textContent = item.prompt;
-  left.appendChild(title);
-  left.appendChild(prompt);
+  const timeStr = new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  header.innerHTML = `
+    <div class="flex flex-col">
+      <span class="text-[9px] font-black uppercase tracking-[0.2em] text-studio-accent opacity-40">${timeStr} // ARCHIVE</span>
+    </div>
+  `;
 
-  const right = document.createElement('div');
-  right.className = 'badge !bg-brand-green/5 !text-brand-green/30 px-3';
-  right.textContent = `ID:${item.taskId.slice(-4)}`;
+  const actions = document.createElement('div');
+  actions.className = 'flex items-center gap-3';
 
-  header.appendChild(left);
-  header.appendChild(right);
+  const restoreBtn = document.createElement('button');
+  restoreBtn.className = 'px-3 py-1.5 rounded-lg bg-studio-accent/10 text-studio-accent text-[9px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all hover:bg-studio-accent hover:text-black';
+  restoreBtn.innerHTML = '<i class="fas fa-rotate-left mr-2"></i>Restore';
+  restoreBtn.onclick = () => onRestore(item);
 
-  const refs = document.createElement('div');
-  refs.className = 'grid grid-cols-4 md:grid-cols-8 gap-3 mb-6';
-  for (const r of item.references) {
-    const lib = refLookup.get(r.id);
-    const urls = uniqueStrings([
-      (r as any).localUrl,
-      (r as any).cdnUrl,
-      r.url,
-      lib?.localUrl,
-      lib?.cdnUrl,
-      lib?.url,
-      lib?.dataUrl,
-    ]);
-    if (!urls.length) continue;
-    const thumb = createImgWithFallback({
-      urls,
-      className: 'w-full h-full object-cover grayscale hover:grayscale-0 transition-all',
-      alt: r.name,
-      aspect: 'square',
-    });
-    refs.appendChild(thumb);
-  }
+  const badge = document.createElement('div');
+  badge.className = 'px-3 py-1 bg-white/5 text-white/20 text-[8px] font-mono rounded-md';
+  badge.textContent = `ID:${item.taskId.slice(-6).toUpperCase()}`;
 
-  const results = document.createElement('div');
-  results.className = 'grid grid-cols-2 gap-4';
+  actions.appendChild(restoreBtn);
+  actions.appendChild(badge);
+  header.appendChild(actions);
 
-  if (item.gridImageUrl) {
-    const imgWrapper = document.createElement('div');
-    imgWrapper.className = 'relative rounded-xl overflow-hidden shadow-lg';
-    imgWrapper.appendChild(
-      createImgWithFallback({
-        urls: uniqueStrings([item.gridImageUrl]),
-        className: 'w-full h-full object-cover',
-        alt: 'grid',
-        aspect: 'rect',
-      }),
-    );
-    results.appendChild(imgWrapper);
-  }
+  // Prompt
+  const promptBox = document.createElement('div');
+  promptBox.className = 'mb-8 p-4 bg-white/5 rounded-xl border border-white/5';
+  const promptText = document.createElement('p');
+  promptText.className = 'text-[11px] font-medium leading-relaxed opacity-40 italic line-clamp-2 group-hover:line-clamp-none transition-all';
+  promptText.textContent = item.prompt;
+  promptBox.appendChild(promptText);
 
-  const lastUpscaled = item.upscaledImages.at(-1);
-  if (lastUpscaled) {
-    const imgWrapper = document.createElement('div');
-    imgWrapper.className = 'relative rounded-xl overflow-hidden shadow-lg';
-    imgWrapper.appendChild(
-      createImgWithFallback({
-        urls: uniqueStrings([lastUpscaled]),
-        className: 'w-full h-full object-cover',
-        alt: 'upscaled',
-        aspect: 'rect',
-      }),
-    );
-    results.appendChild(imgWrapper);
-  }
+  // Results Grid
+  const resultsGrid = document.createElement('div');
+  resultsGrid.className = 'grid grid-cols-4 gap-3';
+
+  const addImg = (url: string, label: string) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'relative aspect-square rounded-lg overflow-hidden border border-white/5 group/img cursor-pointer';
+    const img = document.createElement('img');
+    img.src = url;
+    img.className = 'w-full h-full object-cover transform transition-transform duration-700 group-hover/img:scale-110 grayscale group-hover/img:grayscale-0';
+    wrapper.appendChild(img);
+
+    const tag = document.createElement('span');
+    tag.className = 'absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 text-white text-[6px] font-black uppercase tracking-widest rounded';
+    tag.textContent = label;
+    wrapper.appendChild(tag);
+    resultsGrid.appendChild(wrapper);
+  };
+
+  if (item.gridImageUrl) addImg(item.gridImageUrl, 'GRID');
+  item.upscaledImages.slice(0, 3).forEach((url, i) => addImg(url, `V${i + 1}`));
 
   card.appendChild(header);
-  if (refs.childElementCount) card.appendChild(refs);
-  if (results.childElementCount) card.appendChild(results);
+  card.appendChild(promptBox);
+  card.appendChild(resultsGrid);
+
   return card;
 }
 
 export function createHistoryView(store: Store<WorkflowState>) {
   const container = byId<HTMLElement>('historyList');
+  const countEl = document.getElementById('historyCount');
+
+  function clearHistory() {
+    if (!confirm('Are you sure you want to permanently delete all archived snapshots?')) return;
+    store.update(s => ({ ...s, history: [] }));
+  }
+
+  (window as any).clearHistory = clearHistory;
+
+  function onRestore(item: WorkflowHistoryItem) {
+    store.update((s) => ({
+      ...s,
+      prompt: item.prompt,
+      selectedReferenceIds: item.references.map(r => r.id),
+      // Set step to 3 to orchestrate again
+      step: 3
+    }));
+
+    // Smooth scroll to top components
+    const step3 = document.getElementById('step3');
+    if (step3) step3.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Explicitly update DOM for prompt input
+    const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement | null;
+    if (promptInput) {
+      promptInput.value = item.prompt;
+    }
+  }
 
   function render(state: WorkflowState) {
     container.innerHTML = '';
     const refLookup = new Map(state.referenceImages.map((r) => [r.id, r] as const));
     const items = state.history.slice().reverse();
-    for (const item of items) container.appendChild(renderHistoryItem(item, refLookup));
+    if (countEl) countEl.textContent = items.length.toString();
+    const countSmall = document.getElementById('historyCountSmall');
+    if (countSmall) countSmall.textContent = items.length.toString();
+
     if (!items.length) {
       const empty = document.createElement('div');
-      empty.className = 'text-xs uppercase tracking-widest opacity-40 py-8 text-center';
-      empty.textContent = 'No history yet';
+      empty.className = 'py-32 flex flex-col items-center justify-center opacity-20';
+      empty.innerHTML = `
+        <i class="fas fa-folder-open text-4xl mb-6"></i>
+        <span class="label-mono uppercase">Archive Interrogator Empty</span>
+      `;
       container.appendChild(empty);
+      return;
     }
+
+    // Group items by date
+    let lastDate = '';
+    const listWrapper = document.createElement('div');
+    listWrapper.className = 'space-y-12';
+
+    for (const item of items) {
+      const d = new Date(item.createdAt);
+      const dateStr = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+      if (dateStr !== lastDate) {
+        const dateHeader = document.createElement('div');
+        dateHeader.className = 'pt-8 pb-4 border-b border-studio-dark/5 mb-8';
+        dateHeader.innerHTML = `<span class="label-mono !text-studio-dark opacity-60">${dateStr.toUpperCase()}</span>`;
+        listWrapper.appendChild(dateHeader);
+        lastDate = dateStr;
+      }
+      listWrapper.appendChild(renderHistoryItem(item, refLookup, onRestore));
+    }
+
+    container.appendChild(listWrapper);
   }
 
   render(store.get());

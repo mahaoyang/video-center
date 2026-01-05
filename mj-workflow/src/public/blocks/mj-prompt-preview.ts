@@ -1,8 +1,6 @@
 import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { buildMjPrompt } from '../atoms/mj-prompt';
-import { byId } from '../atoms/ui';
-import { showError } from '../atoms/notify';
 
 function isHttpUrl(value: string | undefined): value is string {
   if (!value) return false;
@@ -10,9 +8,11 @@ function isHttpUrl(value: string | undefined): value is string {
 }
 
 export function createMjPromptPreview(store: Store<WorkflowState>) {
-  const promptInput = byId<HTMLTextAreaElement>('promptInput');
-  const preview = byId<HTMLTextAreaElement>('mjPromptPreview');
-  const copyBtn = document.getElementById('copyMjPromptBtn') as HTMLButtonElement | null;
+  const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement | null;
+  if (!promptInput) return;
+
+  const preview = document.getElementById('mjPromptPreview') as HTMLTextAreaElement | null;
+  const stats = document.getElementById('mjWrapperStats') as HTMLElement | null;
 
   function compute(state: WorkflowState): string {
     const basePrompt = (promptInput.value.trim() || (state.prompt || '').trim()).trim();
@@ -29,23 +29,25 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
   }
 
   function render(state: WorkflowState) {
-    preview.value = compute(state);
+    const text = compute(state);
+    if (preview) preview.value = text;
+
+    if (stats) {
+      const selectedRefs = state.referenceImages.filter((r) => state.selectedReferenceIds.includes(r.id));
+      const urlCount = selectedRefs.filter((r) => isHttpUrl(r.cdnUrl || r.url)).length;
+      const base64Count = selectedRefs.filter((r) => !isHttpUrl(r.cdnUrl || r.url) && Boolean(r.base64)).length;
+      const sref = isHttpUrl(state.mjSrefImageUrl) ? state.mjSrefImageUrl : '';
+      const cref = isHttpUrl(state.mjCrefImageUrl) ? state.mjCrefImageUrl : '';
+      stats.textContent =
+        `PAD(URL): ${urlCount}  PAD(base64): ${base64Count}` +
+        (sref ? `  SREF: ✓` : `  SREF: -`) +
+        (cref ? `  CREF: ✓` : `  CREF: -`);
+    }
   }
 
   promptInput.addEventListener('input', () => {
     const p = promptInput.value;
     store.update((s) => ({ ...s, prompt: p }));
-  });
-
-  copyBtn?.addEventListener('click', async () => {
-    const text = preview.value.trim();
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (err) {
-      console.warn('clipboard failed:', err);
-      showError('复制失败：浏览器不允许访问剪贴板');
-    }
   });
 
   render(store.get());

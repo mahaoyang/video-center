@@ -78,6 +78,12 @@ function sniffImageExt(bytes: Uint8Array): string | null {
   return null;
 }
 
+function normalizeImageExt(ext: string): string {
+  const lower = String(ext || '').toLowerCase();
+  if (lower === '.jpeg') return '.jpg';
+  return lower;
+}
+
 export function createApiRouter(deps: {
   mjApi: MJApi;
   chatApi: YunwuChatApi;
@@ -125,8 +131,10 @@ export function createApiRouter(deps: {
         if (!sniffedExt) {
           return jsonError({ status: 400, description: '图片格式不支持或文件已损坏（仅支持 PNG/JPG/WEBP/GIF）' });
         }
-        const ext = (extFromName || sniffedExt).toLowerCase();
-        if (extFromName && sniffedExt !== extFromName.toLowerCase()) {
+        const normalizedSniff = normalizeImageExt(sniffedExt);
+        const normalizedNameExt = normalizeImageExt(extFromName);
+        const ext = normalizeImageExt(extFromName || sniffedExt);
+        if (extFromName && normalizedSniff !== normalizedNameExt) {
           return jsonError({ status: 400, description: '图片文件扩展名与内容不匹配，请重新上传' });
         }
 
@@ -186,7 +194,7 @@ export function createApiRouter(deps: {
     if (pathname === '/api/describe' && req.method === 'POST') {
       try {
         if (!deps.auth.mjTokenConfigured) {
-          return jsonError({ status: 500, description: '未配置 MJ_API_TOKEN' });
+          return jsonError({ status: 500, description: '未配置 MJ Token：请设置 YUNWU_MJ_KEY 或 MJ_API_TOKEN' });
         }
         const body = await readJson<{ base64?: string; imageUrl?: string }>(req);
         const result = await deps.mjApi.describe({ base64: body.base64, imageUrl: body.imageUrl });
@@ -200,7 +208,7 @@ export function createApiRouter(deps: {
     if (pathname === '/api/vision/describe' && req.method === 'POST') {
       try {
         if (!deps.auth.llmTokenConfigured) {
-          return jsonError({ status: 500, description: '未配置 Token：请设置 LLM_API_TOKEN 或 MJ_API_TOKEN' });
+          return jsonError({ status: 500, description: '未配置 LLM Token：请设置 YUNWU_ALL_KEY 或 LLM_API_TOKEN' });
         }
         const body = await readJson<VisionDescribeRequest>(req);
         const { imageUrl, question, model } = body;
@@ -240,7 +248,7 @@ export function createApiRouter(deps: {
     if (pathname === '/api/imagine' && req.method === 'POST') {
       try {
         if (!deps.auth.mjTokenConfigured) {
-          return jsonError({ status: 500, description: '未配置 MJ_API_TOKEN' });
+          return jsonError({ status: 500, description: '未配置 MJ Token：请设置 YUNWU_MJ_KEY 或 MJ_API_TOKEN' });
         }
         const body = await readJson<{ prompt: string; base64Array?: string[]; notifyHook?: string; state?: string }>(req);
         const result = await deps.mjApi.imagine({
@@ -259,7 +267,7 @@ export function createApiRouter(deps: {
     if (pathname === '/api/upscale' && req.method === 'POST') {
       try {
         if (!deps.auth.mjTokenConfigured) {
-          return jsonError({ status: 500, description: '未配置 MJ_API_TOKEN' });
+          return jsonError({ status: 500, description: '未配置 MJ Token：请设置 YUNWU_MJ_KEY 或 MJ_API_TOKEN' });
         }
         const body = await readJson<{ taskId: string; index: number }>(req);
         const { taskId, index } = body;
@@ -287,7 +295,7 @@ export function createApiRouter(deps: {
     if (taskMatch && req.method === 'GET') {
       try {
         if (!deps.auth.mjTokenConfigured) {
-          return jsonError({ status: 500, description: '未配置 MJ_API_TOKEN' });
+          return jsonError({ status: 500, description: '未配置 MJ Token：请设置 YUNWU_MJ_KEY 或 MJ_API_TOKEN' });
         }
         const taskId = taskMatch[1]!;
         const result = await deps.mjApi.queryTask(taskId);
