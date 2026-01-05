@@ -19,6 +19,7 @@ type Persisted = {
     id: string;
     name: string;
     createdAt: number;
+    originKey?: string;
     url: string;
     cdnUrl?: string;
     localUrl?: string;
@@ -70,6 +71,7 @@ function toPersisted(state: WorkflowState): Persisted {
       id: r.id,
       name: r.name,
       createdAt: r.createdAt,
+      originKey: typeof r.originKey === 'string' ? r.originKey : undefined,
       url: r.url!,
       cdnUrl: r.cdnUrl,
       localUrl: r.localUrl,
@@ -142,6 +144,7 @@ export function loadPersistedState(): {
     id: r.id || randomId('ref'),
     name: r.name || 'reference',
     createdAt: r.createdAt || Date.now(),
+    originKey: typeof r.originKey === 'string' ? r.originKey : undefined,
     url: r.url,
     cdnUrl: typeof r.cdnUrl === 'string' ? r.cdnUrl : undefined,
     localUrl: typeof r.localUrl === 'string' ? r.localUrl : undefined,

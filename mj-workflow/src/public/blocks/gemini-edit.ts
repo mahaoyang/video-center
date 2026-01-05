@@ -5,6 +5,7 @@ import { randomId } from '../atoms/id';
 import { byId } from '../atoms/ui';
 import type { Store } from '../state/store';
 import type { ReferenceImage, WorkflowState } from '../state/workflow';
+import { sha256HexFromBlob } from '../atoms/blob-hash';
 
 function bestEditSourceUrl(r: ReferenceImage | undefined): string | undefined {
   return r?.cdnUrl || r?.url || r?.localUrl || r?.dataUrl;
@@ -74,6 +75,17 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) throw new Error('P 图失败：未返回图片');
 
       const file = dataUrlToFile(dataUrl, `gemini-edit-${Date.now()}.png`);
+      const originKey = `gemini-edit:sha256:${await sha256HexFromBlob(file)}`;
+      const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
+      if (existing) {
+        params.store.update((s) => ({
+          ...s,
+          selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, existing.id])),
+          mjPadRefId: existing.id,
+        }));
+        return;
+      }
+
       const uploaded = await params.api.upload(file);
       const result = uploaded?.result;
       if (uploaded?.code !== 0 || !result?.url) throw new Error(uploaded?.description || '上传失败');
@@ -92,6 +104,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
             id: referenceId,
             name: `P-${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
             createdAt,
+            originKey,
             url,
             cdnUrl,
             localUrl,
@@ -99,7 +112,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
             localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
           },
         ],
-        selectedReferenceIds: [...s.selectedReferenceIds, referenceId],
+        selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
         mjPadRefId: referenceId,
       }));
 
@@ -136,4 +149,3 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
 
   return { open, close, applyEdit };
 }
-

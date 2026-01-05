@@ -4,6 +4,7 @@ export interface ReferenceImage {
   id: string;
   name: string;
   createdAt: number;
+  originKey?: string; // stable key for de-duplication (file hash / url / slice key)
   url?: string; // preferred URL (CDN preferred, local fallback)
   cdnUrl?: string; // imageproxy/CDN URL
   localUrl?: string; // served by this app, e.g. /uploads/<key>

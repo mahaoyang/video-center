@@ -5,6 +5,7 @@ import { byId, show, hide } from '../atoms/ui';
 import { showError } from '../atoms/notify';
 import type { ApiClient } from '../adapters/api';
 import { randomId } from '../atoms/id';
+import { sha256HexFromBlob } from '../atoms/blob-hash';
 
 export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   const uploadInput = document.getElementById('imageUpload') as HTMLInputElement | null;
@@ -130,10 +131,24 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   };
 
   async function handleFile(file: File) {
+    const originKey = `file:sha256:${await sha256HexFromBlob(file)}`;
     const dataUrl = await fileToDataUrl(file);
     const base64 = dataUrl.split(',')[1] || '';
     if (!dataUrl.startsWith('data:') || !base64) {
       throw new Error('图片读取为空或格式异常');
+    }
+
+    const existing = store
+      .get()
+      .referenceImages.find((r) => r.originKey === originKey || (typeof r.base64 === 'string' && r.base64 === base64));
+    if (existing) {
+      store.update((s) => {
+        const selected = new Set(s.selectedReferenceIds);
+        selected.add(existing.id);
+        return { ...s, selectedReferenceIds: Array.from(selected), mjPadRefId: existing.id };
+      });
+      renderTray();
+      return;
     }
 
     const referenceId = randomId('ref');
@@ -147,11 +162,12 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
           id: referenceId,
           name: file.name || 'reference',
           createdAt,
+          originKey,
           dataUrl,
           base64,
         },
       ],
-      selectedReferenceIds: [...s.selectedReferenceIds, referenceId],
+      selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
       mjPadRefId: referenceId,
     }));
 

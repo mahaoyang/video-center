@@ -14,6 +14,14 @@ function updateMessageById(store: Store<WorkflowState>, id: string, patch: Parti
   }));
 }
 
+function selectExistingReference(store: Store<WorkflowState>, id: string) {
+  store.update((s) => {
+    const selected = new Set(s.selectedReferenceIds);
+    selected.add(id);
+    return { ...s, selectedReferenceIds: Array.from(selected), mjPadRefId: id };
+  });
+}
+
 async function fetchSliceAsFile(src: string, index: number): Promise<File> {
   const url = `/api/slice?src=${encodeURIComponent(src)}&index=${encodeURIComponent(String(index))}`;
   const res = await fetch(url);
@@ -34,6 +42,13 @@ async function fetchImageAsFile(src: string): Promise<File> {
 export function createStreamActions(params: { api: ApiClient; store: Store<WorkflowState> }) {
   async function addPadFromSlice(src: string, index: number) {
     try {
+      const originKey = `slice:${src}#${index}`;
+      const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
+      if (existing) {
+        selectExistingReference(params.store, existing.id);
+        return;
+      }
+
       const file = await fetchSliceAsFile(src, index);
       const uploaded = await params.api.upload(file);
       const result = uploaded?.result;
@@ -53,6 +68,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             id: referenceId,
             name: `slice-${index}`,
             createdAt,
+            originKey,
             url,
             cdnUrl,
             localUrl,
@@ -60,7 +76,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
           },
         ],
-        selectedReferenceIds: [...s.selectedReferenceIds, referenceId],
+        selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
         mjPadRefId: referenceId,
       }));
     } catch (e) {
@@ -114,6 +130,13 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
 
   async function selectFromSlice(src: string, index: number) {
     try {
+      const originKey = `slice:${src}#${index}`;
+      const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
+      if (existing) {
+        selectExistingReference(params.store, existing.id);
+        return;
+      }
+
       const file = await fetchSliceAsFile(src, index);
       const uploaded = await params.api.upload(file);
       const result = uploaded?.result;
@@ -127,13 +150,14 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
 
       params.store.update((s) => ({
         ...s,
-        upscaledImages: [...s.upscaledImages, url].slice(-10),
+        upscaledImages: (s.upscaledImages.includes(url) ? s.upscaledImages : [...s.upscaledImages, url]).slice(-10),
         referenceImages: [
           ...s.referenceImages,
           {
             id: referenceId,
             name: `selected-${index}`,
             createdAt,
+            originKey,
             url,
             cdnUrl,
             localUrl,
@@ -141,7 +165,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
           },
         ],
-        selectedReferenceIds: [...s.selectedReferenceIds, referenceId],
+        selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
         mjPadRefId: referenceId,
       }));
 
@@ -154,6 +178,13 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
 
   async function selectFromUrl(src: string) {
     try {
+      const originKey = `url:${src}`;
+      const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
+      if (existing) {
+        selectExistingReference(params.store, existing.id);
+        return;
+      }
+
       const file = await fetchImageAsFile(src);
       const uploaded = await params.api.upload(file);
       const result = uploaded?.result;
@@ -167,13 +198,14 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
 
       params.store.update((s) => ({
         ...s,
-        upscaledImages: [...s.upscaledImages, url].slice(-10),
+        upscaledImages: (s.upscaledImages.includes(url) ? s.upscaledImages : [...s.upscaledImages, url]).slice(-10),
         referenceImages: [
           ...s.referenceImages,
           {
             id: referenceId,
             name: `upscale-${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
             createdAt,
+            originKey,
             url,
             cdnUrl,
             localUrl,
@@ -181,7 +213,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
           },
         ],
-        selectedReferenceIds: [...s.selectedReferenceIds, referenceId],
+        selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
         mjPadRefId: referenceId,
       }));
 
