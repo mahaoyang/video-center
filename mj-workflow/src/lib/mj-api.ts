@@ -36,7 +36,7 @@ async function fetchUpstreamJson(url: string, init: RequestInit): Promise<any> {
   if (body.json !== null) {
     // Some upstreams mistakenly wrap JSON as a JSON-string. Attempt to unwrap once.
     if (typeof body.json === 'string') {
-      const text = body.json.trim();
+      const text = body.json.replace(/^\uFEFF/, '').trim();
       if (text.startsWith('{') || text.startsWith('[')) {
         try {
           return JSON.parse(text);

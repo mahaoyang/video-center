@@ -10,18 +10,45 @@ export interface ApiClient {
   geminiEdit(params: { imageUrl: string; editPrompt: string }): Promise<any>;
 }
 
+function unwrapJsonStringOnce(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const text = value.replace(/^\uFEFF/, '').trim();
+  if (!text) return value;
+  if (!(text.startsWith('{') || text.startsWith('['))) return value;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return value;
+  }
+}
+
+function normalizeUpstreamPayload(payload: any): any {
+  const top = unwrapJsonStringOnce(payload);
+  if (!top || typeof top !== 'object') return top;
+
+  const maybeResult = (top as any).result;
+  const unwrappedResult = unwrapJsonStringOnce(maybeResult);
+  if (unwrappedResult !== maybeResult) return { ...(top as any), result: unwrappedResult };
+
+  const maybeProps = (top as any).properties;
+  const unwrappedProps = unwrapJsonStringOnce(maybeProps);
+  if (unwrappedProps !== maybeProps) return { ...(top as any), properties: unwrappedProps };
+
+  return top;
+}
+
 async function requestJson(method: string, url: string, body?: unknown): Promise<any> {
   const res = await fetch(url, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  return await res.json();
+  return normalizeUpstreamPayload(await res.json());
 }
 
 async function requestForm(url: string, form: FormData): Promise<any> {
   const res = await fetch(url, { method: 'POST', body: form });
-  return await res.json();
+  return normalizeUpstreamPayload(await res.json());
 }
 
 export function createApiClient(apiBase = '/api'): ApiClient {
