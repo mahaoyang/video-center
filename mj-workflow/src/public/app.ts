@@ -12,7 +12,6 @@ import { createMjPromptPreview } from './blocks/mj-prompt-preview';
 import { createMjParamsPanel } from './blocks/mj-params-panel';
 import { createStreamHistory } from './blocks/stream-history';
 import { createStreamActions } from './blocks/stream-actions';
-import { createDescribeEnginePicker } from './blocks/describe-engine-picker';
 import { createGeminiEditBlock } from './blocks/gemini-edit';
 import { createPlannerChat } from './blocks/planner-chat';
 
@@ -39,7 +38,6 @@ document.addEventListener('DOMContentLoaded', () => {
   createHistoryView(store);
   createMjPromptPreview(store);
   createMjParamsPanel(store);
-  createDescribeEnginePicker();
   createGeminiEditBlock({ api, store });
   startPersistence(store);
 

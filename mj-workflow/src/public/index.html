@@ -343,43 +343,13 @@
 
           <!-- Analysis Console -->
           <div class="flex items-center gap-8">
-            <div class="flex items-center gap-2 group relative">
+            <div class="flex items-center gap-2 opacity-30 hover:opacity-100 transition-all group">
               <i
                 class="fas fa-brain text-[10px] opacity-30 group-hover:text-studio-accent group-hover:opacity-100 transition-all"></i>
-              <div id="describeEnginePicker" class="relative">
-                <button id="describeEngineBtn" type="button"
-                  class="flex items-center gap-2 bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-white rounded-xl px-3 py-2 transition-all">
-                  <span id="describeEngineLabel"
-                    class="text-[8px] font-black uppercase tracking-[0.2em] text-white/60">Gemini Pro</span>
-                  <i class="fas fa-chevron-down text-[8px] opacity-40"></i>
-                </button>
-                <div id="describeEngineMenu"
-                  class="hidden absolute left-0 mt-2 w-56 rounded-2xl border border-white/10 bg-studio-panel/95 backdrop-blur-xl shadow-2xl overflow-hidden z-[500]">
-                  <button type="button" data-engine="gemini"
-                    class="w-full px-4 py-3 text-left hover:bg-white/5 transition-all">
-                    <div class="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">Gemini Pro</div>
-                    <div class="text-[9px] font-mono text-white/30 mt-1">Fast describe</div>
-                  </button>
-                  <div class="h-px bg-white/5"></div>
-                  <button type="button" data-engine="mj"
-                    class="w-full px-4 py-3 text-left hover:bg-white/5 transition-all">
-                    <div class="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">MJ Describe</div>
-                    <div class="text-[9px] font-mono text-white/30 mt-1">Use MJ upstream</div>
-                  </button>
-                  <div class="h-px bg-white/5"></div>
-                  <button type="button" data-engine="vision:gpt-4o"
-                    class="w-full px-4 py-3 text-left hover:bg-white/5 transition-all">
-                    <div class="text-[9px] font-black uppercase tracking-[0.2em] text-white/80">GPT‑4o Vision</div>
-                    <div class="text-[9px] font-mono text-white/30 mt-1">Vision prompt</div>
-                  </button>
-                </div>
-                <!-- Keep native select as source of truth for blocks -->
-                <select id="describeEngineSelect" class="hidden">
-                  <option value="gemini">Gemini Pro</option>
-                  <option value="mj">MJ Describe</option>
-                  <option value="vision:gpt-4o">GPT-4o Vision</option>
-                </select>
-              </div>
+              <span class="text-[8px] font-black uppercase tracking-[0.2em] text-white/30 group-hover:text-white transition-all">Gemini</span>
+              <select id="describeEngineSelect" class="hidden">
+                <option value="gemini" selected>Gemini Pro</option>
+              </select>
             </div>
 
             <div id="deconstructTrigger" onclick="window.deconstructAssets()"
