@@ -1,5 +1,5 @@
 import type { Store } from '../state/store';
-import type { ReferenceImage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
+import type { ReferenceImage, StreamMessage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { randomId } from '../atoms/id';
 
 const STORAGE_KEY = 'mj-workflow:persist:v1';
@@ -29,6 +29,18 @@ type Persisted = {
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
   activeImageId?: string;
+  streamMessages?: Array<{
+    id: string;
+    createdAt: number;
+    role: string;
+    kind: string;
+    text?: string;
+    imageUrl?: string;
+    refId?: string;
+    taskId?: string;
+    gridImageUrl?: string;
+    upscaledImageUrl?: string;
+  }>;
 };
 
 function safeParse(jsonText: string | null): Persisted | null {
@@ -79,6 +91,18 @@ function toPersisted(state: WorkflowState): Persisted {
     mjSrefImageUrl: state.mjSrefImageUrl,
     mjCrefImageUrl: state.mjCrefImageUrl,
     activeImageId: state.activeImageId,
+    streamMessages: state.streamMessages.slice(-200).map((m) => ({
+      id: m.id,
+      createdAt: m.createdAt,
+      role: m.role,
+      kind: m.kind,
+      text: m.text,
+      imageUrl: typeof m.imageUrl === 'string' && m.imageUrl.startsWith('data:') ? undefined : m.imageUrl,
+      refId: m.refId,
+      taskId: m.taskId,
+      gridImageUrl: m.gridImageUrl,
+      upscaledImageUrl: m.upscaledImageUrl,
+    })),
   };
 }
 
@@ -89,9 +113,10 @@ export function loadPersistedState(): {
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
   activeImageId?: string;
+  streamMessages: StreamMessage[];
 } {
   const parsed = safeParse(localStorage.getItem(STORAGE_KEY));
-  if (!parsed) return { history: [], referenceImages: [], selectedReferenceIds: [] };
+  if (!parsed) return { history: [], referenceImages: [], selectedReferenceIds: [], streamMessages: [] };
 
   const referenceImages: ReferenceImage[] = parsed.referenceLibrary.map((r: any) => ({
     id: r.id || randomId('ref'),
@@ -121,6 +146,21 @@ export function loadPersistedState(): {
     upscaledImages: h.upscaledImages || [],
   }));
 
+  const streamMessages: StreamMessage[] = (parsed.streamMessages || [])
+    .map((m: any) => ({
+      id: m.id || randomId('msg'),
+      createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
+      role: m.role === 'ai' ? 'ai' : 'user',
+      kind: m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' ? m.kind : 'generate',
+      text: typeof m.text === 'string' ? m.text : undefined,
+      imageUrl: typeof m.imageUrl === 'string' ? m.imageUrl : undefined,
+      refId: typeof m.refId === 'string' ? m.refId : undefined,
+      taskId: typeof m.taskId === 'string' ? m.taskId : undefined,
+      gridImageUrl: typeof m.gridImageUrl === 'string' ? m.gridImageUrl : undefined,
+      upscaledImageUrl: typeof m.upscaledImageUrl === 'string' ? m.upscaledImageUrl : undefined,
+    }))
+    .slice(-200);
+
   return {
     history,
     referenceImages,
@@ -128,6 +168,7 @@ export function loadPersistedState(): {
     mjSrefImageUrl: typeof (parsed as any).mjSrefImageUrl === 'string' ? (parsed as any).mjSrefImageUrl : undefined,
     mjCrefImageUrl: typeof (parsed as any).mjCrefImageUrl === 'string' ? (parsed as any).mjCrefImageUrl : undefined,
     activeImageId: typeof (parsed as any).activeImageId === 'string' ? (parsed as any).activeImageId : undefined,
+    streamMessages,
   };
 }
 

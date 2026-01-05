@@ -23,6 +23,24 @@ export interface WorkflowHistoryItem {
   upscaledImages: string[];
 }
 
+export type StreamMessageRole = 'user' | 'ai';
+export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale';
+
+export interface StreamMessage {
+  id: string;
+  createdAt: number;
+  role: StreamMessageRole;
+  kind: StreamMessageKind;
+  text?: string;
+  imageUrl?: string; // preview image (CDN preferred)
+  refId?: string; // optional reference image id
+
+  // generate/upscale
+  taskId?: string;
+  gridImageUrl?: string;
+  upscaledImageUrl?: string;
+}
+
 export interface WorkflowState {
   step: WorkflowStep;
 
@@ -49,6 +67,8 @@ export interface WorkflowState {
   upscaledImages: string[];
 
   history: WorkflowHistoryItem[];
+
+  streamMessages: StreamMessage[];
 }
 
 export function createInitialWorkflowState(): WorkflowState {
@@ -59,5 +79,6 @@ export function createInitialWorkflowState(): WorkflowState {
     referenceImages: [],
     selectedReferenceIds: [],
     history: [],
+    streamMessages: [],
   };
 }

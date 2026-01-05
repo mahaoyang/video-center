@@ -12,6 +12,7 @@ import { createHistoryView } from './blocks/history';
 import { loadPersistedState, startPersistence } from './storage/persistence';
 import { createMjPromptPreview } from './blocks/mj-prompt-preview';
 import { createMjParamsPanel } from './blocks/mj-params-panel';
+import { createStreamHistory } from './blocks/stream-history';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.mjSrefImageUrl = persisted.mjSrefImageUrl;
   initial.mjCrefImageUrl = persisted.mjCrefImageUrl;
   initial.activeImageId = persisted.activeImageId;
+  initial.streamMessages = persisted.streamMessages || [];
 
   // Set stage to active immediately for stream UI
   initial.step = 4;
@@ -40,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const generate = createGenerateBlock({ api, store, activateStep: (s) => { } });
   const upscale = createUpscaleBlock({ api, store, activateStep: (s) => { } });
   const exportBlock = createExportBlock(store);
+
+  createStreamHistory({ store });
 
   // Global Exports for HTML
   (window as any).deconstructAssets = describe.deconstructAssets;

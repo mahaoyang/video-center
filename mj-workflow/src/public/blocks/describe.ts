@@ -1,12 +1,13 @@
 import type { ApiClient } from '../adapters/api';
 import type { Store } from '../state/store';
-import type { ReferenceImage, WorkflowState } from '../state/workflow';
+import type { ReferenceImage, StreamMessage, WorkflowState } from '../state/workflow';
 import { pretty } from '../atoms/format';
 import { byId, setDisabled, show } from '../atoms/ui';
 import { showError } from '../atoms/notify';
 import { pollTaskUntilFinalPrompt } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { urlToBase64 } from '../atoms/file';
+import { randomId } from '../atoms/id';
 
 function tryPrefillPrompt(store: Store<WorkflowState>) {
   const prompt = store.get().prompt;
@@ -90,6 +91,10 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
 
   (window as any).fillPrompt = fillPrompt;
 
+  function persistPreviewUrl(r: ReferenceImage): string {
+    return r.cdnUrl || r.url || r.localUrl || '';
+  }
+
   async function appendToStream(type: 'user' | 'ai', content: string, imagePreviewUrl?: string) {
     const stream = byId('productionStream');
     if (!stream) return;
@@ -99,6 +104,7 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
     if (zero) zero.style.display = 'none';
 
     const msg = document.createElement('div');
+    (msg as any).dataset.streamMessage = '1';
     if (type === 'user') {
       msg.className = 'flex justify-end animate-fade-in-up';
       const panel = document.createElement('div');
@@ -184,8 +190,24 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
 
       for (let i = 0; i < selected.length; i++) {
         const r = selected[i]!;
-        const previewUrl = bestPreviewUrl(r);
-        await appendToStream('user', '', previewUrl);
+        const displayUrl = bestPreviewUrl(r);
+        const persistedUrl = persistPreviewUrl(r);
+
+        params.store.update((st) => ({
+          ...st,
+          streamMessages: [
+            ...st.streamMessages,
+            {
+              id: randomId('msg'),
+              createdAt: Date.now(),
+              role: 'user',
+              kind: 'deconstruct',
+              imageUrl: persistedUrl || undefined,
+              refId: r.id,
+            } satisfies StreamMessage,
+          ].slice(-200),
+        }));
+        await appendToStream('user', '', displayUrl);
 
         const publicUrl = pickPublicUrl(r);
         const base64 = await resolveBase64ForDescribe(r);
@@ -216,8 +238,23 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
           promptText = data.result?.text || '';
         }
 
-        if (promptText) await appendToStream('ai', promptText, previewUrl);
-        else await appendToStream('ai', 'Neural engine failed to deconstruct assets', previewUrl);
+        const aiText = promptText || 'Neural engine failed to deconstruct assets';
+        params.store.update((st) => ({
+          ...st,
+          streamMessages: [
+            ...st.streamMessages,
+            {
+              id: randomId('msg'),
+              createdAt: Date.now(),
+              role: 'ai',
+              kind: 'deconstruct',
+              text: aiText,
+              imageUrl: persistedUrl || undefined,
+              refId: r.id,
+            } satisfies StreamMessage,
+          ].slice(-200),
+        }));
+        await appendToStream('ai', aiText, displayUrl);
       }
     } catch (error) {
       console.error('Deconstruct error:', error);

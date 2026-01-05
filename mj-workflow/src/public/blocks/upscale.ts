@@ -3,9 +3,10 @@ import { pretty } from '../atoms/format';
 import { byId, hide, show } from '../atoms/ui';
 import { showError } from '../atoms/notify';
 import type { Store } from '../state/store';
-import type { WorkflowState } from '../state/workflow';
+import type { StreamMessage, WorkflowState } from '../state/workflow';
 import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
+import { randomId } from '../atoms/id';
 
 export function createUpscaleBlock(params: { api: ApiClient; store: Store<WorkflowState>; activateStep: (step: any) => void }) {
   async function upscaleSelected() {
@@ -45,6 +46,7 @@ export function createUpscaleBlock(params: { api: ApiClient; store: Store<Workfl
       const stream = byId('productionStream');
       const card = document.createElement('div');
       card.id = `upscale_${upscaleTaskId}`;
+      (card as any).dataset.streamMessage = '1';
       card.className = 'group animate-fade-in-up space-y-12';
 
       card.innerHTML = `
@@ -107,6 +109,14 @@ export function createUpscaleBlock(params: { api: ApiClient; store: Store<Workfl
       `;
       stream.appendChild(card);
       card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      params.store.update((prev) => ({
+        ...prev,
+        streamMessages: [
+          ...prev.streamMessages,
+          { id: randomId('msg'), createdAt: Date.now(), role: 'ai', kind: 'upscale', taskId: upscaleTaskId, upscaledImageUrl: imageUrl } satisfies StreamMessage,
+        ].slice(-200),
+      }));
 
       params.store.update((prev) => {
         const nextUpscaled = [...prev.upscaledImages, imageUrl];

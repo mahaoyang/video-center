@@ -157,6 +157,10 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       const result = uploaded?.result;
       if (uploaded?.code === 0 && result?.url) {
         const url = String(result.url);
+        const persistedPreviewUrl =
+          (typeof result.cdnUrl === 'string' ? result.cdnUrl : undefined) ||
+          url ||
+          (typeof result.localUrl === 'string' ? result.localUrl : undefined);
         store.update((s) => ({
           ...s,
           referenceImages: s.referenceImages.map((r) =>
@@ -171,6 +175,12 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
                 }
               : r
           ),
+          streamMessages: s.streamMessages.map((m) => {
+            if (m.refId !== referenceId) return m;
+            if (typeof m.imageUrl === 'string' && m.imageUrl.startsWith('data:')) return { ...m, imageUrl: persistedPreviewUrl };
+            if (!m.imageUrl) return { ...m, imageUrl: persistedPreviewUrl };
+            return m;
+          }),
         }));
       }
     } catch (error) {

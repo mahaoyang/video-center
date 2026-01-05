@@ -3,7 +3,7 @@ import { pretty } from '../atoms/format';
 import { byId, hide, show } from '../atoms/ui';
 import { showError } from '../atoms/notify';
 import type { Store } from '../state/store';
-import type { WorkflowState } from '../state/workflow';
+import type { StreamMessage, WorkflowState } from '../state/workflow';
 import { randomId } from '../atoms/id';
 import { buildMjPrompt } from '../atoms/mj-prompt';
 import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
@@ -95,17 +95,27 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
 
       // 1. APPEND USER COMMAND CHIP (The 'Ask')
       const userMsg = document.createElement('div');
+      (userMsg as any).dataset.streamMessage = '1';
       userMsg.className = 'flex justify-end animate-fade-in-up';
       userMsg.innerHTML = `
         <div class="max-w-xl glass-panel px-7 py-5 rounded-[2rem] border border-white/5 shadow-2xl bg-studio-panel/40 backdrop-blur-md">
            <div class="text-[9px] font-black uppercase tracking-[0.4em] text-studio-accent mb-3 opacity-60">Neural Instruction Received</div>
            <p class="text-sm font-medium leading-relaxed opacity-90">${escapeHtml(prompt)}</p>
-        </div>
+         </div>
       `;
       stream.appendChild(userMsg);
 
+      params.store.update((s) => ({
+        ...s,
+        streamMessages: [
+          ...s.streamMessages,
+          { id: randomId('msg'), createdAt: Date.now(), role: 'user', kind: 'generate', text: prompt } satisfies StreamMessage,
+        ].slice(-200),
+      }));
+
       // 2. APPEND AI CINEMATIC ASSET (The 'Result')
       const aiMsg = document.createElement('div');
+      (aiMsg as any).dataset.streamMessage = '1';
       aiMsg.className = 'group relative animate-fade-in-up delay-300';
       aiMsg.innerHTML = `
         <div class="relative rounded-[3rem] overflow-hidden border border-white/5 shadow-3xl bg-black/40 backdrop-blur-sm">
@@ -138,6 +148,14 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
 
       // Initialize selection logic
       (window as any).initCardSelection?.(taskId, imageUrl);
+
+      params.store.update((s) => ({
+        ...s,
+        streamMessages: [
+          ...s.streamMessages,
+          { id: randomId('msg'), createdAt: Date.now(), role: 'ai', kind: 'generate', taskId, gridImageUrl: imageUrl } satisfies StreamMessage,
+        ].slice(-200),
+      }));
 
       const stateAfter = params.store.get();
       // ... history update remains same
