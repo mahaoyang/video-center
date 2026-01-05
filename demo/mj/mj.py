@@ -21,6 +21,19 @@ def getimg(uid):
         "Content-type": "multipart/form-data",
     }
 
+    # NOTE (yunwu.ai /mj/task/{taskId}/fetch):
+    # - HTTP 200
+    # - Content-Type: application/json
+    # - Body example (fields vary by phase):
+    #   {
+    #     "id":"1767653499730598",
+    #     "description":"选图操作成功",
+    #     "status":"",              # may be "" during processing
+    #     "progress":"0%",          # string percent
+    #     "imageUrl":"",            # empty until ready
+    #     "failReason":""
+    #   }
+    # - When ready: status="SUCCESS", progress="100%", imageUrl="<png url>"
     conn.request("GET", "/mj/task/{uid}/fetch".format(uid=uid), body=None, headers=headers)
     res = conn.getresponse()
     raw_body = res.read().decode("utf-8")
@@ -71,6 +84,39 @@ def gen_img():
         "Content-Type": "application/json"
     }
     conn.request("POST", "/mj/submit/imagine", payload, headers)
+    res = conn.getresponse()
+    data = res.read()
+    print(data.decode("utf-8"))
+
+
+def upscale_img(task_id: str, index: int = 1):
+    conn = http.client.HTTPSConnection("yunwu.ai")
+    # NOTE (yunwu.ai /mj/submit/action) for Upscale (U1..U4):
+    # - HTTP 200
+    # - Content-Type: text/plain; charset=utf-8  (body is still JSON)
+    # - Request payload example:
+    #   {
+    #     "chooseSameChannel": true,
+    #     "customId": "MJ::JOB::upsample::{index}::{taskId}",
+    #     "taskId": "{taskId}",
+    #     "notifyHook": "",
+    #     "state": ""
+    #   }
+    # - Body example:
+    #   {"code":1,"description":"选图操作成功","properties":null,"result":"1767653499730598"}
+    # - `result` is the NEW taskId; then query progress via GET /mj/task/{taskId}/fetch
+    payload = json.dumps({
+        "chooseSameChannel": True,
+        "customId": f"MJ::JOB::upsample::{index}::{task_id}",
+        "taskId": task_id,
+        "notifyHook": "",
+        "state": "",
+    })
+    headers = {
+        "Authorization": f"Bearer {get_token()}",
+        "Content-Type": "application/json"
+    }
+    conn.request("POST", "/mj/submit/action", payload, headers)
     res = conn.getresponse()
     data = res.read()
     print(data.decode("utf-8"))
