@@ -1,3 +1,5 @@
+import { normalizeMjPromptForGeneration } from './mj-normalize';
+
 function isHttpUrl(value: string | undefined): value is string {
   if (!value) return false;
   return value.startsWith('http://') || value.startsWith('https://');
@@ -24,5 +26,5 @@ export function buildMjPrompt(params: {
   const extra = (params.extraArgs || []).map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean);
   if (extra.length) parts.push(...extra);
 
-  return parts.join(' ').replace(/\s+/g, ' ').trim();
+  return normalizeMjPromptForGeneration(parts.join(' ').replace(/\s+/g, ' ').trim());
 }

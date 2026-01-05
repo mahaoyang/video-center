@@ -8,6 +8,7 @@ import { pollTaskUntilFinalPrompt } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { urlToBase64 } from '../atoms/file';
 import { randomId } from '../atoms/id';
+import { normalizeMjPromptForGeminiDescribe } from '../atoms/mj-normalize';
 
 function getActiveImage(state: WorkflowState) {
   const id = state.activeImageId;
@@ -117,7 +118,7 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
         } else if (engine === 'gemini') {
           const imageUrl = publicUrl || (base64 ? `data:image/png;base64,${base64}` : '');
           const data = await params.api.geminiDescribe({ imageUrl });
-          promptText = data.result?.prompt || '';
+          promptText = normalizeMjPromptForGeminiDescribe(data.result?.prompt || '');
         } else if (engine.startsWith('vision:')) {
           const imageUrl = publicUrl || (base64 ? `data:image/png;base64,${base64}` : '');
           const data = await params.api.visionDescribe({
@@ -159,6 +160,14 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
   const trigger = byId('deconstructTrigger');
   if (trigger) {
     trigger.onclick = () => deconstructAssets();
+  }
+  const quickBtn = document.getElementById('deconstructBtn') as HTMLButtonElement | null;
+  if (quickBtn) {
+    quickBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void deconstructAssets();
+    });
   }
 
   return { deconstructAssets };

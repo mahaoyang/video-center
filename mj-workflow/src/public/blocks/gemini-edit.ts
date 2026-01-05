@@ -11,14 +11,24 @@ function bestEditSourceUrl(r: ReferenceImage | undefined): string | undefined {
   return r?.cdnUrl || r?.url || r?.localUrl || r?.dataUrl;
 }
 
+function extFromDataUrl(dataUrl: string): string {
+  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/);
+  const mime = (m?.[1] || '').toLowerCase();
+  if (mime === 'image/jpeg') return 'jpg';
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'image/gif') return 'gif';
+  return 'png';
+}
+
 export function createGeminiEditBlock(params: { api: ApiClient; store: Store<WorkflowState> }) {
   const toggleBtn = byId<HTMLButtonElement>('pEditBtn');
   const panel = byId<HTMLElement>('pEditPanel');
   const closeBtn = byId<HTMLButtonElement>('pEditClose');
   const applyBtn = byId<HTMLButtonElement>('pEditApply');
-  const prompt = byId<HTMLTextAreaElement>('pEditPrompt');
   const thumb = byId<HTMLImageElement>('pEditThumb');
   const meta = byId<HTMLElement>('pEditMeta');
+  const mainPrompt = byId<HTMLTextAreaElement>('promptInput');
 
   function open() {
     panel.classList.remove('hidden');
@@ -39,7 +49,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     if (src) {
       thumb.src = src;
       thumb.referrerPolicy = 'no-referrer';
-      meta.textContent = `目标：${ref?.name || ref?.id || 'PAD'}`;
+      meta.textContent = `目标：${ref?.name || ref?.id || 'PAD'}（使用主输入框文字）`;
       applyBtn.disabled = false;
       toggleBtn.disabled = false;
     } else {
@@ -55,7 +65,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     const state = params.store.get();
     const ref = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
     const imageUrl = bestEditSourceUrl(ref);
-    const editPrompt = prompt.value.trim();
+    const editPrompt = mainPrompt.value.trim();
     if (!imageUrl) {
       showError('请先选择一张 PAD 图（垫图）');
       return;
@@ -74,7 +84,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       const dataUrl = res?.result?.imageDataUrl;
       if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) throw new Error('P 图失败：未返回图片');
 
-      const file = dataUrlToFile(dataUrl, `gemini-edit-${Date.now()}.png`);
+      const file = dataUrlToFile(dataUrl, `gemini-edit-${Date.now()}.${extFromDataUrl(dataUrl)}`);
       const originKey = `gemini-edit:sha256:${await sha256HexFromBlob(file)}`;
       const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
       if (existing) {

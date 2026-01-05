@@ -273,6 +273,18 @@
           <textarea id="promptInput"
             class="flex-1 bg-transparent border-none focus:ring-0 p-4 text-sm placeholder:opacity-20 resize-none min-h-[56px] max-h-48 leading-relaxed font-medium"
             placeholder="Command the Neural Engine..."></textarea>
+          <div class="relative group">
+            <button id="deconstructBtn" type="button"
+              class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 hover:bg-white/10 transition-all">
+              <i class="fas fa-fingerprint text-xs"></i>
+            </button>
+            <div
+              class="pointer-events-none absolute right-0 -top-2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity">
+              <div class="px-3 py-2 rounded-2xl bg-black/70 border border-white/10 text-[9px] font-black uppercase tracking-[0.25em] text-white/70 whitespace-nowrap">
+                Deconstruct (Gemini 反推提示词)
+              </div>
+            </div>
+          </div>
           <button id="pEditBtn" type="button"
             class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 hover:bg-white/10 transition-all">
             <i class="fas fa-wand-magic-sparkles text-xs"></i>
@@ -293,7 +305,7 @@
                 </div>
                 <div class="flex flex-col">
                   <span class="text-[9px] font-black uppercase tracking-[0.3em] opacity-60">Gemini P‑Edit</span>
-                  <span id="pEditMeta" class="text-[9px] font-mono opacity-40">请选择 PAD 图</span>
+                  <span id="pEditMeta" class="text-[9px] font-mono opacity-40">使用主输入框文字作为 P 图指令</span>
                 </div>
               </div>
               <button id="pEditClose" type="button"
@@ -306,9 +318,9 @@
               <div class="relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 bg-black/30 flex-shrink-0">
                 <img id="pEditThumb" class="w-full h-full object-cover" referrerpolicy="no-referrer" />
               </div>
-              <textarea id="pEditPrompt"
-                class="flex-1 bg-transparent border border-white/10 rounded-2xl p-4 text-[11px] font-medium leading-relaxed focus:border-studio-accent/50 transition-all resize-none min-h-[64px]"
-                placeholder="输入 P 图指令：例如“把背景改成日落海边，增加电影感光晕，保持主体不变”"></textarea>
+              <div class="flex-1 text-[10px] font-mono opacity-40 leading-relaxed pt-2">
+                在主输入框里写 P 图指令（例如“把背景改成日落海边，增加电影感光晕，保持主体不变”），然后点 Apply。
+              </div>
             </div>
 
             <div class="mt-4 flex justify-end">
@@ -323,7 +335,7 @@
         <div class="flex items-center gap-8 px-6 py-2.5 border-t border-white/[0.03] mt-1 text-white">
           <!-- Aspect Ratio Console -->
           <div class="flex items-center gap-3">
-            <span id="mjArCurrent" class="text-[9px] font-mono opacity-20 mr-2 tracking-widest">--ar 1:1</span>
+            <span id="mjArCurrent" class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[9px] font-mono opacity-50 mr-2 tracking-widest">--ar 1:1</span>
             <div class="flex bg-white/5 rounded-lg overflow-hidden border border-white/5">
               <button data-ar="1:1"
                 class="mj-ar-btn px-3 py-1.5 hover:bg-studio-accent hover:text-studio-bg transition-all text-[8px] font-black border-r border-white/5">1:1</button>
@@ -586,25 +598,6 @@
     window.scrollToHistory = () => toggleVault(true);
     window.toggleMatrix = toggleMatrix;
     window.togglePlanner = togglePlanner;
-
-    // Aspect Ratio Logic
-    document.querySelectorAll('.mj-ar-btn').forEach(btn => {
-      btn.onclick = () => {
-        const ar = btn.getAttribute('data-ar');
-        const input = document.getElementById('promptInput');
-        const currentLabel = document.getElementById('mjArCurrent');
-        if (!input || !ar) return;
-
-        // Update visual label
-        if (currentLabel) currentLabel.textContent = `--ar ${ar}`;
-
-        // Clean existing --ar from prompt
-        let val = input.value.replace(/--ar\s+\d+:\d+/g, '').trim();
-        input.value = `${val} --ar ${ar}`;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.focus();
-      };
-    });
   </script>
 </body>
 
