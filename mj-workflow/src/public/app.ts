@@ -13,6 +13,7 @@ import { createMjParamsPanel } from './blocks/mj-params-panel';
 import { createStreamHistory } from './blocks/stream-history';
 import { createStreamActions } from './blocks/stream-actions';
 import { createDescribeEnginePicker } from './blocks/describe-engine-picker';
+import { createGeminiEditBlock } from './blocks/gemini-edit';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   createMjPromptPreview(store);
   createMjParamsPanel(store);
   createDescribeEnginePicker();
+  createGeminiEditBlock({ api, store });
   startPersistence(store);
 
   const describe = createDescribeBlock({ api, store });

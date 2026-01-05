@@ -26,3 +26,14 @@ export async function urlToBase64(url: string): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
+export function dataUrlToFile(dataUrl: string, filename: string): File {
+  const match = String(dataUrl || '').match(/^data:([^;,]+);base64,(.+)$/);
+  if (!match) throw new Error('dataUrl 格式不正确');
+  const mimeType = match[1] || 'image/png';
+  const base64 = match[2] || '';
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], filename, { type: mimeType });
+}
