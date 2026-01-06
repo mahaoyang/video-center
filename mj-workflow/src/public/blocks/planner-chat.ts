@@ -230,10 +230,15 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       const shots = extractShotPrompts(out);
       if (shots.length > 1) {
         const now = Date.now();
-        const split = shots.map((t, i) => ({ id: randomId('msg'), createdAt: now + i, role: 'ai' as const, text: t }));
+        const first = shots[0] || out;
+        const rest = shots.slice(1);
+        const split = rest.map((t, i) => ({ id: randomId('msg'), createdAt: now + i + 1, role: 'ai' as const, text: t }));
         params.store.update((s) => ({
           ...s,
-          plannerMessages: [...s.plannerMessages.filter((m) => m.id !== aiId), ...split].slice(-200),
+          plannerMessages: [
+            ...s.plannerMessages.map((m) => (m.id === aiId ? { ...m, text: first } : m)),
+            ...split,
+          ].slice(-200),
         }));
       } else {
         params.store.update((s) => ({
