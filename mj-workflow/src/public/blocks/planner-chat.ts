@@ -22,19 +22,54 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
   const send = byId<HTMLButtonElement>('plannerSend');
   const clear = byId<HTMLButtonElement>('plannerClear');
 
+  let usedSeq = 0;
+  const usedOrder = new Map<string, number>();
+
+  function normalizeKey(prompt: string): string {
+    return String(prompt || '').trim().replace(/\s+/g, ' ');
+  }
+
+  function getUsedIndex(prompt: string): number | undefined {
+    const key = normalizeKey(prompt);
+    return usedOrder.get(key);
+  }
+
+  function markUsed(prompt: string): number {
+    const key = normalizeKey(prompt);
+    const existing = usedOrder.get(key);
+    if (existing) return existing;
+    usedSeq += 1;
+    usedOrder.set(key, usedSeq);
+    return usedSeq;
+  }
+
+  function applyUsedStyle(btn: HTMLButtonElement, usedIndex: number | undefined) {
+    const used = typeof usedIndex === 'number' && Number.isFinite(usedIndex);
+    btn.className =
+      (used
+        ? 'px-4 py-2 rounded-full bg-studio-accent text-studio-bg border border-studio-accent/60 hover:opacity-95 transition-all text-[9px] font-black tracking-[0.1em] flex items-center gap-2'
+        : 'px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black tracking-[0.1em] flex items-center gap-2');
+    btn.dataset.usedIndex = used ? String(usedIndex) : '';
+  }
+
   function appendUseButton(container: HTMLElement, prompt: string) {
     const bar = document.createElement('div');
     bar.className = 'mt-4 flex items-center gap-2';
     const b = document.createElement('button');
     b.type = 'button';
-    b.className =
-      'px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black tracking-[0.1em] flex items-center gap-2';
-    b.innerHTML = `<i class="fas fa-plus text-[9px] opacity-60"></i><span>Use</span>`;
+    const usedIndex = getUsedIndex(prompt);
+    applyUsedStyle(b, usedIndex);
+    b.innerHTML = usedIndex
+      ? `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${usedIndex}</span>`
+      : `<i class="fas fa-plus text-[9px] opacity-60"></i><span>Use</span>`;
     b.title = '填入主提示词输入框';
     b.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       setPromptInput(prompt);
+      const n = markUsed(prompt);
+      applyUsedStyle(b, n);
+      b.innerHTML = `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${n}</span>`;
     });
     bar.appendChild(b);
     container.appendChild(bar);
@@ -71,24 +106,33 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
             const p = prompts[i]!;
             const b = document.createElement('button');
             b.type = 'button';
-            b.className =
-              'px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black tracking-[0.1em] flex items-center gap-2';
+            const usedIndex = getUsedIndex(p);
+            applyUsedStyle(b, usedIndex);
             const tag = document.createElement('span');
             tag.className = 'text-[8px] font-mono opacity-50';
             tag.textContent = `S${i + 1}`;
             const plus = document.createElement('i');
-            plus.className = 'fas fa-plus text-[9px] opacity-60';
+            plus.className = usedIndex ? 'fas fa-check text-[9px]' : 'fas fa-plus text-[9px] opacity-60';
             const preview = document.createElement('span');
             preview.className = 'max-w-[240px] truncate';
             preview.textContent = p;
+            const usedBadge = document.createElement('span');
+            usedBadge.className = usedIndex ? 'text-[8px] font-mono opacity-70' : 'hidden';
+            if (usedIndex) usedBadge.textContent = `#${usedIndex}`;
             b.appendChild(tag);
             b.appendChild(plus);
             b.appendChild(preview);
+            b.appendChild(usedBadge);
             b.title = p;
             b.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
               setPromptInput(p);
+              const n = markUsed(p);
+              applyUsedStyle(b, n);
+              plus.className = 'fas fa-check text-[9px]';
+              usedBadge.className = 'text-[8px] font-mono opacity-70';
+              usedBadge.textContent = `#${n}`;
             });
             bar.appendChild(b);
           }
