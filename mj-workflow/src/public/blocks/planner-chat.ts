@@ -64,61 +64,58 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     textarea.style.height = `${Math.min(220, textarea.scrollHeight)}px`;
   }
 
+  function applyUsedIconStyle(btn: HTMLButtonElement, usedIndex: number | undefined) {
+    const used = typeof usedIndex === 'number' && Number.isFinite(usedIndex);
+    btn.className =
+      (used
+        ? 'relative w-10 h-10 rounded-2xl bg-studio-accent text-studio-bg border border-studio-accent/60 hover:opacity-95 transition-all flex items-center justify-center'
+        : 'relative w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all flex items-center justify-center');
+    btn.dataset.usedIndex = used ? String(usedIndex) : '';
+  }
+
+  function iconUsedBadgeHtml(usedIndex: number | undefined) {
+    if (!usedIndex) return '';
+    return `<span class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black/70 border border-white/10 text-[9px] font-mono text-white/80 flex items-center justify-center">${usedIndex}</span>`;
+  }
+
   function renderEditableShot(params2: { itemKey: string; label?: string; initial: string }): HTMLElement {
     const wrap = document.createElement('div');
-    wrap.className = 'mt-4 rounded-2xl border border-white/10 bg-black/20 p-4';
-
-    const top = document.createElement('div');
-    top.className = 'flex items-center justify-between gap-3 mb-3';
-
-    const left = document.createElement('div');
-    left.className = 'flex items-center gap-2 min-w-0';
-    if (params2.label) {
-      const tag = document.createElement('span');
-      tag.className = 'px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[8px] font-mono opacity-60 flex-shrink-0';
-      tag.textContent = params2.label;
-      left.appendChild(tag);
-    }
-    const hint = document.createElement('span');
-    hint.className = 'text-[9px] font-black uppercase tracking-[0.25em] opacity-30 truncate';
-    hint.textContent = 'Shot Prompt';
-    left.appendChild(hint);
-    top.appendChild(left);
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    const usedIndex = getUsedIndexByItem(params2.itemKey);
-    applyUsedStyle(btn, usedIndex);
-    btn.innerHTML = usedIndex
-      ? `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${usedIndex}</span>`
-      : `<i class="fas fa-plus text-[9px] opacity-60"></i><span>Use</span>`;
-    btn.title = '保存该分镜并填入主提示词输入框';
-
-    const actions = document.createElement('div');
-    actions.className = 'flex items-center gap-2 flex-shrink-0';
-
-    const resetBtn = document.createElement('button');
-    resetBtn.type = 'button';
-    resetBtn.className =
-      'w-9 h-9 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all flex items-center justify-center';
-    resetBtn.innerHTML = '<i class="fas fa-arrows-rotate text-[10px]"></i>';
-    resetBtn.title = '重置为原始提示词';
-
-    actions.appendChild(resetBtn);
-    actions.appendChild(btn);
-    top.appendChild(actions);
-    wrap.appendChild(top);
+    wrap.className = 'mt-4 relative';
 
     const textarea = document.createElement('textarea');
     textarea.className =
-      'w-full bg-transparent border border-white/10 rounded-2xl p-4 text-[11px] font-medium leading-relaxed focus:border-studio-accent/50 transition-all resize-none min-h-[64px]';
+      'w-full bg-transparent border border-white/10 rounded-2xl p-4 pr-28 text-[11px] font-medium leading-relaxed focus:border-studio-accent/50 transition-all resize-none min-h-[64px]';
     textarea.value = getEditedText(params2.itemKey, params2.initial);
+    textarea.placeholder = params2.label ? `分镜 ${params2.label}` : '分镜提示词';
     autosizeTextarea(textarea);
     textarea.addEventListener('input', () => {
       setEditedText(params2.itemKey, textarea.value);
       autosizeTextarea(textarea);
     });
     wrap.appendChild(textarea);
+
+    const actions = document.createElement('div');
+    actions.className = 'absolute top-3 right-3 flex items-center gap-2';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className =
+      'w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all flex items-center justify-center';
+    resetBtn.innerHTML = '<i class="fas fa-arrows-rotate text-[11px]"></i>';
+    resetBtn.title = '重置为原始提示词';
+
+    const useBtn = document.createElement('button');
+    useBtn.type = 'button';
+    const usedIndex = getUsedIndexByItem(params2.itemKey);
+    applyUsedIconStyle(useBtn, usedIndex);
+    useBtn.innerHTML = usedIndex
+      ? `<i class="fas fa-check text-[12px]"></i>${iconUsedBadgeHtml(usedIndex)}`
+      : `<i class="fas fa-plus text-[12px] opacity-80"></i>`;
+    useBtn.title = '保存并填入主输入框（自动收起）';
+
+    actions.appendChild(resetBtn);
+    actions.appendChild(useBtn);
+    wrap.appendChild(actions);
 
     resetBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -128,15 +125,15 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       autosizeTextarea(textarea);
     });
 
-    btn.addEventListener('click', (e) => {
+    useBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       const text = normalizePrompt(textarea.value);
       if (!text) return;
       setEditedText(params2.itemKey, text);
       const n = markUsedByItem(params2.itemKey);
-      applyUsedStyle(btn, n);
-      btn.innerHTML = `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${n}</span>`;
+      applyUsedIconStyle(useBtn, n);
+      useBtn.innerHTML = `<i class="fas fa-check text-[12px]"></i>${iconUsedBadgeHtml(n)}`;
       setPromptInput(text);
       requestAnimationFrame(() => (window as any).togglePlanner?.(false));
     });
@@ -157,11 +154,6 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
           : 'max-w-[85%] rounded-[1.8rem] border border-white/10 bg-studio-panel/60 px-5 py-4') +
         ' shadow-xl';
 
-      const textBlock = document.createElement('div');
-      textBlock.className = 'text-[11px] leading-relaxed whitespace-pre-wrap break-words text-white/80';
-      textBlock.textContent = m.text;
-      bubble.appendChild(textBlock);
-
       if (m.role === 'ai') {
         const prompts = extractShotPrompts(m.text);
         const raw = m.text.trim();
@@ -176,7 +168,17 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
             const key = `${m.id}:shot:${i}`;
             bubble.appendChild(renderEditableShot({ itemKey: key, label: `S${i + 1}`, initial: p }));
           }
+        } else {
+          const textBlock = document.createElement('div');
+          textBlock.className = 'text-[11px] leading-relaxed whitespace-pre-wrap break-words text-white/80';
+          textBlock.textContent = m.text;
+          bubble.appendChild(textBlock);
         }
+      } else {
+        const textBlock = document.createElement('div');
+        textBlock.className = 'text-[11px] leading-relaxed whitespace-pre-wrap break-words text-white/80';
+        textBlock.textContent = m.text;
+        bubble.appendChild(textBlock);
       }
 
       row.appendChild(bubble);
