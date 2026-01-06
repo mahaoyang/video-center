@@ -5,6 +5,7 @@ import { byId } from '../atoms/ui';
 import { setPromptInput } from '../atoms/prompt-input';
 import { extractPlannerShots, extractSunoSongPrompts } from '../atoms/prompt-extract';
 import { setPlannerOpen } from '../atoms/overlays';
+import { beautifyPromptBodyZh } from '../atoms/mj-prompt-ai';
 import type { Store } from '../state/store';
 import type { PlannerMessage, WorkflowState } from '../state/workflow';
 
@@ -17,6 +18,9 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
   let usedSeq = 0;
   const usedOrderByItem = new Map<string, number>();
   const editByItem = new Map<string, string>();
+  const shotInitialByItem = new Map<string, string>();
+  const shotOrderByMessage = new Map<string, string[]>();
+  const shotEnteringByItem = new Set<string>();
 
   function normalizePrompt(prompt: string): string {
     return String(prompt || '').trim().replace(/\s+/g, ' ');
@@ -24,6 +28,10 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
   function normalizeMultiline(text: string): string {
     return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  }
+
+  function rerender() {
+    render(params.store.get().plannerMessages);
   }
 
   function autosizeComposer(textarea: HTMLTextAreaElement) {
@@ -79,6 +87,80 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     editByItem.set(itemKey, value);
   }
 
+  function ensureShotsForMessage(messageId: string, extracted: string[]): string[] {
+    const existing = shotOrderByMessage.get(messageId);
+    if (existing && Array.isArray(existing)) return existing;
+
+    const keys: string[] = [];
+    for (let i = 0; i < extracted.length; i++) {
+      const key = `${messageId}:shot:${i}`;
+      keys.push(key);
+      if (!shotInitialByItem.has(key)) shotInitialByItem.set(key, extracted[i] || '');
+    }
+    shotOrderByMessage.set(messageId, keys);
+    return keys;
+  }
+
+  function getShotText(itemKey: string): string {
+    const initial = shotInitialByItem.get(itemKey) || '';
+    return normalizePrompt(getEditedText(itemKey, initial));
+  }
+
+  function getShotContext(messageId: string, itemKey: string): { prev: string; next: string } {
+    const order = shotOrderByMessage.get(messageId) || [];
+    const idx = order.indexOf(itemKey);
+    const prevKey = idx > 0 ? order[idx - 1] : undefined;
+    const nextKey = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : undefined;
+    const prev = prevKey ? getShotText(prevKey) : '';
+    const next = nextKey ? getShotText(nextKey) : '';
+    return { prev, next };
+  }
+
+  function updateMessageShotsText(messageId: string) {
+    const current = params.store.get().plannerMessages.find((m) => m.id === messageId);
+    if (!current) return;
+
+    const order = shotOrderByMessage.get(messageId) || [];
+    const shots = order.map((k) => getShotText(k)).filter(Boolean);
+    const suno = extractSunoSongPrompts(current.text);
+
+    const shotsBlock = ['SHOTS:', ...shots.map((t, i) => `${i + 1}. ${t}`)].join('\n');
+    const nextText = suno
+      ? `${shotsBlock}\n\nLYRICS_PROMPT:\n${suno.lyricsPrompt}\n\nSTYLE_PROMPT:\n${suno.stylePrompt}`.trim()
+      : shotsBlock.trim();
+
+    params.store.update((s) => ({
+      ...s,
+      plannerMessages: s.plannerMessages.map((m) => (m.id === messageId ? { ...m, text: nextText } : m)),
+    }));
+  }
+
+  function insertShot(messageId: string, index: number) {
+    const order = [...(shotOrderByMessage.get(messageId) || [])];
+    const id = randomId('shot');
+    const key = `${messageId}:shot:${id}`;
+    shotInitialByItem.set(key, '');
+    editByItem.set(key, '');
+    shotEnteringByItem.add(key);
+
+    const at = Math.min(Math.max(0, index), order.length);
+    order.splice(at, 0, key);
+    shotOrderByMessage.set(messageId, order);
+    rerender();
+  }
+
+  function deleteShot(messageId: string, itemKey: string) {
+    const order = [...(shotOrderByMessage.get(messageId) || [])];
+    const idx = order.indexOf(itemKey);
+    if (idx === -1) return;
+    order.splice(idx, 1);
+    shotOrderByMessage.set(messageId, order);
+    usedOrderByItem.delete(itemKey);
+    editByItem.delete(itemKey);
+    rerender();
+    updateMessageShotsText(messageId);
+  }
+
   function applyUsedStyle(btn: HTMLButtonElement, usedIndex: number | undefined) {
     const used = typeof usedIndex === 'number' && Number.isFinite(usedIndex);
     btn.className =
@@ -116,8 +198,23 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     normalize: (text: string) => string;
     onUse: (text: string) => void | Promise<void>;
     useTitle: string;
+    enableBeautify?: boolean;
+    getBeautifyHint?: () => string;
+    enableSave?: boolean;
+    saveTitle?: string;
+    onSave?: (text: string) => void | Promise<void>;
+    enableDelete?: boolean;
+    deleteTitle?: string;
+    onDelete?: () => void | Promise<void>;
+    animateIn?: boolean;
   }): DocumentFragment {
     const frag = document.createDocumentFragment();
+
+    const wrapper = document.createElement('div');
+    wrapper.className =
+      'relative transition-all duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0';
+    wrapper.dataset.plannerItemKey = params2.itemKey;
+    frag.appendChild(wrapper);
 
     const bar = document.createElement('div');
     bar.className = 'mt-6 mb-3 flex items-center justify-between gap-3';
@@ -139,12 +236,36 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     const actions = document.createElement('div');
     actions.className = 'flex items-center gap-2 flex-shrink-0';
 
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className =
+      'w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-red-300 hover:border-red-500/30 transition-all flex items-center justify-center';
+    deleteBtn.innerHTML = '<i class="fas fa-minus text-[11px]"></i>';
+    deleteBtn.title = params2.deleteTitle || '删除弃用';
+    deleteBtn.style.display = params2.enableDelete ? '' : 'none';
+
+    const beautifyBtn = document.createElement('button');
+    beautifyBtn.type = 'button';
+    beautifyBtn.className =
+      'w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-studio-accent hover:border-studio-accent/40 transition-all flex items-center justify-center';
+    beautifyBtn.innerHTML = '<i class="fas fa-pen-nib text-[11px]"></i>';
+    beautifyBtn.title = '提示词美化（Gemini）';
+    beautifyBtn.style.display = params2.enableBeautify ? '' : 'none';
+
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
     resetBtn.className =
       'w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all flex items-center justify-center';
     resetBtn.innerHTML = '<i class="fas fa-arrows-rotate text-[11px]"></i>';
     resetBtn.title = '重置为原始文本';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className =
+      'w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all flex items-center justify-center';
+    saveBtn.innerHTML = '<i class="fas fa-check text-[12px]"></i>';
+    saveBtn.title = params2.saveTitle || '保存';
+    saveBtn.style.display = params2.enableSave ? '' : 'none';
 
     const useBtn = document.createElement('button');
     useBtn.type = 'button';
@@ -155,10 +276,13 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       : `<i class="fas fa-copy text-[12px] opacity-80"></i>`;
     useBtn.title = params2.useTitle;
 
+    actions.appendChild(beautifyBtn);
     actions.appendChild(resetBtn);
+    actions.appendChild(saveBtn);
     actions.appendChild(useBtn);
+    if (params2.enableDelete) actions.appendChild(deleteBtn);
     bar.appendChild(actions);
-    frag.appendChild(bar);
+    wrapper.appendChild(bar);
 
     const textarea = document.createElement('textarea');
     textarea.className =
@@ -170,7 +294,14 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       setEditedText(params2.itemKey, textarea.value);
       autosizeTextarea(textarea);
     });
-    frag.appendChild(textarea);
+    wrapper.appendChild(textarea);
+
+    if (params2.animateIn) {
+      wrapper.classList.add('opacity-0', 'translate-y-2', 'scale-95');
+      requestAnimationFrame(() => {
+        wrapper.classList.remove('opacity-0', 'translate-y-2', 'scale-95');
+      });
+    }
 
     resetBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -178,6 +309,81 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       textarea.value = params2.initial;
       setEditedText(params2.itemKey, params2.initial);
       autosizeTextarea(textarea);
+    });
+
+    saveBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = params2.normalize(textarea.value);
+      setEditedText(params2.itemKey, text);
+      textarea.value = text;
+      autosizeTextarea(textarea);
+      void params2.onSave?.(text);
+    });
+
+    beautifyBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const current = params2.normalize(textarea.value);
+      if (!current) {
+        showError('请输入提示词');
+        return;
+      }
+
+      const origHtml = beautifyBtn.innerHTML;
+      beautifyBtn.disabled = true;
+      resetBtn.disabled = true;
+      saveBtn.disabled = true;
+      useBtn.disabled = true;
+      deleteBtn.disabled = true;
+      beautifyBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-[11px]"></i>';
+      try {
+        const hint = params2.getBeautifyHint?.() || '';
+        const next = await beautifyPromptBodyZh({ api: params.api, prompt: current, hint });
+        const cleaned = params2.normalize(next);
+        if (cleaned) {
+          textarea.value = cleaned;
+          setEditedText(params2.itemKey, cleaned);
+          autosizeTextarea(textarea);
+        }
+      } finally {
+        beautifyBtn.disabled = false;
+        resetBtn.disabled = false;
+        saveBtn.disabled = false;
+        useBtn.disabled = false;
+        deleteBtn.disabled = false;
+        beautifyBtn.innerHTML = origHtml;
+      }
+    });
+
+    deleteBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const doDelete = () => void params2.onDelete?.();
+      if (!params2.enableDelete) return doDelete();
+
+      // Animate-out (collapse + fade) before removing from state.
+      deleteBtn.disabled = true;
+      beautifyBtn.disabled = true;
+      resetBtn.disabled = true;
+      saveBtn.disabled = true;
+      useBtn.disabled = true;
+
+      const h = Math.max(0, wrapper.getBoundingClientRect().height);
+      wrapper.style.overflow = 'hidden';
+      wrapper.style.maxHeight = `${h}px`;
+      wrapper.style.opacity = '1';
+      wrapper.style.transform = 'translateY(0)';
+      wrapper.style.transition =
+        'max-height 260ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease, transform 260ms cubic-bezier(0.16, 1, 0.3, 1)';
+
+      requestAnimationFrame(() => {
+        wrapper.style.maxHeight = '0px';
+        wrapper.style.opacity = '0';
+        wrapper.style.transform = 'translateY(-8px)';
+      });
+
+      setTimeout(() => doDelete(), 310);
     });
 
     useBtn.addEventListener('click', (e) => {
@@ -195,7 +401,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     return frag;
   }
 
-  function renderEditableShot(params2: { itemKey: string; label?: string; initial: string }): DocumentFragment {
+  function renderEditableShot(params2: { messageId: string; itemKey: string; label?: string; initial: string }): DocumentFragment {
     return renderEditableBlock({
       itemKey: params2.itemKey,
       label: params2.label,
@@ -204,11 +410,52 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       placeholder: params2.label ? `分镜 ${params2.label}` : '分镜提示词',
       normalize: normalizePrompt,
       useTitle: '保存并填入主输入框（自动收起）',
+      enableBeautify: true,
+      getBeautifyHint: () => {
+        const { prev, next } = getShotContext(params2.messageId, params2.itemKey);
+        return [
+          '请在保持与前后分镜叙事连贯的前提下，美化当前分镜提示词（更具体、更具电影感、更适合 MJ）。',
+          `前一分镜：${prev || '（无）'}`,
+          `后一分镜：${next || '（无）'}`,
+        ].join('\n');
+      },
+      enableSave: true,
+      saveTitle: '保存（更新分镜序列）',
+      onSave: async () => {
+        updateMessageShotsText(params2.messageId);
+      },
+      enableDelete: true,
+      deleteTitle: '删除弃用',
+      onDelete: async () => {
+        deleteShot(params2.messageId, params2.itemKey);
+      },
+      animateIn: shotEnteringByItem.has(params2.itemKey),
       onUse: async (text) => {
         setPromptInput(text);
         requestAnimationFrame(() => setPlannerOpen(false));
       },
     });
+  }
+
+  function renderInsertButton(params2: { messageId: string; index: number }): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-center py-2';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className =
+      'w-9 h-9 rounded-2xl bg-white/5 border border-white/10 text-white/50 hover:text-studio-accent hover:border-studio-accent/40 transition-all flex items-center justify-center';
+    btn.innerHTML = '<i class="fas fa-plus text-[11px]"></i>';
+    btn.title = '插入分镜';
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      insertShot(params2.messageId, params2.index);
+    });
+
+    row.appendChild(btn);
+    return row;
   }
 
   function render(messages: PlannerMessage[]) {
@@ -226,11 +473,22 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
       if (m.role === 'ai') {
         const shotPrompts = extractPlannerShots(m.text);
-        if (shotPrompts.length) {
-          for (let i = 0; i < shotPrompts.length; i++) {
-            const p = shotPrompts[i]!;
-            const key = `${m.id}:shot:${i}`;
-            bubble.appendChild(renderEditableShot({ itemKey: key, label: `S${i + 1}`, initial: p }));
+        const hasShotsHeader = /^(?:\s*)(shots|mj_shots|分镜|镜头)\s*[:：]?\s*$/im.test(String(m.text || ''));
+        const shouldShowShots = shotPrompts.length > 0 || shotOrderByMessage.has(m.id) || hasShotsHeader;
+        if (shouldShowShots) {
+          const keys = ensureShotsForMessage(m.id, shotPrompts);
+          if (!keys.length) {
+            bubble.appendChild(renderInsertButton({ messageId: m.id, index: 0 }));
+          } else {
+            for (let i = 0; i < keys.length; i++) {
+              bubble.appendChild(renderInsertButton({ messageId: m.id, index: i }));
+              const key = keys[i]!;
+              const initial = shotInitialByItem.get(key) ?? (i < shotPrompts.length ? (shotPrompts[i] ?? '') : '');
+              if (!shotInitialByItem.has(key)) shotInitialByItem.set(key, initial);
+              bubble.appendChild(renderEditableShot({ messageId: m.id, itemKey: key, label: `S${i + 1}`, initial }));
+              shotEnteringByItem.delete(key);
+            }
+            bubble.appendChild(renderInsertButton({ messageId: m.id, index: keys.length }));
           }
         }
 
@@ -311,27 +569,10 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       if (res?.code !== 0) throw new Error(res?.description || '对话失败');
       const out = String(res?.result?.text || '').trim();
       if (!out) throw new Error('对话失败：空响应');
-
-      const shots = extractPlannerShots(out);
-      const suno = extractSunoSongPrompts(out);
-      if (!suno && shots.length > 1) {
-        const now = Date.now();
-        const first = shots[0] || out;
-        const rest = shots.slice(1);
-        const split = rest.map((t, i) => ({ id: randomId('msg'), createdAt: now + i + 1, role: 'ai' as const, text: t }));
-        params.store.update((s) => ({
-          ...s,
-          plannerMessages: [
-            ...s.plannerMessages.map((m) => (m.id === aiId ? { ...m, text: first } : m)),
-            ...split,
-          ].slice(-200),
-        }));
-      } else {
-        params.store.update((s) => ({
-          ...s,
-          plannerMessages: s.plannerMessages.map((m) => (m.id === aiId ? { ...m, text: out } : m)),
-        }));
-      }
+      params.store.update((s) => ({
+        ...s,
+        plannerMessages: s.plannerMessages.map((m) => (m.id === aiId ? { ...m, text: out } : m)),
+      }));
     } catch (e) {
       console.error('planner chat failed:', e);
       const msg = (e as Error)?.message || '对话失败';

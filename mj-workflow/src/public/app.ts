@@ -15,6 +15,7 @@ import { createStreamActions } from './blocks/stream-actions';
 import { createGeminiEditBlock } from './blocks/gemini-edit';
 import { createPlannerChat } from './blocks/planner-chat';
 import { initOverlays } from './blocks/overlays';
+import { createPromptBeautifyBlock } from './blocks/prompt-beautify';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -51,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   createStreamActions({ api, store });
   createStreamHistory({ store });
   createPlannerChat({ api, store });
+  createPromptBeautifyBlock({ api });
   initOverlays();
 
   const genBtn = document.getElementById('step3Next') as HTMLButtonElement | null;

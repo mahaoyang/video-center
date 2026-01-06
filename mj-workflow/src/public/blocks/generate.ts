@@ -9,6 +9,7 @@ import { buildMjPrompt } from '../atoms/mj-prompt';
 import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { isHttpUrl } from '../atoms/url';
+import { translatePromptBodyToEnglishForMj } from '../atoms/mj-prompt-ai';
 
 export function createGenerateBlock(params: { api: ApiClient; store: Store<WorkflowState>; activateStep: (step: any) => void }) {
   function getLocalKey(ref: { localKey?: string; localUrl?: string }): string | undefined {
@@ -84,8 +85,10 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
         : undefined;
     if (s.mjCrefRefId && !crefUrl) return;
 
+    const translatedPrompt = await translatePromptBodyToEnglishForMj({ api: params.api, prompt });
+
     const finalPrompt = buildMjPrompt({
-      basePrompt: prompt,
+      basePrompt: translatedPrompt,
       padImages: padUrl ? [padUrl] : [],
       srefImageUrl: srefUrl,
       crefImageUrl: crefUrl,

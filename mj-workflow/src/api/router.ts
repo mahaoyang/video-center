@@ -652,6 +652,62 @@ export function createApiRouter(deps: {
       }
     }
 
+    if (pathname === '/api/gemini/translate' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+        const body = await readJson<{ text?: string }>(req);
+        const text = String(body.text || '').trim();
+        if (!text) return jsonError({ status: 400, description: 'text 不能为空' });
+
+        const system = [
+          'You are a translation engine for Midjourney prompt text.',
+          'Translate the given prompt body into natural, concise English.',
+          'Rules:',
+          '- Output ONLY the translated prompt body, nothing else.',
+          '- Do NOT add any Midjourney parameters (e.g. --ar, --v, --style, --sref, --cref).',
+          '- Do NOT add any URLs or image links.',
+          '- If the input is already English, return it unchanged.',
+        ].join('\n');
+
+        const out = await deps.gemini.generateText(system, text);
+        return json({ code: 0, description: '成功', result: { text: out } });
+      } catch (error) {
+        console.error('Gemini translate error:', error);
+        return jsonError({ status: 500, description: 'Gemini 翻译失败', error });
+      }
+    }
+
+    if (pathname === '/api/gemini/beautify' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+        const body = await readJson<{ text?: string; hint?: string }>(req);
+        const text = String(body.text || '').trim();
+        const hint = String(body.hint || '').trim();
+        if (!text) return jsonError({ status: 400, description: 'text 不能为空' });
+
+        const system = [
+          'You are a Midjourney prompt polishing assistant.',
+          'Rewrite the given prompt body in Simplified Chinese (简体中文), making it more vivid, specific, cinematic, and MJ-friendly.',
+          'Rules:',
+          '- Output ONLY ONE line of prompt body text, nothing else.',
+          '- Do NOT add any Midjourney parameters (e.g. --ar, --v, --style, --sref, --cref).',
+          '- Do NOT add any URLs or image links.',
+          '- Keep it concise but information-dense.',
+        ].join('\n');
+
+        const user = hint ? `PROMPT:\n${text}\n\nHINT:\n${hint}` : `PROMPT:\n${text}`;
+        const out = await deps.gemini.generateText(system, user);
+        return json({ code: 0, description: '成功', result: { text: out } });
+      } catch (error) {
+        console.error('Gemini beautify error:', error);
+        return jsonError({ status: 500, description: 'Gemini 美化失败', error });
+      }
+    }
+
     if (pathname === '/api/gemini/edit' && req.method === 'POST') {
       try {
         if (!deps.auth.geminiConfigured) {

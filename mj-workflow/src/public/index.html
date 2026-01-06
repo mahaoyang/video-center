@@ -272,9 +272,15 @@
               Pad <span id="padCount" class="ml-1 text-studio-accent">0</span>
             </button>
           </div>
-          <textarea id="promptInput"
-            class="flex-1 bg-transparent border-none focus:ring-0 p-4 text-sm placeholder:opacity-20 resize-none min-h-[56px] max-h-48 leading-relaxed font-medium"
-            placeholder="Command the Neural Engine..."></textarea>
+          <div class="relative flex-1">
+            <textarea id="promptInput"
+              class="w-full bg-transparent border-none focus:ring-0 p-4 text-sm placeholder:opacity-20 resize-none min-h-[56px] max-h-48 leading-relaxed font-medium"
+              placeholder="Command the Neural Engine..."></textarea>
+            <div id="promptBeautifySpinner" class="hidden absolute right-4 top-4 w-5 h-5 pointer-events-none">
+              <div class="absolute inset-0 border-2 border-studio-accent/25 rounded-full"></div>
+              <div class="absolute inset-0 border-2 border-studio-accent border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          </div>
           <div class="relative group">
             <button id="deconstructBtn" type="button"
               class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 hover:bg-white/10 transition-all">
@@ -296,6 +302,35 @@
               class="pointer-events-none absolute right-0 -top-2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity">
               <div class="px-3 py-2 rounded-2xl bg-black/70 border border-white/10 text-[9px] font-black uppercase tracking-[0.25em] text-white/70 whitespace-nowrap">
                 Gemini P‑Edit（用 PAD 图 + 主输入框文字）
+              </div>
+            </div>
+          </div>
+          <div class="relative group">
+            <button id="promptBeautifyBtn" type="button"
+              class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 hover:bg-white/10 transition-all">
+              <i class="fas fa-pen-nib text-xs"></i>
+            </button>
+            <div id="promptBeautifyPopover"
+              class="hidden absolute right-0 -top-3 -translate-y-full w-[340px] p-3 rounded-[1.6rem] bg-black/80 border border-white/10 backdrop-blur-xl shadow-2xl pointer-events-auto">
+              <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-60 mb-2">提示词美化</div>
+              <input id="promptBeautifyHint" type="text"
+                class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-[12px] font-medium focus:border-studio-accent/50 transition-all"
+                placeholder="输入美化建议 / 方向（可选）" />
+              <div class="mt-3 flex items-center justify-end gap-2">
+                <button id="promptBeautifyCancel" type="button"
+                  class="px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-white/20 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest">
+                  取消
+                </button>
+                <button id="promptBeautifyApply" type="button"
+                  class="px-4 py-2 rounded-xl bg-studio-accent text-studio-bg hover:opacity-95 transition-all text-[9px] font-black uppercase tracking-widest">
+                  美化
+                </button>
+              </div>
+            </div>
+            <div
+              class="pointer-events-none absolute right-0 -top-2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity">
+              <div class="px-3 py-2 rounded-2xl bg-black/70 border border-white/10 text-[9px] font-black uppercase tracking-[0.25em] text-white/70 whitespace-nowrap">
+                提示词美化（Gemini）
               </div>
             </div>
           </div>

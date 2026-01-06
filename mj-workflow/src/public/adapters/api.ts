@@ -6,6 +6,8 @@ export interface ApiClient {
   visionDescribe(params: { imageUrl: string; question?: string; model?: string }): Promise<any>;
   geminiDescribe(params: { imageUrl: string }): Promise<any>;
   geminiChat(params: { messages: Array<{ role: string; content: string }> }): Promise<any>;
+  geminiTranslate(params: { text: string }): Promise<any>;
+  geminiBeautify(params: { text: string; hint?: string }): Promise<any>;
   imagine(params: { prompt: string; base64Array?: string[] }): Promise<any>;
   upscale(params: { taskId: string; index: number }): Promise<any>;
   task(taskId: string): Promise<any>;
@@ -84,6 +86,8 @@ export function createApiClient(apiBase = '/api'): ApiClient {
     visionDescribe: async (params) => await requestJson('POST', `${apiBase}/vision/describe`, params),
     geminiDescribe: async (params) => await requestJson('POST', `${apiBase}/gemini/describe`, params),
     geminiChat: async (params) => await requestJson('POST', `${apiBase}/gemini/chat`, params),
+    geminiTranslate: async (params) => await requestJson('POST', `${apiBase}/gemini/translate`, params),
+    geminiBeautify: async (params) => await requestJson('POST', `${apiBase}/gemini/beautify`, params),
     imagine: async (params) => await requestJson('POST', `${apiBase}/imagine`, params),
     upscale: async (params) => await requestJson('POST', `${apiBase}/upscale`, params),
     task: async (taskId) => await requestJson('GET', `${apiBase}/task/${encodeURIComponent(taskId)}`),

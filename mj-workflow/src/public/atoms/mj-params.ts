@@ -5,7 +5,7 @@ export interface ParsedMjParams {
   map: Record<string, MjParamValue>;
 }
 
-type ParamSpan = {
+export type MjParamSpan = {
   name: string;
   rawName: string;
   start: number;
@@ -17,8 +17,8 @@ function normalizeName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-function scanParamSpans(input: string): ParamSpan[] {
-  const spans: ParamSpan[] = [];
+export function scanMjParamSpans(input: string): MjParamSpan[] {
+  const spans: MjParamSpan[] = [];
   const re = /(?:^|\s)--([a-zA-Z][\w-]*)/g;
   const matches: Array<{ rawName: string; name: string; matchStart: number; tokenEnd: number }> = [];
 
@@ -46,7 +46,7 @@ function scanParamSpans(input: string): ParamSpan[] {
 }
 
 export function parseMjParams(input: string): ParsedMjParams {
-  const spans = scanParamSpans(input);
+  const spans = scanMjParamSpans(input);
   const map: Record<string, MjParamValue> = {};
   for (const s of spans) map[s.name] = s.value;
   return { params: spans.map((s) => ({ name: s.name, value: s.value })), map };
@@ -54,7 +54,7 @@ export function parseMjParams(input: string): ParsedMjParams {
 
 export function removeMjParams(input: string, names: string[]): string {
   const remove = new Set(names.map(normalizeName));
-  const spans = scanParamSpans(input);
+  const spans = scanMjParamSpans(input);
   const kept: string[] = [];
   let cursor = 0;
   for (const s of spans) {
@@ -64,6 +64,31 @@ export function removeMjParams(input: string, names: string[]): string {
   }
   kept.push(input.slice(cursor));
   return kept.join('').replace(/\s+/g, ' ').trim();
+}
+
+export function splitMjPromptParams(input: string): {
+  body: string;
+  paramsText: string;
+  params: Array<{ name: string; value: MjParamValue }>;
+} {
+  const spans = scanMjParamSpans(String(input || ''));
+  if (!spans.length) {
+    return { body: String(input || '').replace(/\s+/g, ' ').trim(), paramsText: '', params: [] };
+  }
+
+  const kept: string[] = [];
+  const paramTexts: string[] = [];
+  let cursor = 0;
+  for (const s of spans) {
+    kept.push(input.slice(cursor, s.start));
+    paramTexts.push(input.slice(s.start, s.end).trim());
+    cursor = s.end;
+  }
+  kept.push(input.slice(cursor));
+
+  const body = kept.join('').replace(/\s+/g, ' ').trim();
+  const paramsText = paramTexts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  return { body, paramsText, params: spans.map((s) => ({ name: s.name, value: s.value })) };
 }
 
 export function upsertMjParam(input: string, name: string, value: MjParamValue, synonyms: string[] = []): string {
@@ -81,4 +106,3 @@ export function setAspectRatio(input: string, ratio: string): string {
 export function clearAspectRatio(input: string): string {
   return removeMjParams(input, ['ar', 'aspect']);
 }
-

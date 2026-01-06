@@ -8,6 +8,7 @@ import sharp from 'sharp';
 export interface GeminiVisionClient {
   imageToPrompt(imageUrl: string): Promise<string>;
   chat(messages: Array<{ role: string; content: string }>): Promise<string>;
+  generateText(system: string, user: string): Promise<string>;
   editImage(imageUrl: string, editPrompt: string): Promise<string | null>;
 }
 
@@ -81,7 +82,14 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
         model: 'gemini-3-flash-preview',
         contents: [{
           parts: [
-            { text: 'Analyze this image and generate a Midjourney-style prompt that could recreate it. Include style, mood, lighting, composition, and technical parameters like --ar, --v, --style. Output ONLY the prompt, nothing else.' },
+            {
+              text: [
+                'Analyze this image and generate a Midjourney-style prompt that could recreate it.',
+                'Output the MAIN prompt text in Chinese (简体中文).',
+                'You MAY include Midjourney parameters like --ar/--v/--style, but do NOT add any image URLs.',
+                'Output ONLY the prompt, nothing else.',
+              ].join(' '),
+            },
             { inlineData: { mimeType, data } }
           ]
         }],
@@ -106,6 +114,11 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
 
       const system = [
         'You are a storyboard and prompt-planning assistant.',
+        '',
+        'Language:',
+        '- The SHOTS prompts MUST be in Simplified Chinese (简体中文) for the main prompt text.',
+        '- You MAY include Midjourney parameters like --ar/--v/--style, but do NOT add any image URLs.',
+        '',
         'You always do BOTH outputs from the same storyboard:',
         '1) Midjourney: multiple shots/scenes (分镜) as Midjourney-ready prompts.',
         '2) Suno: convert the ordered storyboard into ONE song: a lyrics prompt (with metatags) + a style prompt.',
@@ -142,6 +155,24 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
             parts: [{ text: `${system}\n\n${transcript}`.trim() }],
           },
         ],
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
+      });
+
+      return response.text?.trim() || '';
+    },
+
+    async generateText(system: string, user: string): Promise<string> {
+      const sys = String(system || '').trim();
+      const usr = String(user || '').trim();
+      if (!usr) return '';
+
+      const prompt = [sys, sys ? '' : null, usr].filter((x) => typeof x === 'string').join('\n').trim();
+
+      const response = await getAi().models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: prompt }] }],
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         },
