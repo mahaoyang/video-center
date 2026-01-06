@@ -9,6 +9,7 @@ import { sha256HexFromBlob } from '../atoms/blob-hash';
 
 export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   const uploadInput = document.getElementById('imageUpload') as HTMLInputElement | null;
+  const uploadTrigger = document.getElementById('uploadTrigger') as HTMLElement | null;
   const tray = byId('referenceTray');
   const padCount = document.getElementById('padCount') as HTMLElement | null;
 
@@ -65,7 +66,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       del.innerHTML = '<i class="fas fa-times text-[9px]"></i>';
       del.addEventListener('click', (e) => {
         e.stopPropagation();
-        (window as any).removeRef?.(img.id);
+        void removeRef(img.id);
       });
 
       const padOverlay = document.createElement('div');
@@ -107,7 +108,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     });
   }
 
-  (window as any).removeRef = async (id: string) => {
+  async function removeRef(id: string) {
     const ref = store.get().referenceImages.find((r) => r.id === id);
     const refPublicUrls = ref ? [ref.cdnUrl, ref.url].filter(Boolean) as string[] : [];
     store.update((s) => ({
@@ -128,7 +129,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
         // ignore
       }
     }
-  };
+  }
 
   async function handleFile(file: File) {
     const originKey = `file:sha256:${await sha256HexFromBlob(file)}`;
@@ -222,6 +223,12 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       }
     }
     target.value = ''; // Reset input
+  });
+
+  uploadTrigger?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadInput?.click();
   });
 
   // INITIAL RENDER + AUTOMATIC SYNC

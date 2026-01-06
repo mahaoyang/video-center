@@ -481,8 +481,18 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     downloadJson(filename, { version: 1, exportedAt: Date.now(), messages: data });
   }
 
-  (window as any).clearConversation = clearConversation;
-  (window as any).saveConversation = saveConversation;
+  const clearBtn = document.getElementById('clearConversationBtn') as HTMLButtonElement | null;
+  clearBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearConversation();
+  });
+  const saveBtn = document.getElementById('saveConversationBtn') as HTMLButtonElement | null;
+  saveBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    saveConversation();
+  });
 
   reconcile(params.store.get().streamMessages);
   const initialCountEl = document.getElementById('conversationCount');

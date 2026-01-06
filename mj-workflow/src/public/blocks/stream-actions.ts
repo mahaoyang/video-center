@@ -230,10 +230,4 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
     if (d.action === 'select') void selectFromSlice(d.src, d.index);
     if (d.action === 'selectUrl') void selectFromUrl(d.src);
   });
-
-  // Optional: expose for manual debugging
-  (window as any).streamAddPadFromSlice = addPadFromSlice;
-  (window as any).streamUpscaleFromGrid = upscaleFromGrid;
-  (window as any).streamSelectFromSlice = selectFromSlice;
-  (window as any).streamSelectFromUrl = selectFromUrl;
 }

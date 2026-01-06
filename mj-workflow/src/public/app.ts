@@ -14,6 +14,7 @@ import { createStreamHistory } from './blocks/stream-history';
 import { createStreamActions } from './blocks/stream-actions';
 import { createGeminiEditBlock } from './blocks/gemini-edit';
 import { createPlannerChat } from './blocks/planner-chat';
+import { initOverlays } from './blocks/overlays';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -41,27 +42,21 @@ document.addEventListener('DOMContentLoaded', () => {
   createGeminiEditBlock({ api, store });
   startPersistence(store);
 
-  const describe = createDescribeBlock({ api, store });
   const generate = createGenerateBlock({ api, store, activateStep: (s) => { } });
-  const exportBlock = createExportBlock(store);
+  createDescribeBlock({ api, store });
+  createExportBlock(store);
 
   createStreamActions({ api, store });
   createStreamHistory({ store });
   createPlannerChat({ api, store });
+  initOverlays();
 
-  // Global Exports for HTML
-  (window as any).deconstructAssets = describe.deconstructAssets;
-  (window as any).generateImage = () => {
-    // Hide zeroState on first generation command
+  const genBtn = document.getElementById('step3Next') as HTMLButtonElement | null;
+  genBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     const zero = document.getElementById('zeroState');
     if (zero) zero.style.display = 'none';
     generate.generateImage();
-  };
-  (window as any).downloadFinalImage = exportBlock.downloadFinalImage;
-  (window as any).resetWorkflow = () => {
-    if (confirm('Clear current session?')) {
-      exportBlock.resetWorkflow();
-      window.location.reload();
-    }
-  };
+  });
 });

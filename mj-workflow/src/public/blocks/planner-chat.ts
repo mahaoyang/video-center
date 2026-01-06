@@ -4,6 +4,7 @@ import { randomId } from '../atoms/id';
 import { byId } from '../atoms/ui';
 import { setPromptInput } from '../atoms/prompt-input';
 import { extractShotPrompts } from '../atoms/prompt-extract';
+import { setPlannerOpen } from '../atoms/overlays';
 import type { Store } from '../state/store';
 import type { PlannerMessage, WorkflowState } from '../state/workflow';
 
@@ -143,7 +144,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       applyUsedIconStyle(useBtn, n);
       useBtn.innerHTML = `<i class="fas fa-check text-[12px]"></i>${iconUsedBadgeHtml(n)}`;
       setPromptInput(text);
-      requestAnimationFrame(() => (window as any).togglePlanner?.(false));
+      requestAnimationFrame(() => setPlannerOpen(false));
     });
 
     return frag;

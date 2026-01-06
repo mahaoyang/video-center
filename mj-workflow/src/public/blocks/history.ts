@@ -189,8 +189,6 @@ export function createHistoryView(store: Store<WorkflowState>) {
     store.update(s => ({ ...s, history: [] }));
   }
 
-  (window as any).clearHistory = clearHistory;
-
   function onDelete(taskId: string) {
     store.update((s) => ({ ...s, history: s.history.filter((h) => h.taskId !== taskId) }));
   }

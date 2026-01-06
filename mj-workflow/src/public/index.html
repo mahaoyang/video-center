@@ -261,11 +261,11 @@
       <div
         class="glass-panel p-2.5 rounded-[2.5rem] border border-white/5 shadow-3xl bg-studio-panel/80 backdrop-blur-3xl">
         <div class="flex items-end gap-3 p-1">
-          <div onclick="document.getElementById('imageUpload')?.click()"
+          <div id="uploadTrigger"
             class="relative w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-white/5 hover:bg-studio-accent hover:text-studio-bg cursor-pointer transition-all duration-300 group">
             <i class="fas fa-paperclip text-xs group-hover:rotate-12 transition-transform"></i>
             <input type="file" id="imageUpload" class="hidden" multiple accept="image/*" />
-            <button type="button" onclick="event.stopPropagation(); toggleMatrix(true)"
+            <button type="button" id="padMatrixBtn"
               class="absolute -bottom-1 -right-1 px-2 py-1 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest text-white/70 hover:text-studio-accent hover:border-studio-accent/30 transition-all">
               Pad <span id="padCount" class="ml-1 text-studio-accent">0</span>
             </button>
@@ -298,7 +298,7 @@
             </div>
           </div>
           <div class="relative group">
-            <button id="step3Next" onclick="generateImage()"
+            <button id="step3Next" type="button"
               class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-studio-accent text-studio-bg hover:scale-105 active:scale-95 transition-all shadow-[0_0_25px_rgba(197,243,65,0.25)]">
               <i class="fas fa-paper-plane text-xs"></i>
             </button>
@@ -380,26 +380,26 @@
               </select>
             </div>
 
-            <div id="deconstructTrigger" onclick="window.deconstructAssets()"
+            <div id="deconstructTrigger"
               class="flex items-center gap-2 opacity-30 hover:opacity-100 cursor-pointer transition-all group text-white">
               <i class="fas fa-fingerprint text-[10px] group-hover:text-studio-accent"></i>
               <span class="text-[8px] font-black uppercase tracking-[0.2em]">Deconstruct</span>
             </div>
           </div>
 
-          <div onclick="toggleMatrix(true)"
+          <div id="matrixOpenTrigger"
             class="flex items-center gap-2 opacity-30 hover:opacity-100 cursor-pointer transition-all group">
             <i class="fas fa-sliders-h text-[10px] group-hover:text-studio-accent"></i>
             <span class="text-[8px] font-black uppercase tracking-[0.2em]">Matrix</span>
           </div>
 
-          <div onclick="togglePlanner(true)"
+          <div id="plannerOpenTrigger"
             class="flex items-center gap-2 opacity-30 hover:opacity-100 cursor-pointer transition-all group">
             <i class="fas fa-comments text-[10px] group-hover:text-studio-accent"></i>
             <span class="text-[8px] font-black uppercase tracking-[0.2em]">Planner</span>
           </div>
 
-          <div onclick="scrollToHistory()"
+          <div id="vaultOpenTrigger"
             class="flex items-center gap-2 opacity-30 hover:opacity-100 cursor-pointer transition-all ml-auto group">
             <i class="fas fa-folder-open text-[10px] group-hover:text-studio-accent"></i>
             <span class="text-[8px] font-black uppercase tracking-[0.2em]">Vault</span>
@@ -411,7 +411,7 @@
 
   <!-- THE PRODUCTION VAULT (Slide-over Overlay) -->
   <div id="historyOverlay" class="fixed inset-0 z-[200] pointer-events-none group">
-    <div id="historyBackdrop" onclick="toggleVault(false)"
+    <div id="historyBackdrop"
       class="absolute inset-0 bg-black/60 backdrop-blur-md opacity-0 transition-opacity duration-700"></div>
     <div id="historyPanel"
       class="absolute right-0 top-0 bottom-0 w-full max-w-2xl bg-studio-panel border-l border-white/5 translate-x-full transition-transform duration-700 ease-in-out p-12 overflow-y-auto">
@@ -423,15 +423,15 @@
               id="conversationCount">0</span></span>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="window.saveConversation?.()"
+          <button id="saveConversationBtn" type="button"
             class="btn-studio btn-studio-outline !px-4 !py-2 !text-[8px] !rounded-xl hover:text-white">
             Save Chat
           </button>
-          <button onclick="window.clearConversation?.()"
+          <button id="clearConversationBtn" type="button"
             class="btn-studio btn-studio-outline !px-4 !py-2 !text-[8px] !rounded-xl hover:text-white hover:border-red-500/30 hover:text-red-400">
             Clear Chat
           </button>
-          <button onclick="toggleVault(false)"
+          <button id="vaultCloseBtn" type="button"
             class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/5 transition-all">
             <i class="fas fa-times text-xs opacity-30"></i>
           </button>
@@ -446,7 +446,7 @@
 
   <!-- THE MATRIX OVERLAY (Parameters) -->
   <div id="matrixOverlay" class="fixed inset-0 z-[200] pointer-events-none group">
-    <div id="matrixBackdrop" onclick="toggleMatrix(false)"
+    <div id="matrixBackdrop"
       class="absolute inset-0 bg-black/60 backdrop-blur-md opacity-0 transition-opacity duration-700"></div>
     <div id="matrixPanel"
       class="absolute right-0 top-0 bottom-0 w-full max-w-xl bg-studio-panel border-l border-white/5 translate-x-full transition-transform duration-700 ease-in-out p-12 overflow-y-auto">
@@ -455,7 +455,7 @@
           <i class="fas fa-sliders-h text-studio-accent text-xs"></i>
           <span class="text-[12px] font-black uppercase tracking-[0.4em]">Matrix Parameters</span>
         </div>
-        <button onclick="toggleMatrix(false)"
+        <button id="matrixCloseBtn" type="button"
           class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/5 transition-all">
           <i class="fas fa-times text-xs opacity-30"></i>
         </button>
@@ -502,7 +502,7 @@
 
   <!-- THE PLANNER OVERLAY (Pure Chat Mode) -->
   <div id="plannerOverlay" class="fixed inset-0 z-[200] pointer-events-none group">
-    <div id="plannerBackdrop" onclick="togglePlanner(false)"
+    <div id="plannerBackdrop"
       class="absolute inset-0 bg-black/60 backdrop-blur-md opacity-0 transition-opacity duration-700"></div>
     <div id="plannerPanel"
       class="absolute right-0 top-0 bottom-0 w-full max-w-2xl bg-studio-panel border-l border-white/5 translate-x-full transition-transform duration-700 ease-in-out p-10 overflow-hidden flex flex-col">
@@ -516,7 +516,7 @@
             class="btn-studio btn-studio-outline !px-4 !py-2 !text-[8px] !rounded-xl hover:text-white hover:border-red-500/30 hover:text-red-300">
             Clear
           </button>
-          <button onclick="togglePlanner(false)"
+          <button id="plannerCloseBtn" type="button"
             class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/5 transition-all">
             <i class="fas fa-times text-xs opacity-30"></i>
           </button>
@@ -551,70 +551,6 @@
   </div>
 
   <script type="module" src="/assets/app.js"></script>
-
-  <script>
-    function toggleVault(open) {
-      const overlay = document.getElementById('historyOverlay');
-      const panel = document.getElementById('historyPanel');
-      const backdrop = document.getElementById('historyBackdrop');
-      if (!overlay || !panel || !backdrop) return;
-
-      if (open) {
-        overlay.classList.remove('pointer-events-none');
-        panel.classList.remove('translate-x-full');
-        backdrop.classList.add('opacity-100');
-        document.body.style.overflow = 'hidden';
-      } else {
-        overlay.classList.add('pointer-events-none');
-        panel.classList.add('translate-x-full');
-        backdrop.classList.remove('opacity-100');
-        document.body.style.overflow = '';
-      }
-    }
-
-    function toggleMatrix(open) {
-      const overlay = document.getElementById('matrixOverlay');
-      const panel = document.getElementById('matrixPanel');
-      const backdrop = document.getElementById('matrixBackdrop');
-      if (!overlay || !panel || !backdrop) return;
-
-      if (open) {
-        overlay.classList.remove('pointer-events-none');
-        panel.classList.remove('translate-x-full');
-        backdrop.classList.add('opacity-100');
-        document.body.style.overflow = 'hidden';
-      } else {
-        overlay.classList.add('pointer-events-none');
-        panel.classList.add('translate-x-full');
-        backdrop.classList.remove('opacity-100');
-        document.body.style.overflow = '';
-      }
-    }
-
-    function togglePlanner(open) {
-      const overlay = document.getElementById('plannerOverlay');
-      const panel = document.getElementById('plannerPanel');
-      const backdrop = document.getElementById('plannerBackdrop');
-      if (!overlay || !panel || !backdrop) return;
-
-      if (open) {
-        overlay.classList.remove('pointer-events-none');
-        panel.classList.remove('translate-x-full');
-        backdrop.classList.add('opacity-100');
-        document.body.style.overflow = 'hidden';
-      } else {
-        overlay.classList.add('pointer-events-none');
-        panel.classList.add('translate-x-full');
-        backdrop.classList.remove('opacity-100');
-        document.body.style.overflow = '';
-      }
-    }
-
-    // Bridge the button
-    window.scrollToHistory = () => toggleVault(true);
-    window.toggleMatrix = toggleMatrix;
-    window.togglePlanner = togglePlanner;
-  </script>
 </body>
 
 </html>
