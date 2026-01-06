@@ -26,43 +26,38 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
     params.store.update((s) => ({ ...s, prompt }));
     params.activateStep(4);
 
-    // Non-blocking: enqueue messages then run async in background.
-    const userMsg: StreamMessage = {
-      id: randomId('msg'),
-      createdAt: Date.now(),
-      role: 'user',
-      kind: 'generate',
-      text: prompt,
-    };
-    const aiMsgId = randomId('msg');
-    const pendingAi: StreamMessage = {
-      id: aiMsgId,
+    // Non-blocking: create a single "job card" message (prompt + progress + result grid).
+    const s = params.store.get();
+    const extraArgs: string[] = [];
+
+    let padUrl: string | undefined;
+    if (s.mjPadRefId) {
+      const r = s.referenceImages.find((x) => x.id === s.mjPadRefId);
+      const publicUrl = (isHttpUrl(r?.cdnUrl) ? r?.cdnUrl : undefined) || (isHttpUrl(r?.url) ? r?.url : undefined);
+      if (isHttpUrl(publicUrl)) padUrl = publicUrl;
+      else showError('垫图（PAD）缺少公网 URL（请使用 CDN 图片链接），本次已忽略');
+    }
+
+    const finalPrompt = buildMjPrompt({
+      basePrompt: prompt,
+      padImages: padUrl ? [padUrl] : [],
+      srefImageUrl: s.mjSrefImageUrl,
+      crefImageUrl: s.mjCrefImageUrl,
+      extraArgs,
+    });
+
+    const jobMsgId = randomId('msg');
+    const pending: StreamMessage = {
+      id: jobMsgId,
       createdAt: Date.now(),
       role: 'ai',
       kind: 'generate',
+      text: finalPrompt,
       progress: 0,
     };
-    params.store.update((s) => ({ ...s, streamMessages: [...s.streamMessages, userMsg, pendingAi].slice(-200) }));
+    params.store.update((st) => ({ ...st, streamMessages: [...st.streamMessages, pending].slice(-200) }));
 
     void (async () => {
-      const s = params.store.get();
-      const extraArgs: string[] = [];
-
-      let padUrl: string | undefined;
-      if (s.mjPadRefId) {
-        const r = s.referenceImages.find((x) => x.id === s.mjPadRefId);
-        const publicUrl = (isHttpUrl(r?.cdnUrl) ? r?.cdnUrl : undefined) || (isHttpUrl(r?.url) ? r?.url : undefined);
-        if (isHttpUrl(publicUrl)) padUrl = publicUrl;
-        else showError('垫图（PAD）缺少公网 URL（请使用 CDN 图片链接），本次已忽略');
-      }
-
-      const finalPrompt = buildMjPrompt({
-        basePrompt: prompt,
-        padImages: padUrl ? [padUrl] : [],
-        srefImageUrl: s.mjSrefImageUrl,
-        crefImageUrl: s.mjCrefImageUrl,
-        extraArgs,
-      });
       try {
         const imagine = await params.api.imagine({ prompt: finalPrompt });
 
@@ -76,7 +71,7 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
 
         params.store.update((st) => ({
           ...st,
-          streamMessages: st.streamMessages.map((m) => (m.id === aiMsgId ? { ...m, taskId, progress: 1 } : m)),
+          streamMessages: st.streamMessages.map((m) => (m.id === jobMsgId ? { ...m, taskId, progress: 1 } : m)),
         }));
 
         const imageUrl = await pollTaskUntilImageUrl({
@@ -85,7 +80,7 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
           onProgress: (p) => {
             params.store.update((st) => ({
               ...st,
-              streamMessages: st.streamMessages.map((m) => (m.id === aiMsgId ? { ...m, progress: p } : m)),
+              streamMessages: st.streamMessages.map((m) => (m.id === jobMsgId ? { ...m, progress: p } : m)),
             }));
           },
         });
@@ -93,7 +88,9 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
         params.store.update((s) => ({ ...s, gridImageUrl: imageUrl }));
         params.store.update((st) => ({
           ...st,
-          streamMessages: st.streamMessages.map((m) => (m.id === aiMsgId ? { ...m, gridImageUrl: imageUrl, progress: 100 } : m)),
+          streamMessages: st.streamMessages.map((m) =>
+            m.id === jobMsgId ? { ...m, gridImageUrl: imageUrl, progress: 100 } : m
+          ),
         }));
 
         const stateAfter = params.store.get();
@@ -132,7 +129,7 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
         params.store.update((st) => ({
           ...st,
           streamMessages: st.streamMessages.map((m) =>
-            m.id === aiMsgId ? { ...m, error: (error as Error)?.message || '生成失败' } : m
+            m.id === jobMsgId ? { ...m, error: (error as Error)?.message || '生成失败' } : m
           ),
         }));
       }

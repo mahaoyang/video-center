@@ -121,17 +121,6 @@ function renderDeconstructMessage(m: StreamMessage): HTMLElement {
 function renderGenerateMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
   msg.dataset.streamMessage = '1';
-  if (m.role === 'user') {
-    msg.className = 'flex justify-end animate-fade-in-up';
-    msg.innerHTML = `
-      <div class="max-w-xl glass-panel px-7 py-5 rounded-[2rem] border border-white/5 shadow-2xl bg-studio-panel/40 backdrop-blur-md">
-        <div class="text-[9px] font-black uppercase tracking-[0.4em] text-studio-accent mb-3 opacity-60">Neural Instruction Received</div>
-        <p class="text-sm font-medium leading-relaxed opacity-90">${escapeHtml(m.text || '')}</p>
-      </div>
-    `;
-    return msg;
-  }
-
   const taskId = m.taskId || '';
   const src = m.gridImageUrl;
   if (!src) {
@@ -151,6 +140,10 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
           </div>
           <div class="text-[12px] font-black text-studio-accent"><span data-progress-text="1">${p}%</span></div>
         </div>
+        <div class="mt-6 rounded-2xl border border-white/5 bg-black/20 p-4">
+          <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Prompt</div>
+          <div class="text-[11px] font-mono opacity-70 leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
+        </div>
         <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
       </div>
     `;
@@ -166,6 +159,11 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
           <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : ''}</span>
         </div>
         <div class="text-[9px] font-black uppercase tracking-widest opacity-30">2x2 Grid</div>
+      </div>
+
+      <div class="rounded-2xl border border-white/5 bg-black/20 p-4">
+        <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Prompt</div>
+        <div class="text-[11px] font-mono opacity-70 leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
       </div>
 
 	      <div class="grid grid-cols-2 gap-4">
