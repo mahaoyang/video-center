@@ -23,24 +23,31 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
   const clear = byId<HTMLButtonElement>('plannerClear');
 
   let usedSeq = 0;
-  const usedOrder = new Map<string, number>();
+  const usedOrderByItem = new Map<string, number>();
+  const editByItem = new Map<string, string>();
 
-  function normalizeKey(prompt: string): string {
+  function normalizePrompt(prompt: string): string {
     return String(prompt || '').trim().replace(/\s+/g, ' ');
   }
 
-  function getUsedIndex(prompt: string): number | undefined {
-    const key = normalizeKey(prompt);
-    return usedOrder.get(key);
+  function getUsedIndexByItem(itemKey: string): number | undefined {
+    return usedOrderByItem.get(itemKey);
   }
 
-  function markUsed(prompt: string): number {
-    const key = normalizeKey(prompt);
-    const existing = usedOrder.get(key);
+  function markUsedByItem(itemKey: string): number {
+    const existing = usedOrderByItem.get(itemKey);
     if (existing) return existing;
     usedSeq += 1;
-    usedOrder.set(key, usedSeq);
+    usedOrderByItem.set(itemKey, usedSeq);
     return usedSeq;
+  }
+
+  function getEditedText(itemKey: string, fallback: string): string {
+    return editByItem.get(itemKey) ?? fallback;
+  }
+
+  function setEditedText(itemKey: string, value: string) {
+    editByItem.set(itemKey, value);
   }
 
   function applyUsedStyle(btn: HTMLButtonElement, usedIndex: number | undefined) {
@@ -52,29 +59,68 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     btn.dataset.usedIndex = used ? String(usedIndex) : '';
   }
 
-  function appendUseButton(container: HTMLElement, prompt: string) {
-    const bar = document.createElement('div');
-    bar.className = 'mt-4 flex items-center gap-2';
-    const b = document.createElement('button');
-    b.type = 'button';
-    const usedIndex = getUsedIndex(prompt);
-    applyUsedStyle(b, usedIndex);
-    b.innerHTML = usedIndex
+  function autosizeTextarea(textarea: HTMLTextAreaElement) {
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(220, textarea.scrollHeight)}px`;
+  }
+
+  function renderEditableShot(params2: { itemKey: string; label?: string; initial: string }): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'mt-4 rounded-2xl border border-white/10 bg-black/20 p-4';
+
+    const top = document.createElement('div');
+    top.className = 'flex items-center justify-between gap-3 mb-3';
+
+    const left = document.createElement('div');
+    left.className = 'flex items-center gap-2 min-w-0';
+    if (params2.label) {
+      const tag = document.createElement('span');
+      tag.className = 'px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[8px] font-mono opacity-60 flex-shrink-0';
+      tag.textContent = params2.label;
+      left.appendChild(tag);
+    }
+    const hint = document.createElement('span');
+    hint.className = 'text-[9px] font-black uppercase tracking-[0.25em] opacity-30 truncate';
+    hint.textContent = 'Shot Prompt';
+    left.appendChild(hint);
+    top.appendChild(left);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const usedIndex = getUsedIndexByItem(params2.itemKey);
+    applyUsedStyle(btn, usedIndex);
+    btn.innerHTML = usedIndex
       ? `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${usedIndex}</span>`
       : `<i class="fas fa-plus text-[9px] opacity-60"></i><span>Use</span>`;
-    b.title = '填入主提示词输入框';
-    b.addEventListener('click', (e) => {
+    btn.title = '保存该分镜并填入主提示词输入框';
+    top.appendChild(btn);
+    wrap.appendChild(top);
+
+    const textarea = document.createElement('textarea');
+    textarea.className =
+      'w-full bg-transparent border border-white/10 rounded-2xl p-4 text-[11px] font-medium leading-relaxed focus:border-studio-accent/50 transition-all resize-none min-h-[64px]';
+    textarea.value = getEditedText(params2.itemKey, params2.initial);
+    autosizeTextarea(textarea);
+    textarea.addEventListener('input', () => {
+      setEditedText(params2.itemKey, textarea.value);
+      autosizeTextarea(textarea);
+    });
+    wrap.appendChild(textarea);
+
+    btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const n = markUsed(prompt);
-      applyUsedStyle(b, n);
-      b.innerHTML = `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${n}</span>`;
-      setPromptInput(prompt);
-      // Collapse planner drawer back to main view.
+      const text = normalizePrompt(textarea.value);
+      if (!text) return;
+      setEditedText(params2.itemKey, text);
+      const n = markUsedByItem(params2.itemKey);
+      applyUsedStyle(btn, n);
+      btn.innerHTML = `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${n}</span>`;
+      setPromptInput(text);
       requestAnimationFrame(() => (window as any).togglePlanner?.(false));
     });
-    bar.appendChild(b);
-    container.appendChild(bar);
+
+    return wrap;
   }
 
   function render(messages: PlannerMessage[]) {
@@ -90,56 +136,25 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
           : 'max-w-[85%] rounded-[1.8rem] border border-white/10 bg-studio-panel/60 px-5 py-4') +
         ' shadow-xl';
 
-      bubble.innerHTML = `<div class="text-[11px] leading-relaxed whitespace-pre-wrap break-words text-white/80">${escapeHtml(
-        m.text
-      )}</div>`;
+      const textBlock = document.createElement('div');
+      textBlock.className = 'text-[11px] leading-relaxed whitespace-pre-wrap break-words text-white/80';
+      textBlock.textContent = m.text;
+      bubble.appendChild(textBlock);
 
       if (m.role === 'ai') {
         const prompts = extractShotPrompts(m.text);
         const raw = m.text.trim();
-        const isSinglePrompt = prompts.length === 1 && prompts[0]?.trim() === raw;
+        const isSinglePrompt = prompts.length === 1 && (prompts[0] || '').trim() === raw;
 
         if (isSinglePrompt) {
-          appendUseButton(bubble, prompts[0] || raw);
+          const key = `${m.id}:shot:0`;
+          bubble.appendChild(renderEditableShot({ itemKey: key, label: 'S1', initial: prompts[0] || raw }));
         } else if (prompts.length) {
-          const bar = document.createElement('div');
-          bar.className = 'mt-4 flex flex-wrap gap-2';
           for (let i = 0; i < prompts.length; i++) {
             const p = prompts[i]!;
-            const b = document.createElement('button');
-            b.type = 'button';
-            const usedIndex = getUsedIndex(p);
-            applyUsedStyle(b, usedIndex);
-            const tag = document.createElement('span');
-            tag.className = 'text-[8px] font-mono opacity-50';
-            tag.textContent = `S${i + 1}`;
-            const plus = document.createElement('i');
-            plus.className = usedIndex ? 'fas fa-check text-[9px]' : 'fas fa-plus text-[9px] opacity-60';
-            const preview = document.createElement('span');
-            preview.className = 'max-w-[240px] truncate';
-            preview.textContent = p;
-            const usedBadge = document.createElement('span');
-            usedBadge.className = usedIndex ? 'text-[8px] font-mono opacity-70' : 'hidden';
-            if (usedIndex) usedBadge.textContent = `#${usedIndex}`;
-            b.appendChild(tag);
-            b.appendChild(plus);
-            b.appendChild(preview);
-            b.appendChild(usedBadge);
-            b.title = p;
-            b.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const n = markUsed(p);
-              applyUsedStyle(b, n);
-              plus.className = 'fas fa-check text-[9px]';
-              usedBadge.className = 'text-[8px] font-mono opacity-70';
-              usedBadge.textContent = `#${n}`;
-              setPromptInput(p);
-              requestAnimationFrame(() => (window as any).togglePlanner?.(false));
-            });
-            bar.appendChild(b);
+            const key = `${m.id}:shot:${i}`;
+            bubble.appendChild(renderEditableShot({ itemKey: key, label: `S${i + 1}`, initial: p }));
           }
-          bubble.appendChild(bar);
         }
       }
 
