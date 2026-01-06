@@ -45,6 +45,9 @@ type Persisted = {
     gridImageUrl?: string;
     upscaledImageUrl?: string;
     peditImageUrl?: string;
+    videoUrl?: string;
+    thumbnailUrl?: string;
+    provider?: string;
     progress?: number;
     error?: string;
   }>;
@@ -54,6 +57,16 @@ type Persisted = {
     role: string;
     text: string;
   }>;
+
+  commandMode?: string;
+  videoProvider?: string;
+  videoModel?: string;
+  videoSeconds?: number;
+  videoMode?: string;
+  videoAspect?: string;
+  videoSize?: string;
+  videoStartRefId?: string;
+  videoEndRefId?: string;
 };
 
 function safeParse(jsonText: string | null): Persisted | null {
@@ -120,6 +133,9 @@ function toPersisted(state: WorkflowState): Persisted {
       gridImageUrl: m.gridImageUrl,
       upscaledImageUrl: m.upscaledImageUrl,
       peditImageUrl: m.peditImageUrl,
+      videoUrl: m.videoUrl,
+      thumbnailUrl: m.thumbnailUrl,
+      provider: m.provider,
       progress: typeof m.progress === 'number' ? m.progress : undefined,
       error: typeof m.error === 'string' ? m.error : undefined,
     })),
@@ -129,6 +145,15 @@ function toPersisted(state: WorkflowState): Persisted {
       role: m.role,
       text: m.text,
     })),
+    commandMode: state.commandMode,
+    videoProvider: state.videoProvider,
+    videoModel: state.videoModel,
+    videoSeconds: state.videoSeconds,
+    videoMode: state.videoMode,
+    videoAspect: state.videoAspect,
+    videoSize: state.videoSize,
+    videoStartRefId: state.videoStartRefId,
+    videoEndRefId: state.videoEndRefId,
   };
 }
 
@@ -144,9 +169,19 @@ export function loadPersistedState(): {
   activeImageId?: string;
   streamMessages: StreamMessage[];
   plannerMessages: PlannerMessage[];
+  commandMode?: string;
+  videoProvider?: string;
+  videoModel?: string;
+  videoSeconds?: number;
+  videoMode?: string;
+  videoAspect?: string;
+  videoSize?: string;
+  videoStartRefId?: string;
+  videoEndRefId?: string;
 } {
   const parsed = safeParse(localStorage.getItem(STORAGE_KEY));
-  if (!parsed) return { history: [], referenceImages: [], selectedReferenceIds: [], streamMessages: [], plannerMessages: [] };
+  if (!parsed)
+    return { history: [], referenceImages: [], selectedReferenceIds: [], streamMessages: [], plannerMessages: [] };
 
   const referenceImages: ReferenceImage[] = parsed.referenceLibrary.map((r: any) => ({
     id: r.id || randomId('ref'),
@@ -182,7 +217,10 @@ export function loadPersistedState(): {
       id: m.id || randomId('msg'),
       createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
       role: m.role === 'ai' ? 'ai' : 'user',
-      kind: m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' ? m.kind : 'generate',
+      kind:
+        m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' || m.kind === 'video'
+          ? m.kind
+          : 'generate',
       text: typeof m.text === 'string' ? m.text : undefined,
       imageUrl: typeof m.imageUrl === 'string' ? m.imageUrl : undefined,
       refId: typeof m.refId === 'string' ? m.refId : undefined,
@@ -190,6 +228,9 @@ export function loadPersistedState(): {
       gridImageUrl: typeof m.gridImageUrl === 'string' ? m.gridImageUrl : undefined,
       upscaledImageUrl: typeof m.upscaledImageUrl === 'string' ? m.upscaledImageUrl : undefined,
       peditImageUrl: typeof m.peditImageUrl === 'string' ? m.peditImageUrl : undefined,
+      videoUrl: typeof m.videoUrl === 'string' ? m.videoUrl : undefined,
+      thumbnailUrl: typeof m.thumbnailUrl === 'string' ? m.thumbnailUrl : undefined,
+      provider: typeof m.provider === 'string' ? m.provider : undefined,
       progress: typeof m.progress === 'number' ? m.progress : undefined,
       error: typeof m.error === 'string' ? m.error : undefined,
     }))
@@ -217,6 +258,15 @@ export function loadPersistedState(): {
     activeImageId: typeof (parsed as any).activeImageId === 'string' ? (parsed as any).activeImageId : undefined,
     streamMessages,
     plannerMessages,
+    commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,
+    videoProvider: typeof (parsed as any).videoProvider === 'string' ? (parsed as any).videoProvider : undefined,
+    videoModel: typeof (parsed as any).videoModel === 'string' ? (parsed as any).videoModel : undefined,
+    videoSeconds: typeof (parsed as any).videoSeconds === 'number' ? (parsed as any).videoSeconds : undefined,
+    videoMode: typeof (parsed as any).videoMode === 'string' ? (parsed as any).videoMode : undefined,
+    videoAspect: typeof (parsed as any).videoAspect === 'string' ? (parsed as any).videoAspect : undefined,
+    videoSize: typeof (parsed as any).videoSize === 'string' ? (parsed as any).videoSize : undefined,
+    videoStartRefId: typeof (parsed as any).videoStartRefId === 'string' ? (parsed as any).videoStartRefId : undefined,
+    videoEndRefId: typeof (parsed as any).videoEndRefId === 'string' ? (parsed as any).videoEndRefId : undefined,
   };
 }
 

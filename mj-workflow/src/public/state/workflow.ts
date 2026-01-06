@@ -25,7 +25,7 @@ export interface WorkflowHistoryItem {
 }
 
 export type StreamMessageRole = 'user' | 'ai';
-export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit';
+export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video';
 
 export type PlannerMessageRole = 'user' | 'ai';
 export interface PlannerMessage {
@@ -49,10 +49,16 @@ export interface StreamMessage {
   gridImageUrl?: string;
   upscaledImageUrl?: string;
   peditImageUrl?: string;
+  videoUrl?: string;
+  thumbnailUrl?: string;
+  provider?: string;
 
   progress?: number; // 0..100 for async tasks
   error?: string;
 }
+
+export type CommandMode = 'mj' | 'video' | 'deconstruct' | 'pedit' | 'beautify';
+export type VideoProvider = 'jimeng' | 'kling' | 'gemini';
 
 export interface WorkflowState {
   step: WorkflowStep;
@@ -92,6 +98,17 @@ export interface WorkflowState {
 
   // Pure chat mode for prompt planning
   plannerMessages: PlannerMessage[];
+
+  // Command hub mode + video settings
+  commandMode?: CommandMode;
+  videoProvider?: VideoProvider;
+  videoModel?: string;
+  videoSeconds?: number;
+  videoMode?: string;
+  videoAspect?: string;
+  videoSize?: string;
+  videoStartRefId?: string;
+  videoEndRefId?: string;
 }
 
 export function createInitialWorkflowState(): WorkflowState {
@@ -104,5 +121,8 @@ export function createInitialWorkflowState(): WorkflowState {
     history: [],
     streamMessages: [],
     plannerMessages: [],
+    commandMode: 'mj',
+    videoProvider: 'jimeng',
+    videoModel: 'jimeng-video-3.0',
   };
 }

@@ -2,6 +2,7 @@ import type { MJApi } from '../lib/mj-api';
 import type { YunwuChatApi } from '../lib/yunwu-chat';
 import type { GeminiVisionClient } from '../lib/gemini-vision';
 import type { ImageProxyClient } from '../lib/imageproxy';
+import type { VideoApi } from '../lib/video-api';
 import type { VisionDescribeRequest } from '../types';
 import { json, jsonError, readJson } from '../http/json';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
@@ -170,6 +171,7 @@ export function createApiRouter(deps: {
   chatApi: YunwuChatApi;
   gemini: GeminiVisionClient;
   imageproxy: ImageProxyClient;
+  videoApi: VideoApi;
   uploads: { dir: string; publicPath: string };
   auth: {
     mjTokenConfigured: boolean;
@@ -283,6 +285,45 @@ export function createApiRouter(deps: {
 	        return jsonError({ status: 500, description: '拉取图片失败', error });
 	      }
 	    }
+
+      if (pathname === '/api/video' && req.method === 'GET') {
+        try {
+          const src = String(url.searchParams.get('src') || '').trim();
+          if (!src) return jsonError({ status: 400, description: '缺少 src' });
+
+          let absolute: URL;
+          try {
+            absolute = new URL(src);
+          } catch {
+            absolute = new URL(src, req.url);
+          }
+          if (!['http:', 'https:'].includes(absolute.protocol)) {
+            return jsonError({ status: 400, description: '仅支持 http/https 视频' });
+          }
+          if (isUnsafeHost(absolute.hostname)) {
+            return jsonError({ status: 400, description: '禁止访问内网地址' });
+          }
+
+          const upstream = await fetch(absolute.toString(), {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; MJ-Workflow/1.0; +https://localhost)',
+            },
+          });
+          if (!upstream.ok) return jsonError({ status: 502, description: `拉取视频失败: ${upstream.status}` });
+
+          const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+          return new Response(upstream.body, {
+            headers: {
+              'Content-Type': contentType,
+              'Cache-Control': 'public, max-age=3600',
+            },
+          });
+        } catch (error) {
+          console.error('Video proxy error:', error);
+          return jsonError({ status: 500, description: '拉取视频失败', error });
+        }
+      }
 
 	    if (pathname === '/api/slice' && req.method === 'GET') {
 	      try {
@@ -724,6 +765,64 @@ export function createApiRouter(deps: {
       } catch (error) {
         console.error('Gemini edit error:', error);
         return jsonError({ status: 500, description: 'Gemini 编辑失败', error });
+      }
+    }
+
+    if (pathname === '/api/video/create' && req.method === 'POST') {
+      try {
+        if (!deps.auth.llmTokenConfigured) {
+          return jsonError({ status: 500, description: '未配置 LLM Token：请设置 YUNWU_ALL_KEY 或 LLM_API_TOKEN' });
+        }
+        const body = await readJson<{
+          provider?: string;
+          prompt?: string;
+          model?: string;
+          seconds?: number;
+          mode?: string;
+          aspect?: string;
+          size?: string;
+          startImageUrl?: string;
+          endImageUrl?: string;
+        }>(req);
+
+        const provider = String(body.provider || '').trim();
+        const prompt = String(body.prompt || '').trim();
+        if (!provider) return jsonError({ status: 400, description: 'provider 不能为空' });
+        if (!prompt) return jsonError({ status: 400, description: 'prompt 不能为空' });
+
+        const result = await deps.videoApi.createVideo({
+          provider: provider as any,
+          prompt,
+          model: body.model,
+          seconds: body.seconds,
+          mode: body.mode,
+          aspect: body.aspect,
+          size: body.size,
+          startImageUrl: body.startImageUrl,
+          endImageUrl: body.endImageUrl,
+        });
+        return json({ code: 0, description: '成功', result });
+      } catch (error) {
+        console.error('Video create error:', error);
+        return jsonError({ status: 500, description: '生视频提交失败', error });
+      }
+    }
+
+    if (pathname === '/api/video/query' && req.method === 'GET') {
+      try {
+        if (!deps.auth.llmTokenConfigured) {
+          return jsonError({ status: 500, description: '未配置 LLM Token：请设置 YUNWU_ALL_KEY 或 LLM_API_TOKEN' });
+        }
+        const id = String(url.searchParams.get('id') || '').trim();
+        const provider = String(url.searchParams.get('provider') || '').trim();
+        if (!id) return jsonError({ status: 400, description: 'id 不能为空' });
+        if (!provider) return jsonError({ status: 400, description: 'provider 不能为空' });
+
+        const result = await deps.videoApi.queryVideo({ provider: provider as any, id });
+        return json({ code: 0, description: '成功', result });
+      } catch (error) {
+        console.error('Video query error:', error);
+        return jsonError({ status: 500, description: '生视频查询失败', error });
       }
     }
 

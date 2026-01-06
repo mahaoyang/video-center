@@ -15,7 +15,8 @@ import { createStreamActions } from './blocks/stream-actions';
 import { createGeminiEditBlock } from './blocks/gemini-edit';
 import { createPlannerChat } from './blocks/planner-chat';
 import { initOverlays } from './blocks/overlays';
-import { createPromptBeautifyBlock } from './blocks/prompt-beautify';
+import { createCommandModeBlock } from './blocks/command-mode';
+import { createVideoGenerateBlock } from './blocks/video-generate';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -32,6 +33,15 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.activeImageId = persisted.activeImageId;
   initial.streamMessages = persisted.streamMessages || [];
   initial.plannerMessages = persisted.plannerMessages || [];
+  if (persisted.commandMode) initial.commandMode = persisted.commandMode as any;
+  if (persisted.videoProvider) initial.videoProvider = persisted.videoProvider as any;
+  if (persisted.videoModel) initial.videoModel = persisted.videoModel as any;
+  if (typeof persisted.videoSeconds === 'number') initial.videoSeconds = persisted.videoSeconds;
+  if (persisted.videoMode) (initial as any).videoMode = persisted.videoMode as any;
+  if (persisted.videoAspect) initial.videoAspect = persisted.videoAspect as any;
+  if (persisted.videoSize) initial.videoSize = persisted.videoSize as any;
+  if (persisted.videoStartRefId) initial.videoStartRefId = persisted.videoStartRefId as any;
+  if (persisted.videoEndRefId) initial.videoEndRefId = persisted.videoEndRefId as any;
 
   // Set stage to active immediately for stream UI
   initial.step = 4;
@@ -42,17 +52,25 @@ document.addEventListener('DOMContentLoaded', () => {
   createHistoryView(store);
   createMjPromptPreview(store);
   createMjParamsPanel(store);
-  createGeminiEditBlock({ api, store });
+  const pedit = createGeminiEditBlock({ api, store });
   startPersistence(store);
 
   const generate = createGenerateBlock({ api, store, activateStep: (s) => { } });
-  createDescribeBlock({ api, store });
+  const describe = createDescribeBlock({ api, store });
   createExportBlock(store);
 
   createStreamActions({ api, store });
   createStreamHistory({ store });
   createPlannerChat({ api, store });
-  createPromptBeautifyBlock({ api });
+  const video = createVideoGenerateBlock({ api, store });
+  const command = createCommandModeBlock({
+    api,
+    store,
+    generate,
+    describe,
+    pedit,
+    video,
+  });
   initOverlays();
 
   const genBtn = document.getElementById('step3Next') as HTMLButtonElement | null;
@@ -61,6 +79,6 @@ document.addEventListener('DOMContentLoaded', () => {
     e.stopPropagation();
     const zero = document.getElementById('zeroState');
     if (zero) zero.style.display = 'none';
-    generate.generateImage();
+    void command.execute();
   });
 });

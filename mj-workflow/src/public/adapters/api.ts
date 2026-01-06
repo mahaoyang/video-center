@@ -8,6 +8,18 @@ export interface ApiClient {
   geminiChat(params: { messages: Array<{ role: string; content: string }> }): Promise<any>;
   geminiTranslate(params: { text: string }): Promise<any>;
   geminiBeautify(params: { text: string; hint?: string }): Promise<any>;
+  videoCreate(params: {
+    provider: string;
+    prompt: string;
+    model?: string;
+    seconds?: number;
+    mode?: string;
+    aspect?: string;
+    size?: string;
+    startImageUrl?: string;
+    endImageUrl?: string;
+  }): Promise<any>;
+  videoQuery(params: { provider: string; id: string }): Promise<any>;
   imagine(params: { prompt: string; base64Array?: string[] }): Promise<any>;
   upscale(params: { taskId: string; index: number }): Promise<any>;
   task(taskId: string): Promise<any>;
@@ -88,6 +100,12 @@ export function createApiClient(apiBase = '/api'): ApiClient {
     geminiChat: async (params) => await requestJson('POST', `${apiBase}/gemini/chat`, params),
     geminiTranslate: async (params) => await requestJson('POST', `${apiBase}/gemini/translate`, params),
     geminiBeautify: async (params) => await requestJson('POST', `${apiBase}/gemini/beautify`, params),
+    videoCreate: async (params) => await requestJson('POST', `${apiBase}/video/create`, params),
+    videoQuery: async (params) =>
+      await requestJson(
+        'GET',
+        `${apiBase}/video/query?id=${encodeURIComponent(params.id)}&provider=${encodeURIComponent(params.provider)}`
+      ),
     imagine: async (params) => await requestJson('POST', `${apiBase}/imagine`, params),
     upscale: async (params) => await requestJson('POST', `${apiBase}/upscale`, params),
     task: async (taskId) => await requestJson('GET', `${apiBase}/task/${encodeURIComponent(taskId)}`),

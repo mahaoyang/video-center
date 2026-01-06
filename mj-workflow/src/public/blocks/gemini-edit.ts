@@ -22,7 +22,6 @@ function extFromDataUrl(dataUrl: string): string {
 }
 
 export function createGeminiEditBlock(params: { api: ApiClient; store: Store<WorkflowState> }) {
-  const toggleBtn = byId<HTMLButtonElement>('pEditBtn');
   const panel = byId<HTMLElement>('pEditPanel');
   const closeBtn = byId<HTMLButtonElement>('pEditClose');
   const applyBtn = byId<HTMLButtonElement>('pEditApply');
@@ -46,7 +45,6 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       thumb.referrerPolicy = 'no-referrer';
       meta.textContent = `目标：${ref?.name || ref?.id || 'PAD'}（使用主输入框文字）`;
       applyBtn.disabled = false;
-      toggleBtn.disabled = false;
     } else {
       thumb.removeAttribute('src');
       meta.textContent = '请先选择一张 PAD 图（垫图）';
@@ -165,12 +163,6 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     }
   }
 
-  toggleBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // One-click P-edit: use PAD image + main prompt input as edit instructions.
-    void applyEdit();
-  });
   closeBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();

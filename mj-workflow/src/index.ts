@@ -8,6 +8,7 @@ import { createApiRouter } from './api/router';
 import { createStaticHandler } from './server/static';
 import { loadConfig } from './config/load-config';
 import { ImageProxyClient } from './lib/imageproxy';
+import { VideoApi } from './lib/video-api';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 if (moduleDir.endsWith('/dist') && process.cwd() !== moduleDir) {
@@ -28,12 +29,14 @@ const chatApi = new YunwuChatApi({
 });
 const gemini = createGeminiVisionClient({ apiKey: config.gemini.apiKey });
 const imageproxy = new ImageProxyClient({ apiUrl: config.imageproxy.apiUrl, token: config.imageproxy.token });
+const videoApi = new VideoApi({ apiUrl: config.llm.apiUrl, token: config.llm.token });
 
 const handleApi = createApiRouter({
   mjApi,
   chatApi,
   gemini,
   imageproxy,
+  videoApi,
   uploads: { dir: uploadsDir, publicPath: '/uploads' },
   auth: {
     mjTokenConfigured: Boolean(config.mj.token),

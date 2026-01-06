@@ -6,6 +6,7 @@ import { setPromptInput } from '../atoms/prompt-input';
 import { openImagePreview } from '../atoms/image-preview';
 import { escapeHtml } from '../atoms/html';
 import { toAppImageSrc } from '../atoms/image-src';
+import { toAppVideoSrc } from '../atoms/video-src';
 
 function clearRenderedMessages(stream: HTMLElement) {
   stream.querySelectorAll<HTMLElement>('[data-stream-message="1"]').forEach((el) => el.remove());
@@ -183,6 +184,11 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
 		                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center pointer-events-auto">
 		                <i class="fas fa-plus text-xs"></i>
 		              </button>
+                  <a href="/api/slice?src=${encodeURIComponent(src)}&index=${i}" download="mj-grid-${i}.png"
+                    class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all flex items-center justify-center pointer-events-auto"
+                    title="Download">
+                    <i class="fas fa-download text-xs"></i>
+                  </a>
 		              <button data-stream-action="upscale" data-index="${i}"
 		                class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center pointer-events-auto">
 		                <i class="fas fa-arrow-up-right-dots text-xs"></i>
@@ -245,10 +251,18 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
       <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
         <img data-preview-src="${escapeHtml(src)}" src="${escapeHtml(src)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
         <div class="absolute top-4 right-4 opacity-0 group-hover/tile:opacity-100 transition-opacity">
-          <button data-stream-action="selectUrl"
-            class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center">
-            <i class="fas fa-plus text-xs"></i>
-          </button>
+          <div class="flex items-center gap-2">
+            <a href="${escapeHtml(src)}" download="mj-upscale-${Date.now()}.png"
+              class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all flex items-center justify-center"
+              title="Download">
+              <i class="fas fa-download text-xs"></i>
+            </a>
+            <button data-stream-action="selectUrl"
+              class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center"
+              title="Use">
+              <i class="fas fa-plus text-xs"></i>
+            </button>
+          </div>
         </div>
       </div>
 		    </div>
@@ -319,6 +333,13 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
 
       <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
         <img data-preview-src="${escapeHtml(src)}" src="${escapeHtml(src)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
+        <div class="absolute top-4 right-4 opacity-0 group-hover/tile:opacity-100 transition-opacity">
+          <a href="${escapeHtml(src)}" download="gemini-pedit-${Date.now()}.png"
+            class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all flex items-center justify-center"
+            title="Download">
+            <i class="fas fa-download text-xs"></i>
+          </a>
+        </div>
       </div>
     </div>
   `;
@@ -335,10 +356,82 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
   return msg;
 }
 
+function renderVideoMessage(m: StreamMessage): HTMLElement {
+  const msg = document.createElement('div');
+  msg.dataset.streamMessage = '1';
+  const taskId = m.taskId || '';
+  const provider = String(m.provider || '').toUpperCase() || 'VIDEO';
+  const rawSrc = m.videoUrl;
+  const src = rawSrc ? toAppVideoSrc(rawSrc) : '';
+
+  if (!src) {
+    const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
+    msg.className = 'group animate-fade-in-up';
+    msg.innerHTML = `
+      <div class="glass-panel p-10 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl">
+        <div class="flex items-center justify-between gap-6">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Video Pending</span>
+              <span data-task-text="1" class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : provider}</span>
+            </div>
+          </div>
+          <div class="text-[12px] font-black text-studio-accent"><span data-progress-text="1">${p}%</span></div>
+        </div>
+        <div class="mt-6 rounded-2xl border border-white/5 bg-black/20 p-4">
+          <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Prompt</div>
+          <div class="text-[11px] font-mono opacity-70 leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
+        </div>
+        <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+      </div>
+    `;
+    return msg;
+  }
+
+  const filename = `video-${Date.now()}.mp4`;
+  msg.className = 'group animate-fade-in-up';
+  msg.innerHTML = `
+    <div class="glass-panel p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
+      <div class="flex items-center justify-between">
+        <div class="flex flex-col">
+          <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Video Complete</span>
+          <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : provider}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="${escapeHtml(src)}" download="${escapeHtml(filename)}"
+            class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all flex items-center justify-center"
+            title="Download">
+            <i class="fas fa-download text-[11px]"></i>
+          </a>
+          <a href="${escapeHtml(src)}" target="_blank" rel="noreferrer"
+            class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:border-white/20 transition-all flex items-center justify-center"
+            title="Open">
+            <i class="fas fa-arrow-up-right-from-square text-[11px]"></i>
+          </a>
+        </div>
+      </div>
+
+      <div class="rounded-3xl overflow-hidden border border-white/10 bg-black/40">
+        <video src="${escapeHtml(src)}" controls class="w-full h-auto block"></video>
+      </div>
+
+      <div class="rounded-2xl border border-white/5 bg-black/20 p-4">
+        <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Prompt</div>
+        <div class="text-[11px] font-mono opacity-70 leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
+      </div>
+    </div>
+  `;
+  return msg;
+}
+
 function renderMessage(m: StreamMessage): HTMLElement {
   if (m.kind === 'deconstruct') return renderDeconstructMessage(m);
   if (m.kind === 'upscale') return renderUpscaleMessage(m);
   if (m.kind === 'pedit') return renderPeditMessage(m);
+  if (m.kind === 'video') return renderVideoMessage(m);
   return renderGenerateMessage(m);
 }
 
@@ -437,12 +530,14 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
       const generateTransition = prev.kind === 'generate' && prev.role === 'ai' && prev.gridImageUrl !== resolved.gridImageUrl;
       const upscaleTransition = prev.kind === 'upscale' && prev.role === 'ai' && prev.upscaledImageUrl !== resolved.upscaledImageUrl;
       const peditTransition = prev.kind === 'pedit' && prev.role === 'ai' && prev.peditImageUrl !== resolved.peditImageUrl;
+      const videoTransition = prev.kind === 'video' && prev.role === 'ai' && prev.videoUrl !== resolved.videoUrl;
       const kindChanged = prev.kind !== resolved.kind || prev.role !== resolved.role;
       const needsReplace =
         kindChanged ||
         generateTransition ||
         upscaleTransition ||
         peditTransition ||
+        videoTransition ||
         (prev.kind === 'deconstruct' && (prev.text !== resolved.text || prev.imageUrl !== resolved.imageUrl)) ||
         (prev.kind === 'generate' && prev.role === 'user' && prev.text !== resolved.text) ||
         (prev.kind === 'upscale' && prev.role === 'user' && prev.text !== resolved.text) ||
@@ -456,7 +551,10 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
         continue;
       }
 
-      if (resolved.role === 'ai' && (resolved.kind === 'generate' || resolved.kind === 'upscale' || resolved.kind === 'pedit')) {
+      if (
+        resolved.role === 'ai' &&
+        (resolved.kind === 'generate' || resolved.kind === 'upscale' || resolved.kind === 'pedit' || resolved.kind === 'video')
+      ) {
         updatePendingCard(existing, resolved);
       }
 
