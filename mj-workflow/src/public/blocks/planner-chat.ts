@@ -93,7 +93,20 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       ? `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${usedIndex}</span>`
       : `<i class="fas fa-plus text-[9px] opacity-60"></i><span>Use</span>`;
     btn.title = '保存该分镜并填入主提示词输入框';
-    top.appendChild(btn);
+
+    const actions = document.createElement('div');
+    actions.className = 'flex items-center gap-2 flex-shrink-0';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className =
+      'w-9 h-9 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all flex items-center justify-center';
+    resetBtn.innerHTML = '<i class="fas fa-arrows-rotate text-[10px]"></i>';
+    resetBtn.title = '重置为原始提示词';
+
+    actions.appendChild(resetBtn);
+    actions.appendChild(btn);
+    top.appendChild(actions);
     wrap.appendChild(top);
 
     const textarea = document.createElement('textarea');
@@ -106,6 +119,14 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       autosizeTextarea(textarea);
     });
     wrap.appendChild(textarea);
+
+    resetBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      textarea.value = params2.initial;
+      setEditedText(params2.itemKey, params2.initial);
+      autosizeTextarea(textarea);
+    });
 
     btn.addEventListener('click', (e) => {
       e.preventDefault();
