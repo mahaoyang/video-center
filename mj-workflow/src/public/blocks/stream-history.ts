@@ -260,7 +260,7 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
     const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
     msg.className = 'group animate-fade-in-up';
     msg.innerHTML = `
-      <div class="glass-panel p-10 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl">
+      <div class="glass-panel relative overflow-visible p-10 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl">
         <div class="flex items-center justify-between gap-6">
           <div class="flex items-center gap-4">
             <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
@@ -280,12 +280,22 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
         <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
       </div>
     `;
+
+    const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
+    if (panel && m.imageUrl) {
+      const thumb = document.createElement('img');
+      thumb.src = m.imageUrl;
+      thumb.referrerPolicy = 'no-referrer';
+      thumb.className =
+        'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
+      panel.appendChild(thumb);
+    }
     return msg;
   }
 
   msg.className = 'group animate-fade-in-up';
   msg.innerHTML = `
-    <div class="glass-panel p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
+    <div class="glass-panel relative overflow-visible p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
       <div class="flex items-center justify-between">
         <div class="flex flex-col">
           <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Gemini P‑Edit Complete</span>
@@ -304,6 +314,15 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
       </div>
     </div>
   `;
+  const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
+  if (panel && m.imageUrl) {
+    const thumb = document.createElement('img');
+    thumb.src = m.imageUrl;
+    thumb.referrerPolicy = 'no-referrer';
+    thumb.className =
+      'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
+    panel.appendChild(thumb);
+  }
   bindPreview(msg);
   return msg;
 }
