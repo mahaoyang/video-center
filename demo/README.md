@@ -254,5 +254,16 @@ python3 -m sora.query_examples
 ## 🔧 Development
 
 - Main application: `main.py`
+- Audio processing pipeline: `audio_processing.py`
 - Configuration: `pyproject.toml`
 - Environment: `.env.local`
+
+### 🔊 Audio Processing Demo
+
+```bash
+python3 demo/main.py audio input.wav output_pro.wav
+```
+
+`demo/audio_processing.py` uses a two-pass `loudnorm` run (analysis to `null`, then apply with `measured_*`) for more stable loudness results.
+
+Optional enhancement: `python3 demo/main.py audio input.wav output_pro.wav --exciter`
