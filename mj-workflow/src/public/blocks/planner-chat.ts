@@ -168,7 +168,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       bubble.className =
         (m.role === 'user'
           ? 'max-w-[85%] rounded-[1.8rem] border border-white/10 bg-white/5 px-5 py-4'
-          : 'max-w-[85%] rounded-[1.8rem] border border-white/10 bg-studio-panel/60 px-5 py-4') +
+          : 'w-full max-w-none rounded-[1.8rem] border border-white/10 bg-studio-panel/60 px-5 py-4') +
         ' shadow-xl';
 
       if (m.role === 'ai') {
