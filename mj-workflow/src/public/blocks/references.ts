@@ -3,11 +3,7 @@ import type { ReferenceImage, WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
 import type { ApiClient } from '../adapters/api';
 import { showError } from '../atoms/notify';
-
-function isHttpUrl(value: string | undefined): value is string {
-  if (!value) return false;
-  return value.startsWith('http://') || value.startsWith('https://');
-}
+import { isHttpUrl } from '../atoms/url';
 
 function getMjLink(ref: ReferenceImage): string | undefined {
   if (isHttpUrl(ref.cdnUrl)) return ref.cdnUrl;

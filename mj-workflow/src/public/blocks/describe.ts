@@ -9,6 +9,7 @@ import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { urlToBase64 } from '../atoms/file';
 import { randomId } from '../atoms/id';
 import { normalizeMjPromptForGeminiDescribe } from '../atoms/mj-normalize';
+import { isHttpUrl } from '../atoms/url';
 
 function getActiveImage(state: WorkflowState) {
   const id = state.activeImageId;
@@ -16,11 +17,6 @@ function getActiveImage(state: WorkflowState) {
   const fromHistory = id ? state.referenceImages.find((r) => r.id === id) : undefined;
   const fallback = state.referenceImages.at(-1);
   return fromHistory || fallback;
-}
-
-function isHttpUrl(value: string | undefined): value is string {
-  if (!value) return false;
-  return value.startsWith('http://') || value.startsWith('https://');
 }
 
 function bestPreviewUrl(r: ReferenceImage): string {

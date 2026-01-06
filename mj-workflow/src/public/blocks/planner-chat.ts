@@ -7,15 +7,6 @@ import { extractShotPrompts } from '../atoms/prompt-extract';
 import type { Store } from '../state/store';
 import type { PlannerMessage, WorkflowState } from '../state/workflow';
 
-function escapeHtml(value: string): string {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 export function createPlannerChat(params: { api: ApiClient; store: Store<WorkflowState> }) {
   const list = byId<HTMLElement>('plannerMessages');
   const input = byId<HTMLTextAreaElement>('plannerInput');

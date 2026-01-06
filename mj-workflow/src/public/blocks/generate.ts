@@ -8,13 +8,9 @@ import { randomId } from '../atoms/id';
 import { buildMjPrompt } from '../atoms/mj-prompt';
 import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
+import { isHttpUrl } from '../atoms/url';
 
 export function createGenerateBlock(params: { api: ApiClient; store: Store<WorkflowState>; activateStep: (step: any) => void }) {
-  function isHttpUrl(value: string | undefined): value is string {
-    if (!value) return false;
-    return value.startsWith('http://') || value.startsWith('https://');
-  }
-
   async function generateImage() {
     const promptInput = byId<HTMLTextAreaElement>('promptInput');
     const prompt = promptInput.value.trim();

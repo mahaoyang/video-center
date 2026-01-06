@@ -4,6 +4,7 @@ import { byId } from '../atoms/ui';
 import { dispatchStreamTileEvent } from '../atoms/stream-events';
 import { setPromptInput } from '../atoms/prompt-input';
 import { openImagePreview } from '../atoms/image-preview';
+import { escapeHtml } from '../atoms/html';
 
 function clearRenderedMessages(stream: HTMLElement) {
   stream.querySelectorAll<HTMLElement>('[data-stream-message="1"]').forEach((el) => el.remove());
@@ -14,15 +15,6 @@ function ensureZeroState(stream: HTMLElement, hasMessages: boolean) {
   if (!zero) return;
   if (hasMessages) zero.style.display = 'none';
   else zero.style.display = '';
-}
-
-function escapeHtml(value: string): string {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function bindStreamTileActions(root: HTMLElement, ctx: { src?: string; taskId?: string }) {

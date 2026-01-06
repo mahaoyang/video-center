@@ -1,11 +1,7 @@
 import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { buildMjPrompt } from '../atoms/mj-prompt';
-
-function isHttpUrl(value: string | undefined): value is string {
-  if (!value) return false;
-  return value.startsWith('http://') || value.startsWith('https://');
-}
+import { isHttpUrl } from '../atoms/url';
 
 export function createMjPromptPreview(store: Store<WorkflowState>) {
   const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement | null;
