@@ -285,10 +285,18 @@
               </div>
             </div>
           </div>
-          <button id="pEditBtn" type="button"
-            class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 hover:bg-white/10 transition-all">
-            <i class="fas fa-wand-magic-sparkles text-xs"></i>
-          </button>
+          <div class="relative group">
+            <button id="pEditBtn" type="button"
+              class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 hover:bg-white/10 transition-all">
+              <i class="fas fa-wand-magic-sparkles text-xs"></i>
+            </button>
+            <div
+              class="pointer-events-none absolute right-0 -top-2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity">
+              <div class="px-3 py-2 rounded-2xl bg-black/70 border border-white/10 text-[9px] font-black uppercase tracking-[0.25em] text-white/70 whitespace-nowrap">
+                Gemini P‑Edit（用 PAD 图 + 主输入框文字）
+              </div>
+            </div>
+          </div>
           <button id="step3Next" onclick="generateImage()"
             class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-studio-accent text-studio-bg hover:scale-105 active:scale-95 transition-all shadow-[0_0_25px_rgba(197,243,65,0.25)]">
             <i class="fas fa-paper-plane text-xs"></i>

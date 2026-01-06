@@ -38,11 +38,6 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     panel.classList.add('hidden');
   }
 
-  function toggle() {
-    if (panel.classList.contains('hidden')) open();
-    else close();
-  }
-
   function render(state: WorkflowState) {
     const ref = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
     const src = bestEditSourceUrl(ref);
@@ -141,7 +136,8 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
   toggleBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    toggle();
+    // One-click P-edit: use PAD image + main prompt input as edit instructions.
+    void applyEdit();
   });
   closeBtn.addEventListener('click', (e) => {
     e.preventDefault();
