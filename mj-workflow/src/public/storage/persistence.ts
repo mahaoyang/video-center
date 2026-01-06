@@ -30,6 +30,8 @@ type Persisted = {
   mjPadRefId?: string;
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
+  mjSrefRefId?: string;
+  mjCrefRefId?: string;
   activeImageId?: string;
   streamMessages?: Array<{
     id: string;
@@ -103,6 +105,8 @@ function toPersisted(state: WorkflowState): Persisted {
     mjPadRefId: state.mjPadRefId,
     mjSrefImageUrl: state.mjSrefImageUrl,
     mjCrefImageUrl: state.mjCrefImageUrl,
+    mjSrefRefId: state.mjSrefRefId,
+    mjCrefRefId: state.mjCrefRefId,
     activeImageId: state.activeImageId,
     streamMessages: state.streamMessages.slice(-200).map((m) => ({
       id: m.id,
@@ -135,6 +139,8 @@ export function loadPersistedState(): {
   mjPadRefId?: string;
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
+  mjSrefRefId?: string;
+  mjCrefRefId?: string;
   activeImageId?: string;
   streamMessages: StreamMessage[];
   plannerMessages: PlannerMessage[];
@@ -206,6 +212,8 @@ export function loadPersistedState(): {
     mjPadRefId: typeof (parsed as any).mjPadRefId === 'string' ? (parsed as any).mjPadRefId : undefined,
     mjSrefImageUrl: typeof (parsed as any).mjSrefImageUrl === 'string' ? (parsed as any).mjSrefImageUrl : undefined,
     mjCrefImageUrl: typeof (parsed as any).mjCrefImageUrl === 'string' ? (parsed as any).mjCrefImageUrl : undefined,
+    mjSrefRefId: typeof (parsed as any).mjSrefRefId === 'string' ? (parsed as any).mjSrefRefId : undefined,
+    mjCrefRefId: typeof (parsed as any).mjCrefRefId === 'string' ? (parsed as any).mjCrefRefId : undefined,
     activeImageId: typeof (parsed as any).activeImageId === 'string' ? (parsed as any).activeImageId : undefined,
     streamMessages,
     plannerMessages,

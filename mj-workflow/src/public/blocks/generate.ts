@@ -11,6 +11,44 @@ import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { isHttpUrl } from '../atoms/url';
 
 export function createGenerateBlock(params: { api: ApiClient; store: Store<WorkflowState>; activateStep: (step: any) => void }) {
+  function getLocalKey(ref: { localKey?: string; localUrl?: string }): string | undefined {
+    if (ref.localKey) return ref.localKey;
+    const url = String(ref.localUrl || '');
+    const m = url.match(/^\/uploads\/([^/?#]+)$/);
+    return m?.[1];
+  }
+
+  async function ensurePublicUrlForRefId(refId: string, label: string): Promise<string | undefined> {
+    const ref = params.store.get().referenceImages.find((r) => r.id === refId);
+    if (!ref) return undefined;
+
+    const existing = (isHttpUrl(ref.cdnUrl) ? ref.cdnUrl : undefined) || (isHttpUrl(ref.url) ? ref.url : undefined);
+    if (existing) return existing;
+
+    const localKey = getLocalKey(ref);
+    if (!localKey) {
+      showError(`${label} 缺少公网 URL 且无法从本地文件补全（请重新上传或配置图床/CDN）`);
+      return undefined;
+    }
+
+    try {
+      const promoted = await params.api.promoteUpload({ localKey });
+      if (promoted?.code !== 0) throw new Error(promoted?.description || 'CDN 上传失败');
+      const cdnUrl = String(promoted?.result?.cdnUrl || promoted?.result?.url || '').trim();
+      if (!isHttpUrl(cdnUrl)) throw new Error('CDN 上传失败：未返回可用 URL');
+
+      params.store.update((s) => ({
+        ...s,
+        referenceImages: s.referenceImages.map((r) => (r.id === refId ? { ...r, cdnUrl, url: cdnUrl } : r)),
+      }));
+      return cdnUrl;
+    } catch (error) {
+      console.error('promoteUpload failed:', error);
+      showError(`${label} 上传到 CDN 失败：${(error as Error)?.message || '未知错误'}`);
+      return undefined;
+    }
+  }
+
   async function generateImage() {
     const promptInput = byId<HTMLTextAreaElement>('promptInput');
     const prompt = promptInput.value.trim();
@@ -28,17 +66,29 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
 
     let padUrl: string | undefined;
     if (s.mjPadRefId) {
-      const r = s.referenceImages.find((x) => x.id === s.mjPadRefId);
-      const publicUrl = (isHttpUrl(r?.cdnUrl) ? r?.cdnUrl : undefined) || (isHttpUrl(r?.url) ? r?.url : undefined);
-      if (isHttpUrl(publicUrl)) padUrl = publicUrl;
-      else showError('垫图（PAD）缺少公网 URL（请使用 CDN 图片链接），本次已忽略');
+      padUrl = await ensurePublicUrlForRefId(s.mjPadRefId, '垫图（PAD）');
+      if (!padUrl) return;
     }
+
+    const srefUrl = s.mjSrefRefId
+      ? await ensurePublicUrlForRefId(s.mjSrefRefId, '风格参考（SREF）')
+      : isHttpUrl(s.mjSrefImageUrl)
+        ? s.mjSrefImageUrl
+        : undefined;
+    if (s.mjSrefRefId && !srefUrl) return;
+
+    const crefUrl = s.mjCrefRefId
+      ? await ensurePublicUrlForRefId(s.mjCrefRefId, '角色参考（CREF）')
+      : isHttpUrl(s.mjCrefImageUrl)
+        ? s.mjCrefImageUrl
+        : undefined;
+    if (s.mjCrefRefId && !crefUrl) return;
 
     const finalPrompt = buildMjPrompt({
       basePrompt: prompt,
       padImages: padUrl ? [padUrl] : [],
-      srefImageUrl: s.mjSrefImageUrl,
-      crefImageUrl: s.mjCrefImageUrl,
+      srefImageUrl: srefUrl,
+      crefImageUrl: crefUrl,
       extraArgs,
     });
 

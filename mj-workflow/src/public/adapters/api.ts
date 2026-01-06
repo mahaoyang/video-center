@@ -1,6 +1,7 @@
 export interface ApiClient {
   upload(file: File): Promise<any>;
   deleteUpload(params: { localKey: string }): Promise<any>;
+  promoteUpload(params: { localKey: string }): Promise<any>;
   describe(params: { base64?: string; imageUrl?: string }): Promise<any>;
   visionDescribe(params: { imageUrl: string; question?: string; model?: string }): Promise<any>;
   geminiDescribe(params: { imageUrl: string }): Promise<any>;
@@ -78,6 +79,7 @@ export function createApiClient(apiBase = '/api'): ApiClient {
       return await requestForm(`${apiBase}/upload`, form);
     },
     deleteUpload: async (params) => await requestJson('POST', `${apiBase}/upload/delete`, params),
+    promoteUpload: async (params) => await requestJson('POST', `${apiBase}/upload/promote`, params),
     describe: async (params) => await requestJson('POST', `${apiBase}/describe`, params),
     visionDescribe: async (params) => await requestJson('POST', `${apiBase}/vision/describe`, params),
     geminiDescribe: async (params) => await requestJson('POST', `${apiBase}/gemini/describe`, params),

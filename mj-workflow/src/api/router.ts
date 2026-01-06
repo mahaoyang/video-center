@@ -6,7 +6,7 @@ import type { VisionDescribeRequest } from '../types';
 import { json, jsonError, readJson } from '../http/json';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 
 function extractAssistantText(raw: any): string {
@@ -85,6 +85,15 @@ function normalizeImageExt(ext: string): string {
   return lower;
 }
 
+function mimeFromImageExt(ext: string): string {
+  const e = normalizeImageExt(ext);
+  if (e === '.png') return 'image/png';
+  if (e === '.jpg') return 'image/jpeg';
+  if (e === '.webp') return 'image/webp';
+  if (e === '.gif') return 'image/gif';
+  return 'application/octet-stream';
+}
+
 function isPrivateIpv4(host: string): boolean {
   const m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
   if (!m) return false;
@@ -104,6 +113,56 @@ function isUnsafeHost(hostname: string): boolean {
   if (h === 'localhost' || h === '::1') return true;
   if (isPrivateIpv4(h)) return true;
   return false;
+}
+
+function cacheKeyFromSrc(src: string): string {
+  return createHash('sha256').update(String(src || ''), 'utf8').digest('hex');
+}
+
+async function readExternalImageCache(cacheDir: string, key: string): Promise<Uint8Array | null> {
+  const filePath = join(cacheDir, key);
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) return null;
+  const ab = await file.arrayBuffer();
+  const bytes = new Uint8Array(ab);
+  return bytes.length ? bytes : null;
+}
+
+async function writeExternalImageCache(cacheDir: string, key: string, bytes: Uint8Array): Promise<void> {
+  if (!bytes.length) return;
+  await mkdir(cacheDir, { recursive: true });
+  try {
+    await writeFile(join(cacheDir, key), bytes, { flag: 'wx' });
+  } catch (error: any) {
+    if (error?.code === 'EEXIST') return;
+    throw error;
+  }
+}
+
+async function fetchExternalImageBytes(req: Request, absolute: URL): Promise<{ bytes: Uint8Array; contentType: string | null }> {
+  const headers: Record<string, string> = {
+    Accept: 'image/avif,image/webp,image/*,*/*;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (compatible; MJ-Workflow/1.0; +https://localhost)',
+  };
+  const referer = req.headers.get('referer');
+  if (referer) headers.Referer = referer;
+
+  const timeouts = [15000, 25000];
+  let lastError: unknown;
+  for (const ms of timeouts) {
+    try {
+      const resp = await fetch(absolute.toString(), { headers, signal: AbortSignal.timeout(ms) });
+      if (!resp.ok) throw new Error(`拉取图片失败: ${resp.status}`);
+      const contentType = resp.headers.get('content-type');
+      const ab = await resp.arrayBuffer();
+      const bytes = new Uint8Array(ab);
+      if (bytes.length > 25 * 1024 * 1024) throw new Error('图片过大（>25MB）');
+      return { bytes, contentType };
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('拉取图片失败');
 }
 
 export function createApiRouter(deps: {
@@ -129,6 +188,7 @@ export function createApiRouter(deps: {
 	  return async (req: Request): Promise<Response> => {
 	    const url = new URL(req.url);
 	    const { pathname } = url;
+      const externalCacheDir = join(deps.uploads.dir, '_external_cache');
 
 	    if (pathname === '/api/health' && req.method === 'GET') {
 	      return json({ ok: true, auth: deps.auth, meta: deps.meta });
@@ -175,11 +235,21 @@ export function createApiRouter(deps: {
 	          if (isUnsafeHost(absolute.hostname)) {
 	            return jsonError({ status: 400, description: '禁止访问内网地址' });
 	          }
-	          const resp = await fetch(absolute.toString(), { signal: AbortSignal.timeout(15000) });
-	          if (!resp.ok) return jsonError({ status: 502, description: `拉取图片失败: ${resp.status}` });
-	          contentType = resp.headers.get('content-type');
-	          const ab = await resp.arrayBuffer();
-	          bytes = new Uint8Array(ab);
+            const key = cacheKeyFromSrc(absolute.toString());
+            const cached = await readExternalImageCache(externalCacheDir, key);
+            if (cached) {
+              bytes = cached;
+            } else {
+              const fetched = await fetchExternalImageBytes(req, absolute);
+              bytes = fetched.bytes;
+              contentType = fetched.contentType;
+              const sniffed = sniffImageExt(bytes);
+              const isImageType = Boolean(contentType && contentType.toLowerCase().startsWith('image/'));
+              if (!isImageType && !sniffed) {
+                return jsonError({ status: 502, description: `拉取图片失败: non-image content-type ${contentType || 'unknown'}` });
+              }
+              await writeExternalImageCache(externalCacheDir, key, bytes);
+            }
 	        }
 
 	        const sniffed = sniffImageExt(bytes);
@@ -205,7 +275,7 @@ export function createApiRouter(deps: {
 	        return new Response(bytes, {
 	          headers: {
 	            'Content-Type': contentType,
-	            'Cache-Control': 'public, max-age=3600',
+	            'Cache-Control': 'public, max-age=604800',
 	          },
 	        });
 	      } catch (error) {
@@ -245,10 +315,27 @@ export function createApiRouter(deps: {
           if (isUnsafeHost(absolute.hostname)) {
             return jsonError({ status: 400, description: '禁止访问内网地址' });
           }
-          const resp = await fetch(absolute.toString(), { signal: AbortSignal.timeout(15000) });
-          if (!resp.ok) return jsonError({ status: 502, description: `拉取图片失败: ${resp.status}` });
-          const ab = await resp.arrayBuffer();
-          bytes = new Uint8Array(ab);
+          const key = cacheKeyFromSrc(absolute.toString());
+          const cached = await readExternalImageCache(externalCacheDir, key);
+          if (cached) {
+            bytes = cached;
+          } else {
+            const fetched = await fetchExternalImageBytes(req, absolute);
+            bytes = fetched.bytes;
+            const sniffed = sniffImageExt(bytes);
+            const isImageType = Boolean(fetched.contentType && fetched.contentType.toLowerCase().startsWith('image/'));
+            if (!isImageType && !sniffed) {
+              return jsonError({
+                status: 502,
+                description: `拉取图片失败: non-image content-type ${fetched.contentType || 'unknown'}`,
+              });
+            }
+            await writeExternalImageCache(externalCacheDir, key, bytes);
+          }
+        }
+
+        if (!sniffImageExt(bytes)) {
+          return jsonError({ status: 400, description: '源不是有效图片' });
         }
 
         const img = sharp(bytes);
@@ -288,7 +375,7 @@ export function createApiRouter(deps: {
         return new Response(out, {
           headers: {
             'Content-Type': 'image/png',
-            'Cache-Control': 'public, max-age=3600',
+            'Cache-Control': 'public, max-age=2592000',
           },
         });
       } catch (error) {
@@ -330,17 +417,10 @@ export function createApiRouter(deps: {
 
         await writeFile(localPath, bytes);
 
-        let cdnUrl: string | undefined;
-        if (deps.auth.imageproxyConfigured) {
-          try {
-            const uploaded = await deps.imageproxy.upload(file);
-            cdnUrl = uploaded?.url ? String(uploaded.url) : undefined;
-          } catch (error) {
-            console.warn('imageproxy upload failed:', error);
-          }
-        }
-
-        const url = cdnUrl || localUrl;
+        // NOTE: Do not eagerly upload to 3rd-party CDN. CDN promotion is done lazily (see /api/upload/promote)
+        // only when generating MJ prompts that require a public URL.
+        const cdnUrl: string | undefined = undefined;
+        const url = localUrl;
         return json({
           code: 0,
           description: '成功',
@@ -349,6 +429,52 @@ export function createApiRouter(deps: {
       } catch (error) {
         console.error('Upload error:', error);
         return jsonError({ status: 500, description: '上传失败', error });
+      }
+    }
+
+    if (pathname === '/api/upload/promote' && req.method === 'POST') {
+      try {
+        if (!deps.auth.imageproxyConfigured) {
+          return jsonError({ status: 500, description: '未配置 IMAGEPROXY_TOKEN，无法上传到 CDN（promote）' });
+        }
+        const body = await readJson<{ localKey?: string }>(req);
+        const localKey = String(body.localKey || '').trim();
+        if (!localKey) return jsonError({ status: 400, description: 'localKey 不能为空' });
+        if (basename(localKey) !== localKey) return jsonError({ status: 400, description: 'localKey 非法' });
+        if (!/^[0-9a-fA-F-]{36}(\.[a-zA-Z0-9]+)?$/.test(localKey)) {
+          return jsonError({ status: 400, description: 'localKey 格式不正确' });
+        }
+
+        const filePath = join(deps.uploads.dir, localKey);
+        const file = Bun.file(filePath);
+        if (!(await file.exists())) return jsonError({ status: 404, description: '图片不存在' });
+
+        const ab = await file.arrayBuffer();
+        const bytes = new Uint8Array(ab);
+        const sniffedExt = sniffImageExt(bytes);
+        if (!sniffedExt) return jsonError({ status: 400, description: '图片格式不支持或文件已损坏（仅支持 PNG/JPG/WEBP/GIF）' });
+
+        const ext = normalizeImageExt(extname(localKey) || sniffedExt);
+        const mime = mimeFromImageExt(ext);
+        const uploadFile = new File([bytes], localKey, { type: mime });
+
+        const uploaded = await deps.imageproxy.upload(uploadFile);
+        const cdnUrl = uploaded?.url ? String(uploaded.url) : '';
+        if (!cdnUrl) return jsonError({ status: 502, description: 'CDN 上传失败：缺少 url' });
+
+        return json({
+          code: 0,
+          description: '成功',
+          result: {
+            cdnUrl,
+            url: cdnUrl,
+            localKey,
+            localUrl: `${deps.uploads.publicPath}/${localKey}`,
+          },
+        });
+      } catch (error) {
+        console.error('Upload promote error:', error);
+        return jsonError({ status: 500, description: '上传到 CDN 失败', error });
       }
     }
 

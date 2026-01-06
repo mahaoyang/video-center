@@ -1,3 +1,5 @@
+import { toAppImageSrc } from './image-src';
+
 function ensureModal(): {
   overlay: HTMLDivElement;
   img: HTMLImageElement;
@@ -54,6 +56,6 @@ function ensureModal(): {
 
 export function openImagePreview(src: string) {
   const { overlay, img } = ensureModal();
-  img.src = src;
+  img.src = toAppImageSrc(src);
   overlay.classList.remove('hidden');
 }

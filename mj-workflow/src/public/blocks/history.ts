@@ -3,6 +3,7 @@ import type { WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
 import { randomId } from '../atoms/id';
 import { openImagePreview } from '../atoms/image-preview';
+import { toAppImageSrc } from '../atoms/image-src';
 
 function uniqueStrings(values: Array<string | undefined | null>): string[] {
   const out: string[] = [];
@@ -41,7 +42,7 @@ function createImgWithFallback(params: { urls: string[]; className: string; alt?
       wrapper.appendChild(placeholder);
       return;
     }
-    img.src = next;
+    img.src = toAppImageSrc(next);
   };
 
   img.addEventListener('error', () => tryNext());

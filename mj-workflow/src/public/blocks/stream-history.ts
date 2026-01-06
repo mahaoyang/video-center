@@ -5,6 +5,7 @@ import { dispatchStreamTileEvent } from '../atoms/stream-events';
 import { setPromptInput } from '../atoms/prompt-input';
 import { openImagePreview } from '../atoms/image-preview';
 import { escapeHtml } from '../atoms/html';
+import { toAppImageSrc } from '../atoms/image-src';
 
 function clearRenderedMessages(stream: HTMLElement) {
   stream.querySelectorAll<HTMLElement>('[data-stream-message="1"]').forEach((el) => el.remove());
@@ -205,7 +206,8 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
   msg.dataset.streamMessage = '1';
   const taskId = m.taskId || '';
   const id = taskId || m.id;
-  const src = m.upscaledImageUrl;
+    const rawSrc = m.upscaledImageUrl;
+    const src = rawSrc ? toAppImageSrc(rawSrc) : '';
   if (!src) {
     const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
     msg.className = 'group animate-fade-in-up';
@@ -251,7 +253,7 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
       </div>
 		    </div>
 		  `;
-		  bindStreamTileActions(msg, { src });
+		  bindStreamTileActions(msg, { src: rawSrc || '' });
 		  bindPreview(msg);
 		  return msg;
 }
@@ -260,7 +262,8 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
   msg.dataset.streamMessage = '1';
 
-  const src = m.peditImageUrl;
+  const rawSrc = m.peditImageUrl;
+  const src = rawSrc ? toAppImageSrc(rawSrc) : '';
   if (!src) {
     const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
     msg.className = 'group animate-fade-in-up';
@@ -289,7 +292,7 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
     const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
     if (panel && m.imageUrl) {
       const thumb = document.createElement('img');
-      thumb.src = m.imageUrl;
+      thumb.src = toAppImageSrc(m.imageUrl);
       thumb.referrerPolicy = 'no-referrer';
       thumb.className =
         'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
@@ -322,7 +325,7 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
   const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
   if (panel && m.imageUrl) {
     const thumb = document.createElement('img');
-    thumb.src = m.imageUrl;
+    thumb.src = toAppImageSrc(m.imageUrl);
     thumb.referrerPolicy = 'no-referrer';
     thumb.className =
       'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';

@@ -63,16 +63,22 @@ function renderReferenceItem(params: {
   overlay.appendChild(
     mkBtn(
       'Style (SREF)',
-      Boolean(mjUrl && params.state.mjSrefImageUrl === mjUrl),
-      !mjUrl,
+      Boolean(
+        (params.state.mjSrefRefId && params.state.mjSrefRefId === params.reference.id) ||
+          (mjUrl && params.state.mjSrefImageUrl === mjUrl)
+      ),
+      false,
       params.onSetSref
     )
   );
   overlay.appendChild(
     mkBtn(
       'Char (CREF)',
-      Boolean(mjUrl && params.state.mjCrefImageUrl === mjUrl),
-      !mjUrl,
+      Boolean(
+        (params.state.mjCrefRefId && params.state.mjCrefRefId === params.reference.id) ||
+          (mjUrl && params.state.mjCrefImageUrl === mjUrl)
+      ),
+      false,
       params.onSetCref
     )
   );
@@ -107,15 +113,20 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
     });
   }
 
-  function setSlot(kind: 'sref' | 'cref', url: string | undefined) {
-    if (!url) {
-      showError('该图片没有 CDN 公网链接，无法用于 SREF/CREF（请先配置图床或上传到可公网访问的 URL）');
-      return;
-    }
+  function setSlot(kind: 'sref' | 'cref', ref: ReferenceImage) {
+    const mjUrl = getMjLink(ref);
     params.store.update((s) => {
-      const current = kind === 'sref' ? s.mjSrefImageUrl : s.mjCrefImageUrl;
-      const next = current === url ? undefined : url;
-      return { ...s, mjSrefImageUrl: kind === 'sref' ? next : s.mjSrefImageUrl, mjCrefImageUrl: kind === 'cref' ? next : s.mjCrefImageUrl };
+      const currentId = kind === 'sref' ? s.mjSrefRefId : s.mjCrefRefId;
+      const nextId = currentId === ref.id ? undefined : ref.id;
+      const nextUrl = nextId && mjUrl ? mjUrl : undefined;
+      return {
+        ...s,
+        mjSrefRefId: kind === 'sref' ? nextId : s.mjSrefRefId,
+        mjCrefRefId: kind === 'cref' ? nextId : s.mjCrefRefId,
+        // Back-compat: keep URL if already public; otherwise we'll lazily promote on generate.
+        mjSrefImageUrl: kind === 'sref' ? nextUrl : s.mjSrefImageUrl,
+        mjCrefImageUrl: kind === 'cref' ? nextUrl : s.mjCrefImageUrl,
+      };
     });
   }
 
@@ -144,7 +155,16 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
       const mjSrefImageUrl = s.mjSrefImageUrl && publicUrls.includes(s.mjSrefImageUrl) ? undefined : s.mjSrefImageUrl;
       const mjCrefImageUrl = s.mjCrefImageUrl && publicUrls.includes(s.mjCrefImageUrl) ? undefined : s.mjCrefImageUrl;
 
-      return { ...s, referenceImages: nextRefs, selectedReferenceIds: nextSelected, mjPadRefId: nextPad, mjSrefImageUrl, mjCrefImageUrl };
+      return {
+        ...s,
+        referenceImages: nextRefs,
+        selectedReferenceIds: nextSelected,
+        mjPadRefId: nextPad,
+        mjSrefImageUrl,
+        mjCrefImageUrl,
+        mjSrefRefId: s.mjSrefRefId === ref.id ? undefined : s.mjSrefRefId,
+        mjCrefRefId: s.mjCrefRefId === ref.id ? undefined : s.mjCrefRefId,
+      };
     });
   }
 
@@ -153,15 +173,14 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
     const refs = state.referenceImages.slice().reverse();
 
     for (const r of refs) {
-      const url = getMjLink(r);
       container.appendChild(
         renderReferenceItem({
           reference: r,
           state,
           selectedAsPad: state.mjPadRefId === r.id,
           onTogglePad: () => togglePad(r.id),
-          onSetSref: () => setSlot('sref', url),
-          onSetCref: () => setSlot('cref', url),
+          onSetSref: () => setSlot('sref', r),
+          onSetCref: () => setSlot('cref', r),
           onDelete: () => void deleteReference(r),
         })
       );

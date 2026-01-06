@@ -16,11 +16,20 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
     const padRef = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
     const padUrl = isHttpUrl(padRef?.cdnUrl) ? padRef?.cdnUrl : isHttpUrl(padRef?.url) ? padRef?.url : undefined;
 
+    const srefRef = state.mjSrefRefId ? state.referenceImages.find((r) => r.id === state.mjSrefRefId) : undefined;
+    const crefRef = state.mjCrefRefId ? state.referenceImages.find((r) => r.id === state.mjCrefRefId) : undefined;
+    const srefUrl =
+      (isHttpUrl(srefRef?.cdnUrl) ? srefRef?.cdnUrl : isHttpUrl(srefRef?.url) ? srefRef?.url : undefined) ||
+      (isHttpUrl(state.mjSrefImageUrl) ? state.mjSrefImageUrl : undefined);
+    const crefUrl =
+      (isHttpUrl(crefRef?.cdnUrl) ? crefRef?.cdnUrl : isHttpUrl(crefRef?.url) ? crefRef?.url : undefined) ||
+      (isHttpUrl(state.mjCrefImageUrl) ? state.mjCrefImageUrl : undefined);
+
     return buildMjPrompt({
       basePrompt,
       padImages: padUrl ? [padUrl] : [],
-      srefImageUrl: state.mjSrefImageUrl,
-      crefImageUrl: state.mjCrefImageUrl,
+      srefImageUrl: srefUrl,
+      crefImageUrl: crefUrl,
     });
   }
 
@@ -31,12 +40,16 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
     if (stats) {
       const padRef = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
       const hasPadUrl = Boolean(isHttpUrl(padRef?.cdnUrl || padRef?.url));
-      const sref = isHttpUrl(state.mjSrefImageUrl) ? state.mjSrefImageUrl : '';
-      const cref = isHttpUrl(state.mjCrefImageUrl) ? state.mjCrefImageUrl : '';
+      const srefRef = state.mjSrefRefId ? state.referenceImages.find((r) => r.id === state.mjSrefRefId) : undefined;
+      const crefRef = state.mjCrefRefId ? state.referenceImages.find((r) => r.id === state.mjCrefRefId) : undefined;
+      const hasSrefUrl = Boolean(isHttpUrl(srefRef?.cdnUrl || srefRef?.url) || isHttpUrl(state.mjSrefImageUrl));
+      const hasCrefUrl = Boolean(isHttpUrl(crefRef?.cdnUrl || crefRef?.url) || isHttpUrl(state.mjCrefImageUrl));
+      const hasSrefSelected = Boolean(state.mjSrefRefId || isHttpUrl(state.mjSrefImageUrl));
+      const hasCrefSelected = Boolean(state.mjCrefRefId || isHttpUrl(state.mjCrefImageUrl));
       stats.textContent =
         `PAD(URL): ${hasPadUrl ? 1 : 0}  PAD(base64): -` +
-        (sref ? `  SREF: ✓` : `  SREF: -`) +
-        (cref ? `  CREF: ✓` : `  CREF: -`);
+        (hasSrefSelected ? `  SREF: ${hasSrefUrl ? '✓' : '…'}` : `  SREF: -`) +
+        (hasCrefSelected ? `  CREF: ${hasCrefUrl ? '✓' : '…'}` : `  CREF: -`);
     }
   }
 

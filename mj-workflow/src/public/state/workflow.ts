@@ -74,6 +74,10 @@ export interface WorkflowState {
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
 
+  // Optional MJ prompt wrapper slots (reference ids; will lazily promote to CDN on generate)
+  mjSrefRefId?: string;
+  mjCrefRefId?: string;
+
   prompt?: string;
 
   taskId?: string;

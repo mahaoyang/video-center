@@ -3,7 +3,7 @@ import { showError } from '../atoms/notify';
 import { randomId } from '../atoms/id';
 import { byId } from '../atoms/ui';
 import { setPromptInput } from '../atoms/prompt-input';
-import { extractShotPrompts } from '../atoms/prompt-extract';
+import { extractPlannerShots, extractSunoSongPrompts } from '../atoms/prompt-extract';
 import { setPlannerOpen } from '../atoms/overlays';
 import type { Store } from '../state/store';
 import type { PlannerMessage, WorkflowState } from '../state/workflow';
@@ -20,6 +20,43 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
   function normalizePrompt(prompt: string): string {
     return String(prompt || '').trim().replace(/\s+/g, ' ');
+  }
+
+  function normalizeMultiline(text: string): string {
+    return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  }
+
+  function autosizeComposer(textarea: HTMLTextAreaElement) {
+    const min = 72;
+    const max = 260;
+    textarea.style.height = 'auto';
+    const next = Math.min(max, Math.max(min, textarea.scrollHeight));
+    textarea.style.height = `${next}px`;
+    textarea.style.overflowY = textarea.scrollHeight > max ? 'auto' : 'hidden';
+  }
+
+  async function copyToClipboard(text: string): Promise<boolean> {
+    const value = normalizeMultiline(text);
+    if (!value) return false;
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    }
   }
 
   function getUsedIndexByItem(itemKey: string): number | undefined {
@@ -70,7 +107,16 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     return `<span class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black/70 border border-white/10 text-[9px] font-mono text-white/80 flex items-center justify-center">${usedIndex}</span>`;
   }
 
-  function renderEditableShot(params2: { itemKey: string; label?: string; initial: string }): DocumentFragment {
+  function renderEditableBlock(params2: {
+    itemKey: string;
+    label?: string;
+    hint: string;
+    initial: string;
+    placeholder: string;
+    normalize: (text: string) => string;
+    onUse: (text: string) => void | Promise<void>;
+    useTitle: string;
+  }): DocumentFragment {
     const frag = document.createDocumentFragment();
 
     const bar = document.createElement('div');
@@ -86,7 +132,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     }
     const hint = document.createElement('span');
     hint.className = 'text-[9px] font-black uppercase tracking-[0.25em] opacity-30 truncate';
-    hint.textContent = 'Shot Prompt';
+    hint.textContent = params2.hint;
     left.appendChild(hint);
     bar.appendChild(left);
 
@@ -98,7 +144,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     resetBtn.className =
       'w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all flex items-center justify-center';
     resetBtn.innerHTML = '<i class="fas fa-arrows-rotate text-[11px]"></i>';
-    resetBtn.title = '重置为原始提示词';
+    resetBtn.title = '重置为原始文本';
 
     const useBtn = document.createElement('button');
     useBtn.type = 'button';
@@ -106,8 +152,8 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     applyUsedIconStyle(useBtn, usedIndex);
     useBtn.innerHTML = usedIndex
       ? `<i class="fas fa-check text-[12px]"></i>${iconUsedBadgeHtml(usedIndex)}`
-      : `<i class="fas fa-plus text-[12px] opacity-80"></i>`;
-    useBtn.title = '保存并填入主输入框（自动收起）';
+      : `<i class="fas fa-copy text-[12px] opacity-80"></i>`;
+    useBtn.title = params2.useTitle;
 
     actions.appendChild(resetBtn);
     actions.appendChild(useBtn);
@@ -116,9 +162,9 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
     const textarea = document.createElement('textarea');
     textarea.className =
-      'w-full bg-transparent border border-white/10 rounded-2xl p-5 text-[12px] font-medium leading-relaxed focus:border-studio-accent/50 transition-all resize-none min-h-[160px]';
+      'w-full bg-transparent border border-white/10 rounded-2xl p-5 text-[12px] font-medium leading-relaxed focus:border-studio-accent/50 transition-all resize-none min-h-[160px] whitespace-pre-wrap';
     textarea.value = getEditedText(params2.itemKey, params2.initial);
-    textarea.placeholder = params2.label ? `分镜 ${params2.label}` : '分镜提示词';
+    textarea.placeholder = params2.placeholder;
     autosizeTextarea(textarea);
     textarea.addEventListener('input', () => {
       setEditedText(params2.itemKey, textarea.value);
@@ -137,17 +183,32 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     useBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const text = normalizePrompt(textarea.value);
+      const text = params2.normalize(textarea.value);
       if (!text) return;
       setEditedText(params2.itemKey, text);
       const n = markUsedByItem(params2.itemKey);
       applyUsedIconStyle(useBtn, n);
       useBtn.innerHTML = `<i class="fas fa-check text-[12px]"></i>${iconUsedBadgeHtml(n)}`;
-      setPromptInput(text);
-      requestAnimationFrame(() => setPlannerOpen(false));
+      void params2.onUse(text);
     });
 
     return frag;
+  }
+
+  function renderEditableShot(params2: { itemKey: string; label?: string; initial: string }): DocumentFragment {
+    return renderEditableBlock({
+      itemKey: params2.itemKey,
+      label: params2.label,
+      hint: 'Shot Prompt',
+      initial: params2.initial,
+      placeholder: params2.label ? `分镜 ${params2.label}` : '分镜提示词',
+      normalize: normalizePrompt,
+      useTitle: '保存并填入主输入框（自动收起）',
+      onUse: async (text) => {
+        setPromptInput(text);
+        requestAnimationFrame(() => setPlannerOpen(false));
+      },
+    });
   }
 
   function render(messages: PlannerMessage[]) {
@@ -164,20 +225,51 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
         ' shadow-xl';
 
       if (m.role === 'ai') {
-        const prompts = extractShotPrompts(m.text);
-        const raw = m.text.trim();
-        const isSinglePrompt = prompts.length === 1 && (prompts[0] || '').trim() === raw;
-
-        if (isSinglePrompt) {
-          const key = `${m.id}:shot:0`;
-          bubble.appendChild(renderEditableShot({ itemKey: key, label: 'S1', initial: prompts[0] || raw }));
-        } else if (prompts.length) {
-          for (let i = 0; i < prompts.length; i++) {
-            const p = prompts[i]!;
+        const shotPrompts = extractPlannerShots(m.text);
+        if (shotPrompts.length) {
+          for (let i = 0; i < shotPrompts.length; i++) {
+            const p = shotPrompts[i]!;
             const key = `${m.id}:shot:${i}`;
             bubble.appendChild(renderEditableShot({ itemKey: key, label: `S${i + 1}`, initial: p }));
           }
-        } else {
+        }
+
+        const suno = extractSunoSongPrompts(m.text);
+        if (suno) {
+          const lyricsKey = `${m.id}:suno:lyrics`;
+          bubble.appendChild(
+            renderEditableBlock({
+              itemKey: lyricsKey,
+              label: 'LYRICS',
+              hint: 'Suno Lyrics Prompt',
+              initial: suno.lyricsPrompt,
+              placeholder: 'LYRICS_PROMPT（元标签 + 歌词；纯音乐则只用元标签）',
+              normalize: normalizeMultiline,
+              useTitle: '复制到剪贴板',
+              onUse: async (text) => {
+                await copyToClipboard(text);
+              },
+            })
+          );
+
+          const styleKey = `${m.id}:suno:style`;
+          bubble.appendChild(
+            renderEditableBlock({
+              itemKey: styleKey,
+              label: 'STYLE',
+              hint: 'Suno Style Prompt',
+              initial: suno.stylePrompt,
+              placeholder: 'STYLE_PROMPT（Suno Style of Music）',
+              normalize: normalizePrompt,
+              useTitle: '复制到剪贴板',
+              onUse: async (text) => {
+                await copyToClipboard(text);
+              },
+            })
+          );
+        }
+
+        if (!shotPrompts.length && !suno) {
           const textBlock = document.createElement('div');
           textBlock.className = 'text-[11px] leading-relaxed whitespace-pre-wrap break-words text-white/80';
           textBlock.textContent = m.text;
@@ -203,6 +295,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
     input.value = '';
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    autosizeComposer(input);
 
     const user: PlannerMessage = { id: randomId('msg'), createdAt: Date.now(), role: 'user', text };
     const aiId = randomId('msg');
@@ -219,8 +312,9 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       const out = String(res?.result?.text || '').trim();
       if (!out) throw new Error('对话失败：空响应');
 
-      const shots = extractShotPrompts(out);
-      if (shots.length > 1) {
+      const shots = extractPlannerShots(out);
+      const suno = extractSunoSongPrompts(out);
+      if (!suno && shots.length > 1) {
         const now = Date.now();
         const first = shots[0] || out;
         const rest = shots.slice(1);
@@ -261,6 +355,9 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       void sendMessage();
     }
   });
+
+  input.addEventListener('input', () => autosizeComposer(input));
+  autosizeComposer(input);
 
   clear.addEventListener('click', (e) => {
     e.preventDefault();

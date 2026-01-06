@@ -264,9 +264,11 @@
           <div id="uploadTrigger"
             class="relative w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-white/5 hover:bg-studio-accent hover:text-studio-bg cursor-pointer transition-all duration-300 group">
             <i class="fas fa-paperclip text-xs group-hover:rotate-12 transition-transform"></i>
-            <input type="file" id="imageUpload" class="hidden" multiple accept="image/*" />
+            <input type="file" id="imageUpload"
+              class="absolute inset-0 z-10 opacity-0 cursor-pointer"
+              multiple accept="image/*" />
             <button type="button" id="padMatrixBtn"
-              class="absolute -bottom-1 -right-1 px-2 py-1 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest text-white/70 hover:text-studio-accent hover:border-studio-accent/30 transition-all">
+              class="absolute -bottom-1 -right-1 z-20 px-2 py-1 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest text-white/70 hover:text-studio-accent hover:border-studio-accent/30 transition-all">
               Pad <span id="padCount" class="ml-1 text-studio-accent">0</span>
             </button>
           </div>
@@ -477,7 +479,7 @@
             class="w-full min-h-[140px] max-h-[40vh] overflow-auto bg-white/[0.02] border border-white/10 rounded-2xl p-5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words select-none"></div>
           <div id="mjWrapperStats" class="text-[9px] font-mono opacity-40 leading-relaxed"></div>
           <div class="text-[9px] opacity-30 leading-relaxed">
-            说明：PAD 图、SREF/CREF 仅使用公网可访问的 URL（优先 CDN）；本地 <code>/uploads</code> 不会写入包装器。
+            说明：PAD 图、SREF/CREF 在“生成”时会按需补全公网 URL（惰性上传到 CDN）；平时预览优先走本地 <code>/uploads</code>。
           </div>
         </div>
 
@@ -528,15 +530,15 @@
       <div class="mt-6 glass-panel p-2.5 rounded-[2.2rem] border border-white/5 bg-studio-panel/70">
         <div class="flex items-end gap-3 p-1">
           <textarea id="plannerInput"
-            class="flex-1 bg-transparent border-none focus:ring-0 p-4 text-sm placeholder:opacity-20 resize-none min-h-[56px] max-h-48 leading-relaxed font-medium"
-            placeholder="和模型一起规划多组分镜（Ctrl+Enter 发送）..."></textarea>
+            class="flex-1 bg-transparent border-none focus:ring-0 p-4 text-sm placeholder:opacity-20 resize-none min-h-[72px] max-h-[260px] leading-relaxed font-medium"
+            placeholder="规划分镜/MJ 提示词，或输入 suno/歌词/配乐 让它把多分镜合成 1 首歌（Ctrl+Enter 发送）..."></textarea>
           <button id="plannerSend" type="button"
             class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-studio-accent text-studio-bg hover:scale-105 active:scale-95 transition-all shadow-[0_0_25px_rgba(197,243,65,0.25)]">
             <i class="fas fa-paper-plane text-xs"></i>
           </button>
         </div>
         <div class="px-5 pb-3 text-[9px] font-mono opacity-30">
-          说明：AI 会把分镜拆成多条气泡；点每条里的 “Use” 可直接填入主输入框，再编辑后生图。
+          说明：MJ 模式会拆成多条分镜并可 “Use” 填入主输入框；Suno 模式会输出 LYRICS_PROMPT + STYLE_PROMPT，可一键复制。
         </div>
       </div>
     </div>

@@ -119,6 +119,8 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       mjPadRefId: s.mjPadRefId === id ? undefined : s.mjPadRefId,
       mjSrefImageUrl: s.mjSrefImageUrl && refPublicUrls.includes(s.mjSrefImageUrl) ? undefined : s.mjSrefImageUrl,
       mjCrefImageUrl: s.mjCrefImageUrl && refPublicUrls.includes(s.mjCrefImageUrl) ? undefined : s.mjCrefImageUrl,
+      mjSrefRefId: s.mjSrefRefId === id ? undefined : s.mjSrefRefId,
+      mjCrefRefId: s.mjCrefRefId === id ? undefined : s.mjCrefRefId,
     }));
     renderTray();
     const deleteKey = ref ? getDeleteKey(ref) : undefined;
@@ -226,9 +228,12 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   });
 
   uploadTrigger?.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    uploadInput?.click();
+    const target = e.target as HTMLElement | null;
+    if (!uploadInput) return;
+    if (target && (target === uploadInput || target.closest('#padMatrixBtn'))) return;
+    // Do not preventDefault here: if the click lands on the transparent <input type="file">,
+    // we want the browser's native picker to work reliably.
+    uploadInput.click();
   });
 
   // INITIAL RENDER + AUTOMATIC SYNC
