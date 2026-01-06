@@ -70,6 +70,8 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       const n = markUsed(prompt);
       applyUsedStyle(b, n);
       b.innerHTML = `<i class="fas fa-check text-[9px]"></i><span>Used</span><span class="text-[8px] font-mono opacity-70">#${n}</span>`;
+      // Collapse planner drawer back to main view.
+      requestAnimationFrame(() => (window as any).togglePlanner?.(false));
     });
     bar.appendChild(b);
     container.appendChild(bar);
@@ -133,6 +135,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
               plus.className = 'fas fa-check text-[9px]';
               usedBadge.className = 'text-[8px] font-mono opacity-70';
               usedBadge.textContent = `#${n}`;
+              requestAnimationFrame(() => (window as any).togglePlanner?.(false));
             });
             bar.appendChild(b);
           }
