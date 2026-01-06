@@ -61,7 +61,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
   function autosizeTextarea(textarea: HTMLTextAreaElement) {
     textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(220, textarea.scrollHeight)}px`;
+    textarea.style.height = `${Math.min(640, Math.max(160, textarea.scrollHeight))}px`;
   }
 
   function applyUsedIconStyle(btn: HTMLButtonElement, usedIndex: number | undefined) {
@@ -78,24 +78,28 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     return `<span class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black/70 border border-white/10 text-[9px] font-mono text-white/80 flex items-center justify-center">${usedIndex}</span>`;
   }
 
-  function renderEditableShot(params2: { itemKey: string; label?: string; initial: string }): HTMLElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'mt-4 relative';
+  function renderEditableShot(params2: { itemKey: string; label?: string; initial: string }): DocumentFragment {
+    const frag = document.createDocumentFragment();
 
-    const textarea = document.createElement('textarea');
-    textarea.className =
-      'w-full bg-transparent border border-white/10 rounded-2xl p-4 pr-28 text-[11px] font-medium leading-relaxed focus:border-studio-accent/50 transition-all resize-none min-h-[64px]';
-    textarea.value = getEditedText(params2.itemKey, params2.initial);
-    textarea.placeholder = params2.label ? `分镜 ${params2.label}` : '分镜提示词';
-    autosizeTextarea(textarea);
-    textarea.addEventListener('input', () => {
-      setEditedText(params2.itemKey, textarea.value);
-      autosizeTextarea(textarea);
-    });
-    wrap.appendChild(textarea);
+    const bar = document.createElement('div');
+    bar.className = 'mt-6 mb-3 flex items-center justify-between gap-3';
+
+    const left = document.createElement('div');
+    left.className = 'flex items-center gap-2 min-w-0';
+    if (params2.label) {
+      const tag = document.createElement('span');
+      tag.className = 'px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[8px] font-mono opacity-60 flex-shrink-0';
+      tag.textContent = params2.label;
+      left.appendChild(tag);
+    }
+    const hint = document.createElement('span');
+    hint.className = 'text-[9px] font-black uppercase tracking-[0.25em] opacity-30 truncate';
+    hint.textContent = 'Shot Prompt';
+    left.appendChild(hint);
+    bar.appendChild(left);
 
     const actions = document.createElement('div');
-    actions.className = 'absolute top-3 right-3 flex items-center gap-2';
+    actions.className = 'flex items-center gap-2 flex-shrink-0';
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
@@ -115,7 +119,20 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
 
     actions.appendChild(resetBtn);
     actions.appendChild(useBtn);
-    wrap.appendChild(actions);
+    bar.appendChild(actions);
+    frag.appendChild(bar);
+
+    const textarea = document.createElement('textarea');
+    textarea.className =
+      'w-full bg-transparent border border-white/10 rounded-2xl p-5 text-[12px] font-medium leading-relaxed focus:border-studio-accent/50 transition-all resize-none min-h-[160px]';
+    textarea.value = getEditedText(params2.itemKey, params2.initial);
+    textarea.placeholder = params2.label ? `分镜 ${params2.label}` : '分镜提示词';
+    autosizeTextarea(textarea);
+    textarea.addEventListener('input', () => {
+      setEditedText(params2.itemKey, textarea.value);
+      autosizeTextarea(textarea);
+    });
+    frag.appendChild(textarea);
 
     resetBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -138,7 +155,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       requestAnimationFrame(() => (window as any).togglePlanner?.(false));
     });
 
-    return wrap;
+    return frag;
   }
 
   function render(messages: PlannerMessage[]) {
