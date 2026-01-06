@@ -21,6 +21,7 @@ export function createCommandModeBlock(params: {
   const modeBtn = byId<HTMLElement>('commandModeBtn');
   const modeMenu = byId<HTMLElement>('commandModeMenu');
   const executeBtn = byId<HTMLButtonElement>('step3Next');
+  const modeBadge = byId<HTMLElement>('commandModeBadge');
 
   const extraPanel = byId<HTMLElement>('commandExtraPanel');
   const beautifyPanel = byId<HTMLElement>('commandBeautifyPanel');
@@ -40,6 +41,13 @@ export function createCommandModeBlock(params: {
   }
 
   function applyModeUi(mode: CommandMode) {
+    modeBadge.textContent =
+      mode === 'mj' ? 'MJ' : mode === 'video' ? 'VID' : mode === 'deconstruct' ? 'DESC' : mode === 'pedit' ? 'EDIT' : 'POL';
+    modeMenu.querySelectorAll<HTMLElement>('button[data-command-mode]').forEach((el) => {
+      const v = String((el as any).dataset?.commandMode || '').trim();
+      el.classList.toggle('bg-white/5', v === mode);
+    });
+
     // Reset panels
     hide(beautifyPanel);
     hide(videoPanel);
@@ -147,4 +155,3 @@ export function createCommandModeBlock(params: {
 
   return { execute };
 }
-
