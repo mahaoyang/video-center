@@ -70,12 +70,25 @@ function bindPreview(root: HTMLElement) {
 function renderDeconstructMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
   msg.dataset.streamMessage = '1';
-  if (m.role === 'user') {
-    msg.className = 'flex justify-end animate-fade-in-up';
+  const isPending = !m.text || !m.text.trim();
+  if (isPending) {
+    const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
+    msg.className = 'group animate-fade-in-up';
     msg.innerHTML = `
-      <div class="max-w-xl glass-panel px-7 py-5 rounded-[2rem] border border-white/5 shadow-2xl bg-studio-panel/40 backdrop-blur-md relative">
-        <div class="text-[9px] font-black uppercase tracking-[0.4em] text-studio-accent mb-3 opacity-60">Neural Inquiry</div>
-        <p class="text-xs font-mono opacity-80 italic">${escapeHtml(m.text || 'Deconstructing…')}</p>
+      <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60">
+        <div class="flex items-center justify-between gap-6">
+          <div class="flex items-center gap-4 opacity-60">
+            <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-[10px] font-black uppercase tracking-[0.3em]">Neural Inquiry</span>
+              <span class="text-[9px] font-mono opacity-40">Deconstructing…</span>
+            </div>
+          </div>
+          <div class="text-[12px] font-black text-studio-accent"><span data-progress-text="1">${p}%</span></div>
+        </div>
+        <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
       </div>
     `;
   } else {

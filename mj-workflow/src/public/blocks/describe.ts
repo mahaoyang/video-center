@@ -68,18 +68,19 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
       for (let i = 0; i < selected.length; i++) {
         const r = selected[i]!;
         const previewUrl = bestPreviewUrl(r);
-        const userMsgId = randomId('msg');
+        const aiMsgId = randomId('msg');
 
         params.store.update((st) => ({
           ...st,
           streamMessages: [
             ...st.streamMessages,
             {
-              id: userMsgId,
+              id: aiMsgId,
               createdAt: Date.now(),
-              role: 'user',
+              role: 'ai',
               kind: 'deconstruct',
-              text: 'Deconstructing…',
+              text: '',
+              progress: 1,
               imageUrl: previewUrl || undefined,
               refId: r.id,
             } satisfies StreamMessage,
@@ -91,18 +92,11 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
         if (!publicUrl && !base64) {
           params.store.update((st) => ({
             ...st,
-            streamMessages: [
-              ...st.streamMessages,
-              {
-                id: randomId('msg'),
-                createdAt: Date.now(),
-                role: 'ai',
-                kind: 'deconstruct',
-                text: '该图片无法读取（缺少可用 URL/base64），请重新上传。',
-                imageUrl: previewUrl || undefined,
-                refId: r.id,
-              } satisfies StreamMessage,
-            ].slice(-200),
+            streamMessages: st.streamMessages.map((m) =>
+              m.id === aiMsgId
+                ? { ...m, text: '该图片无法读取（缺少可用 URL/base64），请重新上传。', progress: 100, error: '图片不可用' }
+                : m
+            ),
           }));
           continue;
         }
@@ -114,7 +108,16 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
           if (upstreamError) throw new Error(upstreamError);
           const taskId = getSubmitTaskId(data);
           if (!taskId) throw new Error(pretty(data) || 'MJ Describe failed');
-          promptText = await pollTaskUntilFinalPrompt({ api: params.api, taskId });
+          promptText = await pollTaskUntilFinalPrompt({
+            api: params.api,
+            taskId,
+            onProgress: (p) => {
+              params.store.update((st) => ({
+                ...st,
+                streamMessages: st.streamMessages.map((m) => (m.id === aiMsgId ? { ...m, progress: p } : m)),
+              }));
+            },
+          });
         } else if (engine === 'gemini') {
           const imageUrl = publicUrl || (base64 ? `data:image/png;base64,${base64}` : '');
           const data = await params.api.geminiDescribe({ imageUrl });
@@ -132,23 +135,9 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
         const aiText = promptText || 'Neural engine failed to deconstruct assets';
         params.store.update((st) => ({
           ...st,
-          streamMessages: [
-            ...st.streamMessages,
-            {
-              id: randomId('msg'),
-              createdAt: Date.now(),
-              role: 'ai',
-              kind: 'deconstruct',
-              text: aiText,
-              imageUrl: previewUrl || undefined,
-              refId: r.id,
-            } satisfies StreamMessage,
-          ].slice(-200),
-        }));
-
-        params.store.update((st) => ({
-          ...st,
-          streamMessages: st.streamMessages.map((m) => (m.id === userMsgId ? { ...m, text: 'Deconstruct ✓' } : m)),
+          streamMessages: st.streamMessages.map((m) =>
+            m.id === aiMsgId ? { ...m, text: aiText, progress: 100, error: aiText.includes('failed') ? aiText : m.error } : m
+          ),
         }));
       }
     } catch (error) {
