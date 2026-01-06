@@ -74,24 +74,18 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     applyBtn.disabled = true;
     applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px]"></i>';
 
-    const userMsg: StreamMessage = {
-      id: randomId('msg'),
-      createdAt: Date.now(),
-      role: 'user',
-      kind: 'pedit',
-      text: editPrompt,
-      imageUrl: imageUrl,
-      refId: ref?.id,
-    };
     const aiMsgId = randomId('msg');
     const pending: StreamMessage = {
       id: aiMsgId,
       createdAt: Date.now(),
       role: 'ai',
       kind: 'pedit',
+      text: editPrompt,
+      imageUrl,
+      refId: ref?.id,
       progress: 1,
     };
-    params.store.update((s) => ({ ...s, streamMessages: [...s.streamMessages, userMsg, pending].slice(-200) }));
+    params.store.update((s) => ({ ...s, streamMessages: [...s.streamMessages, pending].slice(-200) }));
 
     try {
       const res = await params.api.geminiEdit({ imageUrl, editPrompt });
