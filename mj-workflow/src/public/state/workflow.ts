@@ -25,7 +25,7 @@ export interface WorkflowHistoryItem {
 }
 
 export type StreamMessageRole = 'user' | 'ai';
-export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale';
+export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit';
 
 export type PlannerMessageRole = 'user' | 'ai';
 export interface PlannerMessage {
@@ -48,6 +48,7 @@ export interface StreamMessage {
   taskId?: string;
   gridImageUrl?: string;
   upscaledImageUrl?: string;
+  peditImageUrl?: string;
 
   progress?: number; // 0..100 for async tasks
   error?: string;

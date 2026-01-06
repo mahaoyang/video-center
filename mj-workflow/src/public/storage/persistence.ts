@@ -42,6 +42,7 @@ type Persisted = {
     taskId?: string;
     gridImageUrl?: string;
     upscaledImageUrl?: string;
+    peditImageUrl?: string;
     progress?: number;
     error?: string;
   }>;
@@ -114,6 +115,7 @@ function toPersisted(state: WorkflowState): Persisted {
       taskId: m.taskId,
       gridImageUrl: m.gridImageUrl,
       upscaledImageUrl: m.upscaledImageUrl,
+      peditImageUrl: m.peditImageUrl,
       progress: typeof m.progress === 'number' ? m.progress : undefined,
       error: typeof m.error === 'string' ? m.error : undefined,
     })),
@@ -174,13 +176,14 @@ export function loadPersistedState(): {
       id: m.id || randomId('msg'),
       createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
       role: m.role === 'ai' ? 'ai' : 'user',
-      kind: m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' ? m.kind : 'generate',
+      kind: m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' ? m.kind : 'generate',
       text: typeof m.text === 'string' ? m.text : undefined,
       imageUrl: typeof m.imageUrl === 'string' ? m.imageUrl : undefined,
       refId: typeof m.refId === 'string' ? m.refId : undefined,
       taskId: typeof m.taskId === 'string' ? m.taskId : undefined,
       gridImageUrl: typeof m.gridImageUrl === 'string' ? m.gridImageUrl : undefined,
       upscaledImageUrl: typeof m.upscaledImageUrl === 'string' ? m.upscaledImageUrl : undefined,
+      peditImageUrl: typeof m.peditImageUrl === 'string' ? m.peditImageUrl : undefined,
       progress: typeof m.progress === 'number' ? m.progress : undefined,
       error: typeof m.error === 'string' ? m.error : undefined,
     }))

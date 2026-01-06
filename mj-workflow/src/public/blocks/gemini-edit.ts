@@ -4,7 +4,7 @@ import { showError, showMessage } from '../atoms/notify';
 import { randomId } from '../atoms/id';
 import { byId } from '../atoms/ui';
 import type { Store } from '../state/store';
-import type { ReferenceImage, WorkflowState } from '../state/workflow';
+import type { ReferenceImage, StreamMessage, WorkflowState } from '../state/workflow';
 import { sha256HexFromBlob } from '../atoms/blob-hash';
 
 function bestEditSourceUrl(r: ReferenceImage | undefined): string | undefined {
@@ -73,6 +73,26 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     busy = true;
     applyBtn.disabled = true;
     applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px]"></i>';
+
+    const userMsg: StreamMessage = {
+      id: randomId('msg'),
+      createdAt: Date.now(),
+      role: 'user',
+      kind: 'pedit',
+      text: editPrompt,
+      imageUrl: imageUrl,
+      refId: ref?.id,
+    };
+    const aiMsgId = randomId('msg');
+    const pending: StreamMessage = {
+      id: aiMsgId,
+      createdAt: Date.now(),
+      role: 'ai',
+      kind: 'pedit',
+      progress: 1,
+    };
+    params.store.update((s) => ({ ...s, streamMessages: [...s.streamMessages, userMsg, pending].slice(-200) }));
+
     try {
       const res = await params.api.geminiEdit({ imageUrl, editPrompt });
       if (res?.code !== 0) throw new Error(res?.description || 'P 图失败');
@@ -83,10 +103,17 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       const originKey = `gemini-edit:sha256:${await sha256HexFromBlob(file)}`;
       const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
       if (existing) {
+        const existingPreview = bestEditSourceUrl(existing);
         params.store.update((s) => ({
           ...s,
           selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, existing.id])),
           mjPadRefId: existing.id,
+        }));
+        params.store.update((st) => ({
+          ...st,
+          streamMessages: st.streamMessages.map((m) =>
+            m.id === aiMsgId ? { ...m, peditImageUrl: existingPreview, progress: 100 } : m
+          ),
         }));
         return;
       }
@@ -100,6 +127,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       const url = String(result.url);
       const cdnUrl = typeof result.cdnUrl === 'string' ? result.cdnUrl : undefined;
       const localUrl = typeof result.localUrl === 'string' ? result.localUrl : undefined;
+      const previewUrl = cdnUrl || url || localUrl;
 
       params.store.update((s) => ({
         ...s,
@@ -121,10 +149,20 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
         mjPadRefId: referenceId,
       }));
 
+      params.store.update((st) => ({
+        ...st,
+        streamMessages: st.streamMessages.map((m) => (m.id === aiMsgId ? { ...m, peditImageUrl: previewUrl, progress: 100 } : m)),
+      }));
+
       showMessage('P 图完成：已加入图片栏并设为 PAD，可继续重复 P');
     } catch (e) {
       console.error('Gemini edit failed:', e);
-      showError((e as Error)?.message || 'P 图失败');
+      const msg = (e as Error)?.message || 'P 图失败';
+      showError(msg);
+      params.store.update((st) => ({
+        ...st,
+        streamMessages: st.streamMessages.map((m) => (m.id === aiMsgId ? { ...m, error: msg } : m)),
+      }));
     } finally {
       busy = false;
       applyBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles text-[10px]"></i><span class="ml-2">Apply</span>';
