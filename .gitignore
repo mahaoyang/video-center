@@ -1,7 +1,9 @@
 # 环境变量
 .env
 .env.local
+.envrc
 .env.*.local
+*.env
 
 # Node/Bun
 node_modules/
@@ -18,6 +20,24 @@ dist/
 **/.data/
 uploads/
 **/uploads/
+out/
+**/out/
+
+# Secrets / keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.jks
+*.pkcs12
+*credentials*.json
+*.gcp.json
+.pypirc
+.npmrc
+**/.aws/credentials
 
 # Python
 __pycache__/
