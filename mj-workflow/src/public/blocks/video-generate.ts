@@ -20,7 +20,10 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   const providerMenu = byId<HTMLElement>('videoProviderMenu');
   const providerLabel = byId<HTMLElement>('videoProviderLabel');
   const modelInput = byId<HTMLInputElement>('videoModelInput');
-  const geminiModelSelect = byId<HTMLSelectElement>('videoGeminiModelSelect');
+  const geminiModelWrap = byId<HTMLElement>('videoGeminiModelWrap');
+  const geminiModelBtn = byId<HTMLButtonElement>('videoGeminiModelBtn');
+  const geminiModelLabel = byId<HTMLElement>('videoGeminiModelLabel');
+  const geminiModelMenu = byId<HTMLElement>('videoGeminiModelMenu');
   const secondsInput = byId<HTMLInputElement>('videoSecondsInput');
   const modeInput = byId<HTMLInputElement>('videoModeInput');
   const aspectInput = byId<HTMLInputElement>('videoAspectInput');
@@ -33,6 +36,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   const endMenu = byId<HTMLElement>('videoEndRefMenu');
 
   const providerPopover = createPopoverMenu({ button: providerBtn, menu: providerMenu });
+  const geminiModelPopover = createPopoverMenu({ button: geminiModelBtn, menu: geminiModelMenu });
   const startPopover = createPopoverMenu({ button: startBtn, menu: startMenu });
   const endPopover = createPopoverMenu({ button: endBtn, menu: endMenu });
 
@@ -47,7 +51,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   function setDefaultsForProvider(provider: VideoProvider) {
     if (provider === 'jimeng') {
       modelInput.classList.remove('hidden');
-      geminiModelSelect.classList.add('hidden');
+      geminiModelWrap.classList.add('hidden');
       if (!modelInput.value.trim()) modelInput.value = 'jimeng-video-3.0';
       if (!aspectInput.value.trim()) aspectInput.value = '16:9';
       if (!sizeInput.value.trim()) sizeInput.value = '1080P';
@@ -61,7 +65,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       sizeInput.disabled = false;
     } else if (provider === 'kling') {
       modelInput.classList.remove('hidden');
-      geminiModelSelect.classList.add('hidden');
+      geminiModelWrap.classList.add('hidden');
       if (!modelInput.value.trim()) modelInput.value = 'kling-v2-6';
       if (!secondsInput.value.trim()) secondsInput.value = '5';
       secondsInput.placeholder = '5 / 10';
@@ -77,8 +81,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       sizeInput.disabled = true;
     } else {
       modelInput.classList.add('hidden');
-      geminiModelSelect.classList.remove('hidden');
-      if (!geminiModelSelect.value) geminiModelSelect.value = 'veo-3.0-fast-generate-001';
+      geminiModelWrap.classList.remove('hidden');
       secondsInput.placeholder = '可选';
       secondsInput.disabled = false;
       modeInput.value = '';
@@ -103,6 +106,26 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       el.classList.toggle('bg-white/5', v === provider);
     });
     setDefaultsForProvider(provider);
+    refreshGeminiModelUi(params.store.get());
+  }
+
+  function labelForGeminiModel(model: string): string {
+    const m = String(model || '').trim();
+    if (m === 'veo-3.0-fast-generate-001') return '3.0-fast';
+    if (m === 'veo-3.0-generate-001') return '3.0';
+    if (m === 'veo-3.1-fast-generate-preview') return '3.1-fast';
+    if (m === 'veo-3.1-generate-preview') return '3.1';
+    return m || '3.0-fast';
+  }
+
+  function refreshGeminiModelUi(state: WorkflowState) {
+    if (readProvider() !== 'gemini') return;
+    const model = typeof state.videoModel === 'string' && state.videoModel.trim() ? state.videoModel.trim() : 'veo-3.0-fast-generate-001';
+    geminiModelLabel.textContent = labelForGeminiModel(model);
+    geminiModelMenu.querySelectorAll<HTMLElement>('button[data-gemini-video-model]').forEach((el) => {
+      const v = String(el.dataset.geminiVideoModel || '').trim();
+      el.classList.toggle('bg-white/5', v === model);
+    });
   }
 
   providerMenu.querySelectorAll<HTMLButtonElement>('button[data-video-provider]').forEach((btn) => {
@@ -118,13 +141,20 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
     });
   });
 
+  geminiModelMenu.querySelectorAll<HTMLButtonElement>('button[data-gemini-video-model]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const v = String(btn.dataset.geminiVideoModel || '').trim();
+      if (!v) return;
+      params.store.update((s) => ({ ...s, videoModel: v }));
+      geminiModelPopover.close();
+    });
+  });
+
   function syncInputsFromStore(state: WorkflowState) {
     if (typeof state.videoModel === 'string' && state.videoModel.trim() && modelInput.value.trim() !== state.videoModel.trim()) {
       modelInput.value = state.videoModel.trim();
-    }
-    if (typeof state.videoModel === 'string' && state.videoModel.trim() && geminiModelSelect.value !== state.videoModel.trim()) {
-      // For Gemini provider, keep select in sync too.
-      geminiModelSelect.value = state.videoModel.trim();
     }
     if (typeof state.videoAspect === 'string' && state.videoAspect.trim() && aspectInput.value.trim() !== state.videoAspect.trim()) {
       aspectInput.value = state.videoAspect.trim();
@@ -138,6 +168,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
     if (typeof state.videoMode === 'string' && state.videoMode.trim() && !modeInput.value.trim()) {
       modeInput.value = state.videoMode.trim();
     }
+    refreshGeminiModelUi(state);
   }
 
   function persistInputs() {
@@ -147,7 +178,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       ...s,
       videoModel:
         readProvider() === 'gemini'
-          ? geminiModelSelect.value
+          ? (typeof s.videoModel === 'string' && s.videoModel.trim() ? s.videoModel.trim() : 'veo-3.0-fast-generate-001')
           : modelInput.value.trim() || s.videoModel,
       videoAspect: aspectInput.value.trim() || undefined,
       videoSize: sizeInput.value.trim() || undefined,
@@ -157,7 +188,6 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   }
 
   modelInput.addEventListener('input', () => persistInputs());
-  geminiModelSelect.addEventListener('change', () => persistInputs());
   secondsInput.addEventListener('input', () => persistInputs());
   modeInput.addEventListener('input', () => persistInputs());
   aspectInput.addEventListener('input', () => persistInputs());
@@ -349,6 +379,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
     if (visible) {
       show(extraPanel);
       show(panel);
+      refreshGeminiModelUi(params.store.get());
     } else {
       hide(panel);
     }

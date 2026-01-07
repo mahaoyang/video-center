@@ -6,6 +6,7 @@ import type { Store } from '../state/store';
 import type { ReferenceImage, StreamMessage, WorkflowState } from '../state/workflow';
 import { stripMjParamsAndUrls } from '../atoms/mj-prompt-parts';
 import { toAppImageSrc } from '../atoms/image-src';
+import { createPopoverMenu } from '../atoms/popover-menu';
 
 function bestEditSourceUrl(r: ReferenceImage | undefined): string | undefined {
   return r?.cdnUrl || r?.url || r?.localUrl || r?.dataUrl;
@@ -13,11 +14,18 @@ function bestEditSourceUrl(r: ReferenceImage | undefined): string | undefined {
 
 export function createGeminiEditBlock(params: { api: ApiClient; store: Store<WorkflowState> }) {
   const panel = byId<HTMLElement>('pEditPanel');
-  const aspectSelect = byId<HTMLSelectElement>('pEditAspectSelect');
-  const sizeSelect = byId<HTMLSelectElement>('pEditSizeSelect');
+  const aspectBtn = byId<HTMLButtonElement>('pEditAspectBtn');
+  const aspectLabel = byId<HTMLElement>('pEditAspectLabel');
+  const aspectMenu = byId<HTMLElement>('pEditAspectMenu');
+  const sizeBtn = byId<HTMLButtonElement>('pEditSizeBtn');
+  const sizeLabel = byId<HTMLElement>('pEditSizeLabel');
+  const sizeMenu = byId<HTMLElement>('pEditSizeMenu');
   const selectedRefs = byId<HTMLElement>('pEditSelectedRefs');
   const clearSelectedBtn = byId<HTMLButtonElement>('pEditClearSelected');
   const mainPrompt = byId<HTMLTextAreaElement>('promptInput');
+
+  const aspectPopover = createPopoverMenu({ button: aspectBtn, menu: aspectMenu });
+  const sizePopover = createPopoverMenu({ button: sizeBtn, menu: sizeMenu });
 
   function open() {
     panel.classList.remove('hidden');
@@ -35,8 +43,17 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
   function render(state: WorkflowState) {
     const ar = typeof state.gimageAspect === 'string' && state.gimageAspect.trim() ? state.gimageAspect.trim() : '16:9';
     const size = typeof state.gimageSize === 'string' && state.gimageSize.trim() ? state.gimageSize.trim() : '2K';
-    if (aspectSelect.value !== ar) aspectSelect.value = ar;
-    if (sizeSelect.value !== size) sizeSelect.value = size;
+    aspectLabel.textContent = ar;
+    sizeLabel.textContent = size;
+
+    aspectMenu.querySelectorAll<HTMLElement>('button[data-gimage-aspect]').forEach((el) => {
+      const v = String(el.dataset.gimageAspect || '').trim();
+      el.classList.toggle('bg-white/5', v === ar);
+    });
+    sizeMenu.querySelectorAll<HTMLElement>('button[data-gimage-size]').forEach((el) => {
+      const v = String(el.dataset.gimageSize || '').trim();
+      el.classList.toggle('bg-white/5', v === size);
+    });
 
     const refs = getSelectedRefsOrdered(state);
     selectedRefs.innerHTML = '';
@@ -170,13 +187,25 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     }
   }
 
-  aspectSelect.addEventListener('change', () => {
-    const v = aspectSelect.value;
-    params.store.update((s) => ({ ...s, gimageAspect: v }));
+  aspectMenu.querySelectorAll<HTMLButtonElement>('button[data-gimage-aspect]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const v = String(btn.dataset.gimageAspect || '').trim();
+      if (!v) return;
+      params.store.update((s) => ({ ...s, gimageAspect: v }));
+      aspectPopover.close();
+    });
   });
-  sizeSelect.addEventListener('change', () => {
-    const v = sizeSelect.value;
-    params.store.update((s) => ({ ...s, gimageSize: v }));
+  sizeMenu.querySelectorAll<HTMLButtonElement>('button[data-gimage-size]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const v = String(btn.dataset.gimageSize || '').trim();
+      if (!v) return;
+      params.store.update((s) => ({ ...s, gimageSize: v }));
+      sizePopover.close();
+    });
   });
   clearSelectedBtn.addEventListener('click', (e) => {
     e.preventDefault();
