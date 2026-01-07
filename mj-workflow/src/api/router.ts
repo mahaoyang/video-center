@@ -751,6 +751,67 @@ export function createApiRouter(deps: {
       }
     }
 
+    if (pathname === '/api/gemini/pro-image' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+
+        const body = await readJson<{
+          prompt?: string;
+          imageUrls?: string[];
+          aspectRatio?: string;
+          imageSize?: string;
+        }>(req);
+
+        const prompt = String(body.prompt || '').trim();
+        if (!prompt) return jsonError({ status: 400, description: 'prompt 不能为空' });
+
+        const imageUrls = Array.isArray(body.imageUrls)
+          ? body.imageUrls.map((u) => String(u || '').trim()).filter(Boolean)
+          : [];
+
+        const outputs = await deps.gemini.generateOrEditImages({
+          prompt,
+          imageUrls: imageUrls.map((u) => normalizeInputImageUrl(req, u)),
+          aspectRatio: typeof body.aspectRatio === 'string' ? body.aspectRatio : undefined,
+          imageSize: typeof body.imageSize === 'string' ? body.imageSize : undefined,
+          responseModalities: ['IMAGE'],
+        });
+
+        if (!outputs.length) {
+          return jsonError({ status: 502, description: 'Gemini 未返回图片' });
+        }
+
+        await mkdir(deps.uploads.dir, { recursive: true });
+
+        const saved: Array<{ url: string; localUrl: string; localKey: string; mimeType: string }> = [];
+        for (const img of outputs) {
+          const mimeType = String(img.mimeType || 'image/png');
+          const bytes = new Uint8Array(Buffer.from(String(img.data || ''), 'base64'));
+          const sniffedExt = sniffImageExt(bytes);
+          if (!sniffedExt) continue;
+
+          const ext = normalizeImageExt(sniffedExt);
+          const localKey = `${randomUUID()}${ext}`;
+          const safeKey = basename(localKey);
+          const localPath = join(deps.uploads.dir, safeKey);
+          const localUrl = `${deps.uploads.publicPath}/${safeKey}`;
+          await writeFile(localPath, bytes);
+          saved.push({ url: localUrl, localUrl, localKey: safeKey, mimeType: mimeFromImageExt(ext) });
+        }
+
+        if (!saved.length) {
+          return jsonError({ status: 502, description: 'Gemini 返回的图片格式不支持' });
+        }
+
+        return json({ code: 0, description: '成功', result: { images: saved } });
+      } catch (error) {
+        console.error('Gemini pro-image error:', error);
+        return jsonError({ status: 500, description: 'Gemini 生图/编辑失败', error });
+      }
+    }
+
     if (pathname === '/api/gemini/edit' && req.method === 'POST') {
       try {
         if (!deps.auth.geminiConfigured) {

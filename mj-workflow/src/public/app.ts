@@ -34,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.streamMessages = persisted.streamMessages || [];
   initial.plannerMessages = persisted.plannerMessages || [];
   if (persisted.commandMode) initial.commandMode = persisted.commandMode as any;
+  if (persisted.gimageAspect) initial.gimageAspect = persisted.gimageAspect as any;
+  if (persisted.gimageSize) initial.gimageSize = persisted.gimageSize as any;
   if (persisted.videoProvider) initial.videoProvider = persisted.videoProvider as any;
   if (persisted.videoModel) initial.videoModel = persisted.videoModel as any;
   if (typeof persisted.videoSeconds === 'number') initial.videoSeconds = persisted.videoSeconds;

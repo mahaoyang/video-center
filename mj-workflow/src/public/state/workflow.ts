@@ -48,7 +48,9 @@ export interface StreamMessage {
   taskId?: string;
   gridImageUrl?: string;
   upscaledImageUrl?: string;
-  peditImageUrl?: string;
+  peditImageUrl?: string; // legacy single output
+  peditImageUrls?: string[]; // multi outputs (preferred)
+  inputImageUrls?: string[]; // optional multi inputs for Gemini Pro Image
   videoUrl?: string;
   thumbnailUrl?: string;
   provider?: string;
@@ -101,6 +103,9 @@ export interface WorkflowState {
 
   // Command hub mode + video settings
   commandMode?: CommandMode;
+  // Gemini Pro Image (text-to-image / edit / compose)
+  gimageAspect?: string;
+  gimageSize?: string;
   videoProvider?: VideoProvider;
   videoModel?: string;
   videoSeconds?: number;
@@ -122,6 +127,8 @@ export function createInitialWorkflowState(): WorkflowState {
     streamMessages: [],
     plannerMessages: [],
     commandMode: 'mj',
+    gimageAspect: '16:9',
+    gimageSize: '2K',
     videoProvider: 'jimeng',
     videoModel: 'jimeng-video-3.0',
   };

@@ -276,8 +276,9 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
   msg.dataset.streamMessage = '1';
 
-  const rawSrc = m.peditImageUrl;
-  const src = rawSrc ? toAppImageSrc(rawSrc) : '';
+  const outputsRaw = Array.isArray(m.peditImageUrls) && m.peditImageUrls.length ? m.peditImageUrls : m.peditImageUrl ? [m.peditImageUrl] : [];
+  const outputs = outputsRaw.map((u) => toAppImageSrc(u)).filter(Boolean);
+  const src = outputs[0] || '';
   if (!src) {
     const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
     msg.className = 'group animate-fade-in-up';
@@ -289,8 +290,8 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
               <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
             </div>
             <div class="flex flex-col">
-              <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Gemini P‑Edit Pending</span>
-              <span data-task-text="1" class="text-[9px] font-mono opacity-40">Editing…</span>
+              <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Gemini Pro Image Pending</span>
+              <span data-task-text="1" class="text-[9px] font-mono opacity-40">Generating…</span>
             </div>
           </div>
           <div class="text-[12px] font-black text-studio-accent"><span data-progress-text="1">${p}%</span></div>
@@ -304,13 +305,20 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
     `;
 
     const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
-    if (panel && m.imageUrl) {
-      const thumb = document.createElement('img');
-      thumb.src = toAppImageSrc(m.imageUrl);
-      thumb.referrerPolicy = 'no-referrer';
-      thumb.className =
-        'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
-      panel.appendChild(thumb);
+    if (panel) {
+      const thumbs = Array.isArray(m.inputImageUrls) && m.inputImageUrls.length ? m.inputImageUrls : m.imageUrl ? [m.imageUrl] : [];
+      const showThumbs = thumbs.slice(0, 3);
+      for (let i = 0; i < showThumbs.length; i++) {
+        const u = showThumbs[i]!;
+        const thumb = document.createElement('img');
+        thumb.src = toAppImageSrc(u);
+        thumb.referrerPolicy = 'no-referrer';
+        thumb.className =
+          'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
+        if (i === 1) thumb.style.left = '2.75rem';
+        if (i === 2) thumb.style.left = '5.5rem';
+        panel.appendChild(thumb);
+      }
     }
     return msg;
   }
@@ -320,10 +328,10 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
     <div class="glass-panel relative overflow-visible p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
       <div class="flex items-center justify-between">
         <div class="flex flex-col">
-          <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Gemini P‑Edit Complete</span>
+          <span class="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Gemini Pro Image Complete</span>
           <span class="text-[9px] font-mono opacity-40">Added to tray</span>
         </div>
-        <div class="text-[9px] font-black uppercase tracking-widest opacity-30">Single</div>
+        <div class="text-[9px] font-black uppercase tracking-widest opacity-30">${outputs.length > 1 ? 'Multi' : 'Single'}</div>
       </div>
 
       <div class="rounded-2xl border border-white/5 bg-black/20 p-4">
@@ -331,26 +339,41 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
         <div class="text-[11px] font-mono opacity-70 leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
       </div>
 
-      <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
-        <img data-preview-src="${escapeHtml(src)}" src="${escapeHtml(src)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
-        <div class="absolute top-4 right-4 opacity-0 group-hover/tile:opacity-100 transition-opacity">
-          <a href="${escapeHtml(src)}" download="gemini-pedit-${Date.now()}.png"
-            class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all flex items-center justify-center"
-            title="Download">
-            <i class="fas fa-download text-xs"></i>
-          </a>
-        </div>
+      <div class="grid ${outputs.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-4">
+        ${outputs
+          .map(
+            (u) => `
+          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
+            <img data-preview-src="${escapeHtml(u)}" src="${escapeHtml(u)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
+            <div class="absolute top-4 right-4 opacity-0 group-hover/tile:opacity-100 transition-opacity">
+              <a href="${escapeHtml(u)}" download="gemini-image-${Date.now()}.png"
+                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all flex items-center justify-center"
+                title="Download">
+                <i class="fas fa-download text-xs"></i>
+              </a>
+            </div>
+          </div>
+        `
+          )
+          .join('')}
       </div>
     </div>
   `;
   const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
-  if (panel && m.imageUrl) {
-    const thumb = document.createElement('img');
-    thumb.src = toAppImageSrc(m.imageUrl);
-    thumb.referrerPolicy = 'no-referrer';
-    thumb.className =
-      'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
-    panel.appendChild(thumb);
+  if (panel) {
+    const thumbs = Array.isArray(m.inputImageUrls) && m.inputImageUrls.length ? m.inputImageUrls : m.imageUrl ? [m.imageUrl] : [];
+    const showThumbs = thumbs.slice(0, 3);
+    for (let i = 0; i < showThumbs.length; i++) {
+      const u = showThumbs[i]!;
+      const thumb = document.createElement('img');
+      thumb.src = toAppImageSrc(u);
+      thumb.referrerPolicy = 'no-referrer';
+      thumb.className =
+        'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
+      if (i === 1) thumb.style.left = '2.75rem';
+      if (i === 2) thumb.style.left = '5.5rem';
+      panel.appendChild(thumb);
+    }
   }
   bindPreview(msg);
   return msg;
@@ -529,7 +552,21 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
       // Replace only on state transitions; otherwise patch progress text in-place.
       const generateTransition = prev.kind === 'generate' && prev.role === 'ai' && prev.gridImageUrl !== resolved.gridImageUrl;
       const upscaleTransition = prev.kind === 'upscale' && prev.role === 'ai' && prev.upscaledImageUrl !== resolved.upscaledImageUrl;
-      const peditTransition = prev.kind === 'pedit' && prev.role === 'ai' && prev.peditImageUrl !== resolved.peditImageUrl;
+      const prevPeditSig =
+        prev.kind === 'pedit'
+          ? JSON.stringify((prev.peditImageUrls && prev.peditImageUrls.length ? prev.peditImageUrls : prev.peditImageUrl ? [prev.peditImageUrl] : []).slice(0, 6))
+          : '';
+      const nextPeditSig =
+        resolved.kind === 'pedit'
+          ? JSON.stringify(
+              (resolved.peditImageUrls && resolved.peditImageUrls.length
+                ? resolved.peditImageUrls
+                : resolved.peditImageUrl
+                  ? [resolved.peditImageUrl]
+                  : []).slice(0, 6)
+            )
+          : '';
+      const peditTransition = prev.kind === 'pedit' && prev.role === 'ai' && prevPeditSig !== nextPeditSig;
       const videoTransition = prev.kind === 'video' && prev.role === 'ai' && prev.videoUrl !== resolved.videoUrl;
       const kindChanged = prev.kind !== resolved.kind || prev.role !== resolved.role;
       const needsReplace =

@@ -45,6 +45,8 @@ type Persisted = {
     gridImageUrl?: string;
     upscaledImageUrl?: string;
     peditImageUrl?: string;
+    peditImageUrls?: string[];
+    inputImageUrls?: string[];
     videoUrl?: string;
     thumbnailUrl?: string;
     provider?: string;
@@ -59,6 +61,8 @@ type Persisted = {
   }>;
 
   commandMode?: string;
+  gimageAspect?: string;
+  gimageSize?: string;
   videoProvider?: string;
   videoModel?: string;
   videoSeconds?: number;
@@ -133,6 +137,8 @@ function toPersisted(state: WorkflowState): Persisted {
       gridImageUrl: m.gridImageUrl,
       upscaledImageUrl: m.upscaledImageUrl,
       peditImageUrl: m.peditImageUrl,
+      peditImageUrls: Array.isArray(m.peditImageUrls) ? m.peditImageUrls.slice(0, 6) : undefined,
+      inputImageUrls: Array.isArray(m.inputImageUrls) ? m.inputImageUrls.slice(0, 12) : undefined,
       videoUrl: m.videoUrl,
       thumbnailUrl: m.thumbnailUrl,
       provider: m.provider,
@@ -146,6 +152,8 @@ function toPersisted(state: WorkflowState): Persisted {
       text: m.text,
     })),
     commandMode: state.commandMode,
+    gimageAspect: state.gimageAspect,
+    gimageSize: state.gimageSize,
     videoProvider: state.videoProvider,
     videoModel: state.videoModel,
     videoSeconds: state.videoSeconds,
@@ -170,6 +178,8 @@ export function loadPersistedState(): {
   streamMessages: StreamMessage[];
   plannerMessages: PlannerMessage[];
   commandMode?: string;
+  gimageAspect?: string;
+  gimageSize?: string;
   videoProvider?: string;
   videoModel?: string;
   videoSeconds?: number;
@@ -228,6 +238,12 @@ export function loadPersistedState(): {
       gridImageUrl: typeof m.gridImageUrl === 'string' ? m.gridImageUrl : undefined,
       upscaledImageUrl: typeof m.upscaledImageUrl === 'string' ? m.upscaledImageUrl : undefined,
       peditImageUrl: typeof m.peditImageUrl === 'string' ? m.peditImageUrl : undefined,
+      peditImageUrls: Array.isArray(m.peditImageUrls)
+        ? m.peditImageUrls.map((u: any) => String(u || '')).filter(Boolean).slice(0, 6)
+        : undefined,
+      inputImageUrls: Array.isArray(m.inputImageUrls)
+        ? m.inputImageUrls.map((u: any) => String(u || '')).filter(Boolean).slice(0, 12)
+        : undefined,
       videoUrl: typeof m.videoUrl === 'string' ? m.videoUrl : undefined,
       thumbnailUrl: typeof m.thumbnailUrl === 'string' ? m.thumbnailUrl : undefined,
       provider: typeof m.provider === 'string' ? m.provider : undefined,
@@ -259,6 +275,8 @@ export function loadPersistedState(): {
     streamMessages,
     plannerMessages,
     commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,
+    gimageAspect: typeof (parsed as any).gimageAspect === 'string' ? (parsed as any).gimageAspect : undefined,
+    gimageSize: typeof (parsed as any).gimageSize === 'string' ? (parsed as any).gimageSize : undefined,
     videoProvider: typeof (parsed as any).videoProvider === 'string' ? (parsed as any).videoProvider : undefined,
     videoModel: typeof (parsed as any).videoModel === 'string' ? (parsed as any).videoModel : undefined,
     videoSeconds: typeof (parsed as any).videoSeconds === 'number' ? (parsed as any).videoSeconds : undefined,

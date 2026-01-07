@@ -1,32 +1,22 @@
 import type { ApiClient } from '../adapters/api';
-import { dataUrlToFile } from '../atoms/file';
 import { showError, showMessage } from '../atoms/notify';
 import { randomId } from '../atoms/id';
 import { byId } from '../atoms/ui';
 import type { Store } from '../state/store';
 import type { ReferenceImage, StreamMessage, WorkflowState } from '../state/workflow';
-import { sha256HexFromBlob } from '../atoms/blob-hash';
+import { stripMjParamsAndUrls } from '../atoms/mj-prompt-parts';
+import { toAppImageSrc } from '../atoms/image-src';
 
 function bestEditSourceUrl(r: ReferenceImage | undefined): string | undefined {
   return r?.cdnUrl || r?.url || r?.localUrl || r?.dataUrl;
 }
 
-function extFromDataUrl(dataUrl: string): string {
-  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/);
-  const mime = (m?.[1] || '').toLowerCase();
-  if (mime === 'image/jpeg') return 'jpg';
-  if (mime === 'image/png') return 'png';
-  if (mime === 'image/webp') return 'webp';
-  if (mime === 'image/gif') return 'gif';
-  return 'png';
-}
-
 export function createGeminiEditBlock(params: { api: ApiClient; store: Store<WorkflowState> }) {
   const panel = byId<HTMLElement>('pEditPanel');
-  const closeBtn = byId<HTMLButtonElement>('pEditClose');
-  const applyBtn = byId<HTMLButtonElement>('pEditApply');
-  const thumb = byId<HTMLImageElement>('pEditThumb');
-  const meta = byId<HTMLElement>('pEditMeta');
+  const aspectSelect = byId<HTMLSelectElement>('pEditAspectSelect');
+  const sizeSelect = byId<HTMLSelectElement>('pEditSizeSelect');
+  const selectedRefs = byId<HTMLElement>('pEditSelectedRefs');
+  const clearSelectedBtn = byId<HTMLButtonElement>('pEditClearSelected');
   const mainPrompt = byId<HTMLTextAreaElement>('promptInput');
 
   function open() {
@@ -37,18 +27,60 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     panel.classList.add('hidden');
   }
 
+  function getSelectedRefsOrdered(state: WorkflowState): ReferenceImage[] {
+    const selected = new Set(state.selectedReferenceIds || []);
+    return (state.referenceImages || []).filter((r) => selected.has(r.id));
+  }
+
   function render(state: WorkflowState) {
-    const ref = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
-    const src = bestEditSourceUrl(ref);
-    if (src) {
-      thumb.src = src;
-      thumb.referrerPolicy = 'no-referrer';
-      meta.textContent = `目标：${ref?.name || ref?.id || 'PAD'}（使用主输入框文字）`;
-      applyBtn.disabled = false;
-    } else {
-      thumb.removeAttribute('src');
-      meta.textContent = '请先选择一张 PAD 图（垫图）';
-      applyBtn.disabled = true;
+    const ar = typeof state.gimageAspect === 'string' && state.gimageAspect.trim() ? state.gimageAspect.trim() : '16:9';
+    const size = typeof state.gimageSize === 'string' && state.gimageSize.trim() ? state.gimageSize.trim() : '2K';
+    if (aspectSelect.value !== ar) aspectSelect.value = ar;
+    if (sizeSelect.value !== size) sizeSelect.value = size;
+
+    const refs = getSelectedRefsOrdered(state);
+    selectedRefs.innerHTML = '';
+
+    if (!refs.length) {
+      const empty = document.createElement('div');
+      empty.className = 'text-[10px] font-mono opacity-40 py-2';
+      empty.textContent = '未选择参考图（将使用纯文本生图）';
+      selectedRefs.appendChild(empty);
+      return;
+    }
+
+    for (let i = 0; i < refs.length; i++) {
+      const r = refs[i]!;
+      const src = bestEditSourceUrl(r);
+      const chip = document.createElement('div');
+      chip.className = 'relative flex-shrink-0 w-12 h-12 rounded-2xl overflow-hidden border border-white/10 bg-black/20';
+      if (src) {
+        const img = document.createElement('img');
+        img.className = 'w-full h-full object-cover';
+        img.src = toAppImageSrc(src);
+        img.referrerPolicy = 'no-referrer';
+        chip.appendChild(img);
+      }
+
+      const idx = document.createElement('div');
+      idx.className =
+        'absolute -top-1 -left-1 w-5 h-5 rounded-full bg-studio-accent text-studio-bg text-[9px] font-black flex items-center justify-center shadow-xl';
+      idx.textContent = String(i + 1);
+      chip.appendChild(idx);
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className =
+        'absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/70 border border-white/10 text-white/70 hover:text-white hover:border-white/20 flex items-center justify-center text-[10px]';
+      del.innerHTML = '<i class="fas fa-minus"></i>';
+      del.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        params.store.update((s) => ({ ...s, selectedReferenceIds: (s.selectedReferenceIds || []).filter((id) => id !== r.id) }));
+      });
+      chip.appendChild(del);
+
+      selectedRefs.appendChild(chip);
     }
   }
 
@@ -56,21 +88,22 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
   async function applyEdit() {
     if (busy) return;
     const state = params.store.get();
-    const ref = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
-    const imageUrl = bestEditSourceUrl(ref);
-    const editPrompt = mainPrompt.value.trim();
-    if (!imageUrl) {
-      showError('请先选择一张 PAD 图（垫图）');
-      return;
-    }
-    if (!editPrompt) {
-      showError('请输入 P 图提示词');
+    const editPrompt = stripMjParamsAndUrls(mainPrompt.value);
+    if (!editPrompt) return showError('请输入提示词主体（会忽略 --ar / URL 等参数）');
+
+    const selected = getSelectedRefsOrdered(state);
+    const inputImageUrls = selected
+      .map((r) => bestEditSourceUrl(r))
+      .filter((u): u is string => typeof u === 'string' && u.trim());
+    if (selected.length && inputImageUrls.length !== selected.length) {
+      showError('部分参考图缺少可用 URL（请等待上传完成或重新上传）');
       return;
     }
 
+    const aspectRatio = typeof state.gimageAspect === 'string' && state.gimageAspect.trim() ? state.gimageAspect.trim() : '16:9';
+    const imageSize = typeof state.gimageSize === 'string' && state.gimageSize.trim() ? state.gimageSize.trim() : '2K';
+
     busy = true;
-    applyBtn.disabled = true;
-    applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px]"></i>';
 
     const aiMsgId = randomId('msg');
     const pending: StreamMessage = {
@@ -79,77 +112,53 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       role: 'ai',
       kind: 'pedit',
       text: editPrompt,
-      imageUrl,
-      refId: ref?.id,
+      imageUrl: inputImageUrls[0],
+      inputImageUrls,
       progress: 1,
     };
     params.store.update((s) => ({ ...s, streamMessages: [...s.streamMessages, pending].slice(-200) }));
 
     try {
-      const res = await params.api.geminiEdit({ imageUrl, editPrompt });
-      if (res?.code !== 0) throw new Error(res?.description || 'P 图失败');
-      const dataUrl = res?.result?.imageDataUrl;
-      if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) throw new Error('P 图失败：未返回图片');
+      const res = await params.api.geminiProImage({ prompt: editPrompt, imageUrls: inputImageUrls, aspectRatio, imageSize });
+      if (res?.code !== 0) throw new Error(res?.description || 'Gemini 生图/编辑失败');
+      const images = Array.isArray(res?.result?.images) ? res.result.images : [];
+      const urls = images.map((it: any) => String(it?.url || it?.localUrl || '').trim()).filter(Boolean);
+      if (!urls.length) throw new Error('Gemini 生图/编辑失败：未返回图片');
 
-      const file = dataUrlToFile(dataUrl, `gemini-edit-${Date.now()}.${extFromDataUrl(dataUrl)}`);
-      const originKey = `gemini-edit:sha256:${await sha256HexFromBlob(file)}`;
-      const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
-      if (existing) {
-        const existingPreview = bestEditSourceUrl(existing);
-        params.store.update((s) => ({
-          ...s,
-          selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, existing.id])),
-          mjPadRefId: existing.id,
-        }));
-        params.store.update((st) => ({
-          ...st,
-          streamMessages: st.streamMessages.map((m) =>
-            m.id === aiMsgId ? { ...m, peditImageUrl: existingPreview, progress: 100 } : m
-          ),
-        }));
-        return;
-      }
-
-      const uploaded = await params.api.upload(file);
-      const result = uploaded?.result;
-      if (uploaded?.code !== 0 || !result?.url) throw new Error(uploaded?.description || '上传失败');
-
-      const referenceId = randomId('ref');
       const createdAt = Date.now();
-      const url = String(result.url);
-      const cdnUrl = typeof result.cdnUrl === 'string' ? result.cdnUrl : undefined;
-      const localUrl = typeof result.localUrl === 'string' ? result.localUrl : undefined;
-      const previewUrl = cdnUrl || url || localUrl;
-
-      params.store.update((s) => ({
-        ...s,
-        referenceImages: [
-          ...s.referenceImages,
-          {
-            id: referenceId,
-            name: `P-${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      const newRefs: ReferenceImage[] = images
+        .map((it: any, idx: number) => {
+          const url = String(it?.url || it?.localUrl || '').trim();
+          if (!url) return null;
+          const localUrl = typeof it?.localUrl === 'string' ? it.localUrl : undefined;
+          const localKey = typeof it?.localKey === 'string' ? it.localKey : undefined;
+          return {
+            id: randomId('ref'),
+            name: `G-${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}-${idx + 1}`,
             createdAt,
-            originKey,
+            originKey: localKey ? `gemini-pro-image:localKey:${localKey}` : undefined,
             url,
-            cdnUrl,
             localUrl,
-            localPath: typeof result.localPath === 'string' ? result.localPath : undefined,
-            localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
-          },
-        ],
-        selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
-        mjPadRefId: referenceId,
-      }));
+            localKey,
+          } satisfies ReferenceImage;
+        })
+        .filter(Boolean) as ReferenceImage[];
 
+      const peditImageUrls = urls;
+      const peditImageUrl = peditImageUrls[0];
       params.store.update((st) => ({
         ...st,
-        streamMessages: st.streamMessages.map((m) => (m.id === aiMsgId ? { ...m, peditImageUrl: previewUrl, progress: 100 } : m)),
+        referenceImages: [...st.referenceImages, ...newRefs],
+        selectedReferenceIds: [...(st.selectedReferenceIds || []), ...newRefs.map((r) => r.id)],
+        streamMessages: st.streamMessages.map((m) =>
+          m.id === aiMsgId ? { ...m, peditImageUrls, peditImageUrl, progress: 100 } : m
+        ),
       }));
 
-      showMessage('P 图完成：已加入图片栏并设为 PAD，可继续重复 P');
+      showMessage('Gemini 生图/编辑完成：已加入图片栏（可继续以图生图/合成）');
     } catch (e) {
       console.error('Gemini edit failed:', e);
-      const msg = (e as Error)?.message || 'P 图失败';
+      const msg = (e as Error)?.message || 'Gemini 生图/编辑失败';
       showError(msg);
       params.store.update((st) => ({
         ...st,
@@ -157,21 +166,22 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       }));
     } finally {
       busy = false;
-      applyBtn.innerHTML = '<i class="fas fa-wand-magic-sparkles text-[10px]"></i><span class="ml-2">Apply</span>';
-      applyBtn.disabled = false;
       render(params.store.get());
     }
   }
 
-  closeBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    close();
+  aspectSelect.addEventListener('change', () => {
+    const v = aspectSelect.value;
+    params.store.update((s) => ({ ...s, gimageAspect: v }));
   });
-  applyBtn.addEventListener('click', (e) => {
+  sizeSelect.addEventListener('change', () => {
+    const v = sizeSelect.value;
+    params.store.update((s) => ({ ...s, gimageSize: v }));
+  });
+  clearSelectedBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    void applyEdit();
+    params.store.update((s) => ({ ...s, selectedReferenceIds: [] }));
   });
 
   render(params.store.get());

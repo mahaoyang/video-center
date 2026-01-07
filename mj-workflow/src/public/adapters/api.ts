@@ -8,6 +8,7 @@ export interface ApiClient {
   geminiChat(params: { messages: Array<{ role: string; content: string }> }): Promise<any>;
   geminiTranslate(params: { text: string }): Promise<any>;
   geminiBeautify(params: { text: string; hint?: string }): Promise<any>;
+  geminiProImage(params: { prompt: string; imageUrls?: string[]; aspectRatio?: string; imageSize?: string }): Promise<any>;
   videoCreate(params: {
     provider: string;
     prompt: string;
@@ -100,6 +101,7 @@ export function createApiClient(apiBase = '/api'): ApiClient {
     geminiChat: async (params) => await requestJson('POST', `${apiBase}/gemini/chat`, params),
     geminiTranslate: async (params) => await requestJson('POST', `${apiBase}/gemini/translate`, params),
     geminiBeautify: async (params) => await requestJson('POST', `${apiBase}/gemini/beautify`, params),
+    geminiProImage: async (params) => await requestJson('POST', `${apiBase}/gemini/pro-image`, params),
     videoCreate: async (params) => await requestJson('POST', `${apiBase}/video/create`, params),
     videoQuery: async (params) =>
       await requestJson(

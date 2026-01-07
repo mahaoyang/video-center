@@ -10,6 +10,13 @@ export interface GeminiVisionClient {
   chat(messages: Array<{ role: string; content: string }>): Promise<string>;
   generateText(system: string, user: string): Promise<string>;
   editImage(imageUrl: string, editPrompt: string): Promise<string | null>;
+  generateOrEditImages(params: {
+    prompt: string;
+    imageUrls?: string[];
+    aspectRatio?: string;
+    imageSize?: string;
+    responseModalities?: string[];
+  }): Promise<Array<{ data: string; mimeType: string }>>;
 }
 
 function isImageContentType(contentType: string | null): boolean {
@@ -200,6 +207,50 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
         return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
       }
       return null;
-    }
+    },
+
+    /**
+     * Gemini 3 Pro Image: 文生图 / 多图编辑/合成
+     * - imageUrls 为空 => text-to-image
+     * - imageUrls 非空 => prompt + 参考图 inlineData（顺序由调用方保证）
+     */
+    async generateOrEditImages(params): Promise<Array<{ data: string; mimeType: string }>> {
+      const prompt = String(params?.prompt || '').trim();
+      if (!prompt) return [];
+
+      const parts: any[] = [{ text: prompt }];
+      const urls = Array.isArray(params?.imageUrls) ? params.imageUrls.filter((u) => typeof u === 'string' && u.trim()) : [];
+      for (const u of urls) {
+        const { data, mimeType } = await fetchImageAsBase64(u);
+        parts.push({ inlineData: { mimeType, data } });
+      }
+
+      const response = await getAi().models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: [{ parts }],
+        config: {
+          responseModalities:
+            Array.isArray(params?.responseModalities) && params.responseModalities.length ? params.responseModalities : ['IMAGE'],
+          imageConfig: {
+            aspectRatio: typeof params?.aspectRatio === 'string' ? params.aspectRatio : undefined,
+            imageSize: typeof params?.imageSize === 'string' ? params.imageSize : undefined,
+          },
+        },
+      });
+
+      const out: Array<{ data: string; mimeType: string }> = [];
+      const candidate = response.candidates?.[0];
+      const respParts: any[] = (candidate as any)?.content?.parts || [];
+      for (const p of respParts) {
+        const inline = p?.inlineData;
+        if (inline?.data) {
+          out.push({
+            data: String(inline.data),
+            mimeType: String(inline.mimeType || 'image/png'),
+          });
+        }
+      }
+      return out;
+    },
   };
 }
