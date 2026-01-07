@@ -20,6 +20,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   const providerMenu = byId<HTMLElement>('videoProviderMenu');
   const providerLabel = byId<HTMLElement>('videoProviderLabel');
   const modelInput = byId<HTMLInputElement>('videoModelInput');
+  const geminiModelSelect = byId<HTMLSelectElement>('videoGeminiModelSelect');
   const secondsInput = byId<HTMLInputElement>('videoSecondsInput');
   const modeInput = byId<HTMLInputElement>('videoModeInput');
   const aspectInput = byId<HTMLInputElement>('videoAspectInput');
@@ -36,11 +37,17 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   const endPopover = createPopoverMenu({ button: endBtn, menu: endMenu });
 
   function setProvider(next: VideoProvider) {
-    params.store.update((s) => ({ ...s, videoProvider: next }));
+    params.store.update((s) => ({
+      ...s,
+      videoProvider: next,
+      videoModel: next === 'gemini' ? 'veo-3.0-fast-generate-001' : s.videoModel,
+    }));
   }
 
   function setDefaultsForProvider(provider: VideoProvider) {
     if (provider === 'jimeng') {
+      modelInput.classList.remove('hidden');
+      geminiModelSelect.classList.add('hidden');
       if (!modelInput.value.trim()) modelInput.value = 'jimeng-video-3.0';
       if (!aspectInput.value.trim()) aspectInput.value = '16:9';
       if (!sizeInput.value.trim()) sizeInput.value = '1080P';
@@ -53,6 +60,8 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       aspectInput.disabled = false;
       sizeInput.disabled = false;
     } else if (provider === 'kling') {
+      modelInput.classList.remove('hidden');
+      geminiModelSelect.classList.add('hidden');
       if (!modelInput.value.trim()) modelInput.value = 'kling-v2-6';
       if (!secondsInput.value.trim()) secondsInput.value = '5';
       secondsInput.placeholder = '5 / 10';
@@ -67,7 +76,9 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       aspectInput.disabled = true;
       sizeInput.disabled = true;
     } else {
-      if (!modelInput.value.trim()) modelInput.value = 'gemini-video';
+      modelInput.classList.add('hidden');
+      geminiModelSelect.classList.remove('hidden');
+      if (!geminiModelSelect.value) geminiModelSelect.value = 'veo-3.0-fast-generate-001';
       secondsInput.placeholder = '可选';
       secondsInput.disabled = false;
       modeInput.value = '';
@@ -111,6 +122,10 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
     if (typeof state.videoModel === 'string' && state.videoModel.trim() && modelInput.value.trim() !== state.videoModel.trim()) {
       modelInput.value = state.videoModel.trim();
     }
+    if (typeof state.videoModel === 'string' && state.videoModel.trim() && geminiModelSelect.value !== state.videoModel.trim()) {
+      // For Gemini provider, keep select in sync too.
+      geminiModelSelect.value = state.videoModel.trim();
+    }
     if (typeof state.videoAspect === 'string' && state.videoAspect.trim() && aspectInput.value.trim() !== state.videoAspect.trim()) {
       aspectInput.value = state.videoAspect.trim();
     }
@@ -130,7 +145,10 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
     const n = seconds ? Number(seconds) : undefined;
     params.store.update((s) => ({
       ...s,
-      videoModel: modelInput.value.trim() || s.videoModel,
+      videoModel:
+        readProvider() === 'gemini'
+          ? geminiModelSelect.value
+          : modelInput.value.trim() || s.videoModel,
       videoAspect: aspectInput.value.trim() || undefined,
       videoSize: sizeInput.value.trim() || undefined,
       videoSeconds: seconds && Number.isFinite(n as any) ? Math.max(1, Math.floor(n!)) : undefined,
@@ -139,6 +157,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   }
 
   modelInput.addEventListener('input', () => persistInputs());
+  geminiModelSelect.addEventListener('change', () => persistInputs());
   secondsInput.addEventListener('input', () => persistInputs());
   modeInput.addEventListener('input', () => persistInputs());
   aspectInput.addEventListener('input', () => persistInputs());

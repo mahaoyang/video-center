@@ -1,6 +1,7 @@
 import type { MJApi } from '../lib/mj-api';
 import type { YunwuChatApi } from '../lib/yunwu-chat';
 import type { GeminiVisionClient } from '../lib/gemini-vision';
+import type { GeminiVideoClient } from '../lib/gemini-video';
 import type { ImageProxyClient } from '../lib/imageproxy';
 import type { VideoApi } from '../lib/video-api';
 import type { VisionDescribeRequest } from '../types';
@@ -170,6 +171,7 @@ export function createApiRouter(deps: {
   mjApi: MJApi;
   chatApi: YunwuChatApi;
   gemini: GeminiVisionClient;
+  geminiVideo: GeminiVideoClient;
   imageproxy: ImageProxyClient;
   videoApi: VideoApi;
   uploads: { dir: string; publicPath: string };
@@ -770,9 +772,6 @@ export function createApiRouter(deps: {
 
     if (pathname === '/api/video/create' && req.method === 'POST') {
       try {
-        if (!deps.auth.llmTokenConfigured) {
-          return jsonError({ status: 500, description: '未配置 LLM Token：请设置 YUNWU_ALL_KEY 或 LLM_API_TOKEN' });
-        }
         const body = await readJson<{
           provider?: string;
           prompt?: string;
@@ -789,6 +788,29 @@ export function createApiRouter(deps: {
         const prompt = String(body.prompt || '').trim();
         if (!provider) return jsonError({ status: 400, description: 'provider 不能为空' });
         if (!prompt) return jsonError({ status: 400, description: 'prompt 不能为空' });
+
+        if (provider === 'gemini') {
+          const model = String(body.model || '').trim();
+          if (!model) return jsonError({ status: 400, description: 'model 不能为空' });
+          const op = await deps.geminiVideo.generate({
+            model,
+            prompt,
+            durationSeconds: typeof body.seconds === 'number' ? body.seconds : undefined,
+            aspectRatio: body.aspect,
+            resolution: body.size,
+            startImageUrl: body.startImageUrl,
+            endImageUrl: body.endImageUrl,
+          });
+          return json({
+            code: 0,
+            description: '成功',
+            result: { provider: 'gemini', id: op.operationName, raw: op.raw },
+          });
+        }
+
+        if (!deps.auth.llmTokenConfigured) {
+          return jsonError({ status: 500, description: '未配置 LLM Token：请设置 YUNWU_ALL_KEY 或 LLM_API_TOKEN' });
+        }
 
         const result = await deps.videoApi.createVideo({
           provider: provider as any,
@@ -810,13 +832,73 @@ export function createApiRouter(deps: {
 
     if (pathname === '/api/video/query' && req.method === 'GET') {
       try {
-        if (!deps.auth.llmTokenConfigured) {
-          return jsonError({ status: 500, description: '未配置 LLM Token：请设置 YUNWU_ALL_KEY 或 LLM_API_TOKEN' });
-        }
         const id = String(url.searchParams.get('id') || '').trim();
         const provider = String(url.searchParams.get('provider') || '').trim();
         if (!id) return jsonError({ status: 400, description: 'id 不能为空' });
         if (!provider) return jsonError({ status: 400, description: 'provider 不能为空' });
+
+        if (provider === 'gemini') {
+          const op = await deps.geminiVideo.getOperation({ operationName: id });
+          const metadata = op.metadata as any;
+          const progress =
+            typeof metadata?.progressPercent === 'number'
+              ? metadata.progressPercent
+              : typeof metadata?.progress === 'number'
+                ? metadata.progress
+                : undefined;
+
+          if (!op.done) {
+            return json({
+              code: 0,
+              description: '成功',
+              result: { provider: 'gemini', id, status: 'processing', progress, raw: op },
+            });
+          }
+
+          if (op.error) {
+            return json({
+              code: 0,
+              description: '成功',
+              result: { provider: 'gemini', id, status: 'failed', raw: op, error: op.error },
+            });
+          }
+
+          const generated = (op.response as any)?.generatedVideos?.[0]?.video;
+          const uri = typeof generated?.uri === 'string' ? generated.uri.trim() : '';
+          const mimeType = typeof generated?.mimeType === 'string' ? generated.mimeType.trim() : '';
+          const videoBytes = typeof generated?.videoBytes === 'string' ? generated.videoBytes.trim() : '';
+
+          let videoUrl: string | undefined;
+          if (uri && (uri.startsWith('http://') || uri.startsWith('https://'))) {
+            videoUrl = uri;
+          } else {
+            // Prefer downloading via SDK (supports gs:// and other backends), fallback to inline bytes.
+            const ext = mimeType === 'video/mp4' ? 'mp4' : mimeType === 'video/webm' ? 'webm' : 'mp4';
+            const key = `gemini-video-${randomUUID()}.${ext}`;
+            const filePath = join(deps.uploads.dir, key);
+            if (videoBytes) {
+              const buf = Buffer.from(videoBytes, 'base64');
+              await writeFile(filePath, buf);
+              videoUrl = `${deps.uploads.publicPath}/${key}`;
+            } else if (generated) {
+              await deps.geminiVideo.downloadVideo({ file: generated, downloadPath: filePath });
+              videoUrl = `${deps.uploads.publicPath}/${key}`;
+            } else if (uri) {
+              // last resort: return uri even if non-http
+              videoUrl = uri;
+            }
+          }
+
+          return json({
+            code: 0,
+            description: '成功',
+            result: { provider: 'gemini', id, status: 'completed', progress: 100, videoUrl, raw: op },
+          });
+        }
+
+        if (!deps.auth.llmTokenConfigured) {
+          return jsonError({ status: 500, description: '未配置 LLM Token：请设置 YUNWU_ALL_KEY 或 LLM_API_TOKEN' });
+        }
 
         const result = await deps.videoApi.queryVideo({ provider: provider as any, id });
         return json({ code: 0, description: '成功', result });

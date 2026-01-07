@@ -430,7 +430,14 @@
                   <div class="text-[9px] font-black uppercase tracking-widest opacity-40 mb-2">Model</div>
                   <input id="videoModelInput" type="text"
                     class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-[12px] font-medium focus:border-studio-accent/50 transition-all"
-                    placeholder="jimeng-video-3.0 / kling-v2-6 / gemini-video-..." />
+                    placeholder="jimeng-video-3.0 / kling-v2-6" />
+                  <select id="videoGeminiModelSelect"
+                    class="hidden w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-[12px] font-medium focus:border-studio-accent/50 transition-all">
+                    <option value="veo-3.0-fast-generate-001" selected>3.0-fast</option>
+                    <option value="veo-3.0-generate-001">3.0</option>
+                    <option value="veo-3.1-fast-generate-preview">3.1-fast</option>
+                    <option value="veo-3.1-generate-preview">3.1</option>
+                  </select>
                 </div>
               </div>
 

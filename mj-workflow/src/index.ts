@@ -9,6 +9,7 @@ import { createStaticHandler } from './server/static';
 import { loadConfig } from './config/load-config';
 import { ImageProxyClient } from './lib/imageproxy';
 import { VideoApi } from './lib/video-api';
+import { createGeminiVideoClient } from './lib/gemini-video';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 if (moduleDir.endsWith('/dist') && process.cwd() !== moduleDir) {
@@ -28,6 +29,7 @@ const chatApi = new YunwuChatApi({
   defaultModel: config.llm.visionModel,
 });
 const gemini = createGeminiVisionClient({ apiKey: config.gemini.apiKey });
+const geminiVideo = createGeminiVideoClient({ apiKey: config.gemini.apiKey });
 const imageproxy = new ImageProxyClient({ apiUrl: config.imageproxy.apiUrl, token: config.imageproxy.token });
 const videoApi = new VideoApi({ apiUrl: config.llm.apiUrl, token: config.llm.token });
 
@@ -35,6 +37,7 @@ const handleApi = createApiRouter({
   mjApi,
   chatApi,
   gemini,
+  geminiVideo,
   imageproxy,
   videoApi,
   uploads: { dir: uploadsDir, publicPath: '/uploads' },
