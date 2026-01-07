@@ -6,6 +6,7 @@ import { showError } from '../atoms/notify';
 import type { ApiClient } from '../adapters/api';
 import { randomId } from '../atoms/id';
 import { sha256HexFromBlob } from '../atoms/blob-hash';
+import { toAppImageSrc } from '../atoms/image-src';
 
 export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   const uploadInput = document.getElementById('imageUpload') as HTMLInputElement | null;
@@ -61,12 +62,23 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       const del = document.createElement('button');
       del.type = 'button';
       del.className =
-        'absolute right-0 top-2 translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-studio-panel/80 border border-white/10 text-white/60 flex items-center justify-center shadow-xl z-30 ' +
+        'absolute right-0 top-0 translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-studio-panel/80 border border-white/10 text-white/60 flex items-center justify-center shadow-xl z-30 ' +
         'opacity-0 group-hover/ref:opacity-100 transition-opacity hover:bg-red-500/70 hover:border-red-400/30 hover:text-white';
       del.innerHTML = '<i class="fas fa-times text-[9px]"></i>';
       del.addEventListener('click', (e) => {
         e.stopPropagation();
         void removeRef(img.id);
+      });
+
+      const dl = document.createElement('a');
+      dl.href = toAppImageSrc(previewUrl);
+      dl.download = `${String(img.name || 'image').replace(/[^\w.-]+/g, '_') || 'image'}.png`;
+      dl.className =
+        'absolute left-0 bottom-0 -translate-x-1/2 translate-y-1/2 w-5 h-5 rounded-full bg-studio-panel/80 border border-white/10 text-white/60 flex items-center justify-center shadow-xl z-30 ' +
+        'opacity-0 group-hover/ref:opacity-100 transition-opacity hover:bg-white/10 hover:border-white/20 hover:text-white';
+      dl.innerHTML = '<i class="fas fa-download text-[9px]"></i>';
+      dl.addEventListener('click', (e) => {
+        e.stopPropagation();
       });
 
       const padOverlay = document.createElement('div');
@@ -93,7 +105,8 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
 
       frame.appendChild(padOverlay);
       item.appendChild(frame);
-      item.appendChild(del);
+      frame.appendChild(del);
+      frame.appendChild(dl);
 
       item.addEventListener('click', () => {
         store.update((state) => {
