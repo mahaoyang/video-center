@@ -1,5 +1,5 @@
 import type { ApiClient } from '../adapters/api';
-import { beautifyPromptBodyZh } from '../atoms/mj-prompt-ai';
+import { beautifyPromptBodyZh } from '../adapters/mj-prompt-ai';
 import { createPopoverMenu } from '../atoms/popover-menu';
 import { showError } from '../atoms/notify';
 import { byId, hide, setDisabled, show } from '../atoms/ui';
@@ -22,12 +22,6 @@ export function createCommandModeBlock(params: {
   const modeMenu = byId<HTMLElement>('commandModeMenu');
   const executeBtn = byId<HTMLButtonElement>('step3Next');
   const modeBadge = byId<HTMLElement>('commandModeBadge');
-
-  const extraPanel = byId<HTMLElement>('commandExtraPanel');
-  const beautifyPanel = byId<HTMLElement>('commandBeautifyPanel');
-  const videoPanel = byId<HTMLElement>('commandVideoPanel');
-  const peditPanel = byId<HTMLElement>('pEditPanel');
-  const beautifyHint = byId<HTMLInputElement>('commandBeautifyHint');
   const beautifySpinner = byId<HTMLElement>('promptBeautifySpinner');
 
   const modePopover = createPopoverMenu({ button: modeBtn, menu: modeMenu });
@@ -48,40 +42,6 @@ export function createCommandModeBlock(params: {
       const v = String((el as any).dataset?.commandMode || '').trim();
       el.classList.toggle('bg-white/5', v === mode);
     });
-
-    // Reset panels
-    hide(beautifyPanel);
-    hide(videoPanel);
-    hide(peditPanel);
-    params.video.setVisible(false);
-
-    if (mode === 'beautify') {
-      show(extraPanel);
-      show(beautifyPanel);
-      hide(videoPanel);
-      hide(peditPanel);
-      params.video.setVisible(false);
-      requestAnimationFrame(() => beautifyHint.focus());
-      return;
-    }
-
-    if (mode === 'video') {
-      show(extraPanel);
-      hide(beautifyPanel);
-      show(videoPanel);
-      hide(peditPanel);
-      params.video.setVisible(true);
-      return;
-    }
-
-    if (mode === 'pedit') {
-      hide(extraPanel);
-      show(peditPanel);
-      params.video.setVisible(false);
-      return;
-    }
-
-    hide(extraPanel);
   }
 
   modeMenu.querySelectorAll<HTMLButtonElement>('button[data-command-mode]').forEach((btn) => {
@@ -139,12 +99,16 @@ export function createCommandModeBlock(params: {
           return;
         }
 
-        const hint = beautifyHint.value.trim();
+        const hint = typeof params.store.get().beautifyHint === 'string' ? params.store.get().beautifyHint!.trim() : '';
         show(beautifySpinner);
-        const next = await beautifyPromptBodyZh({ api: params.api, prompt, hint });
-        if (next && next.trim()) {
-          promptInput.value = next.trim();
-          promptInput.dispatchEvent(new Event('input', { bubbles: true }));
+        try {
+          const next = await beautifyPromptBodyZh({ api: params.api, prompt, hint });
+          if (next && next.trim()) {
+            promptInput.value = next.trim();
+            promptInput.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        } catch (error) {
+          showError((error as Error)?.message || '提示词美化失败');
         }
         return;
       }

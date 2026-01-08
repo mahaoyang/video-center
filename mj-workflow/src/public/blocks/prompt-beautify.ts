@@ -1,5 +1,5 @@
 import type { ApiClient } from '../adapters/api';
-import { beautifyPromptBodyZh } from '../atoms/mj-prompt-ai';
+import { beautifyPromptBodyZh } from '../adapters/mj-prompt-ai';
 import { showError } from '../atoms/notify';
 import { byId, hide, setDisabled, show } from '../atoms/ui';
 
@@ -59,10 +59,14 @@ export function createPromptBeautifyBlock(params: { api: ApiClient }) {
     setDisabled(cancel, true);
     setDisabled(hintInput, true);
     try {
-      const next = await beautifyPromptBodyZh({ api: params.api, prompt, hint });
-      if (next && next.trim()) {
-        promptInput.value = next.trim();
-        promptInput.dispatchEvent(new Event('input', { bubbles: true }));
+      try {
+        const next = await beautifyPromptBodyZh({ api: params.api, prompt, hint });
+        if (next && next.trim()) {
+          promptInput.value = next.trim();
+          promptInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } catch (error) {
+        showError((error as Error)?.message || '提示词美化失败');
       }
     } finally {
       setDisabled(btn, false);

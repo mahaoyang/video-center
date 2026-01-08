@@ -8,10 +8,6 @@ import { escapeHtml } from '../atoms/html';
 import { toAppImageSrc } from '../atoms/image-src';
 import { toAppVideoSrc } from '../atoms/video-src';
 
-function clearRenderedMessages(stream: HTMLElement) {
-  stream.querySelectorAll<HTMLElement>('[data-stream-message="1"]').forEach((el) => el.remove());
-}
-
 function ensureZeroState(stream: HTMLElement, hasMessages: boolean) {
   const zero = stream.querySelector<HTMLElement>('#zeroState');
   if (!zero) return;
@@ -458,18 +454,6 @@ function renderMessage(m: StreamMessage): HTMLElement {
   return renderGenerateMessage(m);
 }
 
-function downloadJson(filename: string, data: unknown) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   const stream = byId<HTMLElement>('productionStream');
   const rendered = new Map<string, HTMLElement>();
@@ -510,11 +494,13 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
 
   function reconcile(messages: StreamMessage[]) {
     const atBottom = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 200;
-    const nextIds = messages.map((m) => m.id);
+    const state = params.store.get();
+    const hidden = new Set(state.desktopHiddenStreamMessageIds || []);
+    const visibleMessages = messages.filter((m) => !hidden.has(m.id));
+    const nextIds = visibleMessages.map((m) => m.id);
     const isAppend =
       nextIds.length >= lastIds.length && lastIds.every((id, i) => nextIds[i] === id);
 
-    const state = params.store.get();
     const nextSet = new Set(nextIds);
 
     // Remove deleted messages
@@ -527,7 +513,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     }
 
     // Add / update messages (order is append-only in this app)
-    for (const m of messages) {
+    for (const m of visibleMessages) {
       const id = m.id;
       const resolved = resolveMessageImageUrl(m, state);
       const prev = lastById.get(id);
@@ -598,48 +584,27 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
       lastById.set(id, resolved);
     }
 
-    ensureZeroState(stream, messages.length > 0);
+    ensureZeroState(stream, visibleMessages.length > 0);
     if (isAppend && atBottom) stream.scrollTop = stream.scrollHeight;
     lastIds = nextIds;
   }
 
-  function clearConversation() {
-    if (!confirm('清空历史对话？（仅删除本地浏览器缓存，不影响 CDN）')) return;
-    params.store.update((s) => ({ ...s, streamMessages: [] }));
-    clearRenderedMessages(stream);
-    rendered.clear();
-    lastById.clear();
-    lastIds = [];
-    ensureZeroState(stream, false);
+  function clearDesktopUi() {
+    params.store.update((s) => ({
+      ...s,
+      desktopHiddenStreamMessageIds: Array.from(new Set(s.streamMessages.map((m) => m.id))).slice(-400),
+    }));
   }
 
-  function saveConversation() {
-    const data = params.store.get().streamMessages;
-    const filename = `mj-conversation-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-    downloadJson(filename, { version: 1, exportedAt: Date.now(), messages: data });
-  }
-
-  const clearBtn = document.getElementById('clearConversationBtn') as HTMLButtonElement | null;
-  clearBtn?.addEventListener('click', (e) => {
+  const clearUiBtn = document.getElementById('streamClearUiBtn') as HTMLButtonElement | null;
+  clearUiBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    clearConversation();
-  });
-  const saveBtn = document.getElementById('saveConversationBtn') as HTMLButtonElement | null;
-  saveBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    saveConversation();
+    clearDesktopUi();
   });
 
   reconcile(params.store.get().streamMessages);
-  const initialCountEl = document.getElementById('conversationCount');
-  if (initialCountEl) initialCountEl.textContent = String(params.store.get().streamMessages.length || 0);
   params.store.subscribe((s) => {
     reconcile(s.streamMessages);
-    const countEl = document.getElementById('conversationCount');
-    if (countEl) countEl.textContent = String(s.streamMessages.length || 0);
   });
-
-  return { clearConversation, saveConversation };
 }

@@ -61,6 +61,7 @@ type Persisted = {
   }>;
 
   commandMode?: string;
+  beautifyHint?: string;
   gimageAspect?: string;
   gimageSize?: string;
   videoProvider?: string;
@@ -71,6 +72,8 @@ type Persisted = {
   videoSize?: string;
   videoStartRefId?: string;
   videoEndRefId?: string;
+
+  desktopHiddenStreamMessageIds?: string[];
 };
 
 function safeParse(jsonText: string | null): Persisted | null {
@@ -151,7 +154,11 @@ function toPersisted(state: WorkflowState): Persisted {
       role: m.role,
       text: m.text,
     })),
+    desktopHiddenStreamMessageIds: Array.isArray(state.desktopHiddenStreamMessageIds)
+      ? state.desktopHiddenStreamMessageIds.map((id) => String(id || '').trim()).filter(Boolean).slice(-400)
+      : [],
     commandMode: state.commandMode,
+    beautifyHint: typeof state.beautifyHint === 'string' && state.beautifyHint.trim() ? state.beautifyHint.trim() : undefined,
     gimageAspect: state.gimageAspect,
     gimageSize: state.gimageSize,
     videoProvider: state.videoProvider,
@@ -177,7 +184,9 @@ export function loadPersistedState(): {
   activeImageId?: string;
   streamMessages: StreamMessage[];
   plannerMessages: PlannerMessage[];
+  desktopHiddenStreamMessageIds: string[];
   commandMode?: string;
+  beautifyHint?: string;
   gimageAspect?: string;
   gimageSize?: string;
   videoProvider?: string;
@@ -191,7 +200,14 @@ export function loadPersistedState(): {
 } {
   const parsed = safeParse(localStorage.getItem(STORAGE_KEY));
   if (!parsed)
-    return { history: [], referenceImages: [], selectedReferenceIds: [], streamMessages: [], plannerMessages: [] };
+    return {
+      history: [],
+      referenceImages: [],
+      selectedReferenceIds: [],
+      streamMessages: [],
+      plannerMessages: [],
+      desktopHiddenStreamMessageIds: [],
+    };
 
   const referenceImages: ReferenceImage[] = parsed.referenceLibrary.map((r: any) => ({
     id: r.id || randomId('ref'),
@@ -262,6 +278,13 @@ export function loadPersistedState(): {
     .filter((m) => Boolean(m.text && m.text.trim()))
     .slice(-200);
 
+  const desktopHiddenStreamMessageIds: string[] = Array.isArray((parsed as any).desktopHiddenStreamMessageIds)
+    ? (parsed as any).desktopHiddenStreamMessageIds
+        .map((id: any) => String(id || '').trim())
+        .filter(Boolean)
+        .slice(-400)
+    : [];
+
   return {
     history,
     referenceImages,
@@ -274,7 +297,9 @@ export function loadPersistedState(): {
     activeImageId: typeof (parsed as any).activeImageId === 'string' ? (parsed as any).activeImageId : undefined,
     streamMessages,
     plannerMessages,
+    desktopHiddenStreamMessageIds,
     commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,
+    beautifyHint: typeof (parsed as any).beautifyHint === 'string' ? (parsed as any).beautifyHint : undefined,
     gimageAspect: typeof (parsed as any).gimageAspect === 'string' ? (parsed as any).gimageAspect : undefined,
     gimageSize: typeof (parsed as any).gimageSize === 'string' ? (parsed as any).gimageSize : undefined,
     videoProvider: typeof (parsed as any).videoProvider === 'string' ? (parsed as any).videoProvider : undefined,

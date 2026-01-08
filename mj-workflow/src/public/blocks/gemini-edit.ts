@@ -7,6 +7,7 @@ import type { ReferenceImage, StreamMessage, WorkflowState } from '../state/work
 import { stripMjParamsAndUrls } from '../atoms/mj-prompt-parts';
 import { toAppImageSrc } from '../atoms/image-src';
 import { createPopoverMenu } from '../atoms/popover-menu';
+import { setupScrollArea } from '../atoms/scroll-area';
 
 function bestEditSourceUrl(r: ReferenceImage | undefined): string | undefined {
   return r?.cdnUrl || r?.url || r?.localUrl || r?.dataUrl;
@@ -24,8 +25,20 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
   const clearSelectedBtn = byId<HTMLButtonElement>('pEditClearSelected');
   const mainPrompt = byId<HTMLTextAreaElement>('promptInput');
 
-  const aspectPopover = createPopoverMenu({ button: aspectBtn, menu: aspectMenu });
-  const sizePopover = createPopoverMenu({ button: sizeBtn, menu: sizeMenu });
+  const aspectPopover = createPopoverMenu({
+    button: aspectBtn,
+    menu: aspectMenu,
+    onOpenChange: (open) => {
+      if (open) setupScrollArea(aspectMenu);
+    },
+  });
+  const sizePopover = createPopoverMenu({
+    button: sizeBtn,
+    menu: sizeMenu,
+    onOpenChange: (open) => {
+      if (open) setupScrollArea(sizeMenu);
+    },
+  });
 
   function open() {
     panel.classList.remove('hidden');

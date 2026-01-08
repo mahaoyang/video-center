@@ -6,7 +6,6 @@ import { initUpload } from './blocks/upload';
 import { createReferencePicker } from './blocks/references';
 import { createInitialWorkflowState } from './state/workflow';
 import { createStore } from './state/store';
-import { createHistoryView } from './blocks/history';
 import { loadPersistedState, startPersistence } from './storage/persistence';
 import { createMjPromptPreview } from './blocks/mj-prompt-preview';
 import { createMjParamsPanel } from './blocks/mj-params-panel';
@@ -17,6 +16,9 @@ import { createPlannerChat } from './blocks/planner-chat';
 import { initOverlays } from './blocks/overlays';
 import { createCommandModeBlock } from './blocks/command-mode';
 import { createVideoGenerateBlock } from './blocks/video-generate';
+import { createVaultTimeline } from './blocks/vault-timeline';
+import { createCommandFooterControls } from './blocks/command-footer-controls';
+import { setupScrollAreas } from './atoms/scroll-area';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -32,8 +34,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.mjCrefRefId = persisted.mjCrefRefId;
   initial.activeImageId = persisted.activeImageId;
   initial.streamMessages = persisted.streamMessages || [];
+  initial.desktopHiddenStreamMessageIds = persisted.desktopHiddenStreamMessageIds || [];
   initial.plannerMessages = persisted.plannerMessages || [];
   if (persisted.commandMode) initial.commandMode = persisted.commandMode as any;
+  if (persisted.beautifyHint) initial.beautifyHint = persisted.beautifyHint as any;
   if (persisted.gimageAspect) initial.gimageAspect = persisted.gimageAspect as any;
   if (persisted.gimageSize) initial.gimageSize = persisted.gimageSize as any;
   if (persisted.videoProvider) initial.videoProvider = persisted.videoProvider as any;
@@ -51,9 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initUpload(store, api);
   createReferencePicker({ store, api });
-  createHistoryView(store);
+  createVaultTimeline(store);
   createMjPromptPreview(store);
   createMjParamsPanel(store);
+  createCommandFooterControls(store);
   const pedit = createGeminiEditBlock({ api, store });
   startPersistence(store);
 
@@ -74,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     video,
   });
   initOverlays();
+  setupScrollAreas(document);
 
   const genBtn = document.getElementById('step3Next') as HTMLButtonElement | null;
   genBtn?.addEventListener('click', (e) => {

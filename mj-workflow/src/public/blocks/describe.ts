@@ -2,7 +2,6 @@ import type { ApiClient } from '../adapters/api';
 import type { Store } from '../state/store';
 import type { ReferenceImage, StreamMessage, WorkflowState } from '../state/workflow';
 import { pretty } from '../atoms/format';
-import { byId } from '../atoms/ui';
 import { showError } from '../atoms/notify';
 import { pollTaskUntilFinalPrompt } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
@@ -47,7 +46,7 @@ async function resolveBase64ForDescribe(r: ReferenceImage): Promise<string | und
 
 export function createDescribeBlock(params: { api: ApiClient; store: Store<WorkflowState> }) {
   async function deconstructAssets() {
-    const selector = byId<HTMLSelectElement>('describeEngineSelect');
+    const selector = document.getElementById('describeEngineSelect') as HTMLSelectElement | null;
     const engine = selector?.value || 'gemini';
 
     try {
@@ -140,19 +139,6 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
       console.error('Deconstruct error:', error);
       showError((error as Error)?.message);
     }
-  }
-
-  const trigger = byId('deconstructTrigger');
-  if (trigger) {
-    trigger.onclick = () => deconstructAssets();
-  }
-  const quickBtn = document.getElementById('deconstructBtn') as HTMLButtonElement | null;
-  if (quickBtn) {
-    quickBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void deconstructAssets();
-    });
   }
 
   return { deconstructAssets };

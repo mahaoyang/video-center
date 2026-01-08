@@ -5,7 +5,7 @@ import { byId } from '../atoms/ui';
 import { setPromptInput } from '../atoms/prompt-input';
 import { extractPlannerShots, extractSunoSongPrompts } from '../atoms/prompt-extract';
 import { setPlannerOpen } from '../atoms/overlays';
-import { beautifyPromptBodyZh } from '../atoms/mj-prompt-ai';
+import { beautifyPromptBodyZh } from '../adapters/mj-prompt-ai';
 import type { Store } from '../state/store';
 import type { PlannerMessage, WorkflowState } from '../state/workflow';
 
@@ -339,12 +339,16 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       beautifyBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-[11px]"></i>';
       try {
         const hint = params2.getBeautifyHint?.() || '';
-        const next = await beautifyPromptBodyZh({ api: params.api, prompt: current, hint });
-        const cleaned = params2.normalize(next);
-        if (cleaned) {
-          textarea.value = cleaned;
-          setEditedText(params2.itemKey, cleaned);
-          autosizeTextarea(textarea);
+        try {
+          const next = await beautifyPromptBodyZh({ api: params.api, prompt: current, hint });
+          const cleaned = params2.normalize(next);
+          if (cleaned) {
+            textarea.value = cleaned;
+            setEditedText(params2.itemKey, cleaned);
+            autosizeTextarea(textarea);
+          }
+        } catch (error) {
+          showError((error as Error)?.message || '提示词美化失败');
         }
       } finally {
         beautifyBtn.disabled = false;

@@ -97,12 +97,16 @@ export interface WorkflowState {
   history: WorkflowHistoryItem[];
 
   streamMessages: StreamMessage[];
+  // UI-only: hide these message IDs from the main stream (desktop), without deleting history.
+  desktopHiddenStreamMessageIds: string[];
 
   // Pure chat mode for prompt planning
   plannerMessages: PlannerMessage[];
 
   // Command hub mode + video settings
   commandMode?: CommandMode;
+  // Prompt Beautify parameters (used by Command Mode: beautify)
+  beautifyHint?: string;
   // Gemini Pro Image (text-to-image / edit / compose)
   gimageAspect?: string;
   gimageSize?: string;
@@ -125,8 +129,10 @@ export function createInitialWorkflowState(): WorkflowState {
     selectedReferenceIds: [],
     history: [],
     streamMessages: [],
+    desktopHiddenStreamMessageIds: [],
     plannerMessages: [],
     commandMode: 'mj',
+    beautifyHint: '',
     gimageAspect: '16:9',
     gimageSize: '2K',
     videoProvider: 'jimeng',

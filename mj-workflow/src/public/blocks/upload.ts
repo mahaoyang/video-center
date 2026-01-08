@@ -1,7 +1,7 @@
 import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { fileToDataUrl } from '../atoms/file';
-import { byId, show, hide } from '../atoms/ui';
+import { byId } from '../atoms/ui';
 import { showError } from '../atoms/notify';
 import type { ApiClient } from '../adapters/api';
 import { randomId } from '../atoms/id';
@@ -25,12 +25,6 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     if (!tray) return;
     const s = store.get();
     tray.innerHTML = '';
-
-    if (s.referenceImages.length > 0) {
-      show(byId('deconstructTrigger'));
-    } else {
-      hide(byId('deconstructTrigger'));
-    }
 
     if (padCount) padCount.textContent = s.mjPadRefId ? '1' : '0';
 
@@ -62,7 +56,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       const del = document.createElement('button');
       del.type = 'button';
       del.className =
-        'absolute right-0 top-0 translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-studio-panel/80 border border-white/10 text-white/60 flex items-center justify-center shadow-xl z-30 ' +
+        'absolute right-0 top-3 translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-studio-panel/80 border border-white/10 text-white/60 flex items-center justify-center shadow-xl z-30 ' +
         'opacity-0 group-hover/ref:opacity-100 transition-opacity hover:bg-red-500/70 hover:border-red-400/30 hover:text-white';
       del.innerHTML = '<i class="fas fa-times text-[9px]"></i>';
       del.addEventListener('click', (e) => {
@@ -105,8 +99,8 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
 
       frame.appendChild(padOverlay);
       item.appendChild(frame);
-      frame.appendChild(del);
-      frame.appendChild(dl);
+      item.appendChild(del);
+      item.appendChild(dl);
 
       item.addEventListener('click', () => {
         store.update((state) => {

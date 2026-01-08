@@ -71,7 +71,8 @@ export function createStepper(store: Store<WorkflowState>) {
       setDisabled(byId<HTMLTextAreaElement>('promptInput'), false);
       setDisabled(byId<HTMLButtonElement>('step3Next'), false);
       setDisabled(byId<HTMLButtonElement>('describeBtn'), false);
-      setDisabled(byId<HTMLSelectElement>('describeEngineSelect'), false);
+      const selector = document.getElementById('describeEngineSelect') as HTMLSelectElement | null;
+      if (selector) setDisabled(selector, false);
     }
 
     if (step === 4) {

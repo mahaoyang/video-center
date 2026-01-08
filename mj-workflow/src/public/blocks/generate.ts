@@ -9,7 +9,7 @@ import { buildMjPrompt } from '../atoms/mj-prompt';
 import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { isHttpUrl } from '../atoms/url';
-import { translatePromptBodyToEnglishForMj } from '../atoms/mj-prompt-ai';
+import { translatePromptBodyToEnglishForMj } from '../adapters/mj-prompt-ai';
 
 export function createGenerateBlock(params: { api: ApiClient; store: Store<WorkflowState>; activateStep: (step: any) => void }) {
   function getLocalKey(ref: { localKey?: string; localUrl?: string }): string | undefined {
@@ -85,7 +85,13 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
         : undefined;
     if (s.mjCrefRefId && !crefUrl) return;
 
-    const translatedPrompt = await translatePromptBodyToEnglishForMj({ api: params.api, prompt });
+    let translatedPrompt = prompt;
+    try {
+      translatedPrompt = await translatePromptBodyToEnglishForMj({ api: params.api, prompt });
+    } catch (error) {
+      showError((error as Error)?.message || '提示词翻译失败');
+      translatedPrompt = prompt;
+    }
 
     const finalPrompt = buildMjPrompt({
       basePrompt: translatedPrompt,

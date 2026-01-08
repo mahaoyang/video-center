@@ -25,7 +25,7 @@ export function createPopoverMenu(params: {
     toggle();
   });
 
-  document.addEventListener('mousedown', (e) => {
+  document.addEventListener('pointerdown', (e) => {
     if (!open) return;
     const t = e.target as Node | null;
     if (!t) return;
@@ -47,4 +47,3 @@ export function createPopoverMenu(params: {
     toggle,
   };
 }
-
