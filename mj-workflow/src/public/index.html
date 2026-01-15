@@ -414,7 +414,7 @@
             <i class="fas fa-paperclip text-xs group-hover:rotate-12 transition-transform"></i>
             <input type="file" id="imageUpload"
               class="absolute inset-0 z-10 opacity-0 cursor-pointer"
-              multiple accept="image/*" />
+              multiple accept="image/*,video/*,audio/*,.srt,text/plain" />
             <button type="button" id="padMatrixBtn"
               class="absolute -bottom-1 -right-1 z-20 px-2 py-1 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest text-white/70 hover:text-studio-accent hover:border-studio-accent/30 transition-all">
               Pad <span id="padCount" class="ml-1 text-studio-accent">0</span>
@@ -439,33 +439,86 @@
               </span>
             </button>
             <div id="commandModeMenu"
-              class="hidden absolute right-0 bottom-full mb-3 w-[260px] rounded-[1.8rem] bg-black/85 border border-white/10 backdrop-blur-xl shadow-2xl overflow-hidden">
-              <div class="px-4 pt-4 pb-2 text-[9px] font-black uppercase tracking-[0.25em] opacity-50">Mode</div>
-              <button type="button" data-command-mode="mj"
-                class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
-                <span class="font-medium">MJ 生图</span>
-                <span class="text-[10px] font-mono opacity-40">Image</span>
-              </button>
-              <button type="button" data-command-mode="video"
-                class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
-                <span class="font-medium">生视频</span>
-                <span class="text-[10px] font-mono opacity-40">Video</span>
-              </button>
-              <button type="button" data-command-mode="deconstruct"
-                class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
-                <span class="font-medium">反推提示词（Gemini）</span>
-                <span class="text-[10px] font-mono opacity-40">Describe</span>
-              </button>
-              <button type="button" data-command-mode="pedit"
-                class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
-                <span class="font-medium">Gemini 生图/编辑（Pro Image）</span>
-                <span class="text-[10px] font-mono opacity-40">Image</span>
-              </button>
-              <button type="button" data-command-mode="beautify"
-                class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
-                <span class="font-medium">提示词美化（Gemini）</span>
-                <span class="text-[10px] font-mono opacity-40">Polish</span>
-              </button>
+              class="hidden absolute right-0 bottom-full mb-3 w-[320px] rounded-[1.8rem] bg-black/85 border border-white/10 backdrop-blur-xl shadow-2xl overflow-hidden">
+              <div class="p-4 border-b border-white/10">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-50">功能</div>
+                  <div class="text-[9px] font-mono opacity-30">Search</div>
+                </div>
+                <input id="commandModeSearch" type="text"
+                  class="mt-3 w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-[12px] font-medium focus:outline-none focus:border-studio-accent/50 focus:ring-2 focus:ring-studio-accent/25 focus:ring-inset transition-all"
+                  placeholder="搜索：mj / mv / 视频 / 美化 / describe…" />
+              </div>
+
+              <div class="max-h-[420px] overflow-auto scrollbar-hide">
+                <div data-command-mode-group="create">
+                  <div class="px-4 pt-4 pb-2 text-[9px] font-black uppercase tracking-[0.25em] opacity-40">生成</div>
+                  <button type="button" data-command-mode="mj" data-command-mode-keywords="mj midjourney image grid 生图"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">MJ 生图</span>
+                    <span class="text-[10px] font-mono opacity-40">Image</span>
+                  </button>
+                  <button type="button" data-command-mode="video" data-command-mode-keywords="video 生视频"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">生视频</span>
+                    <span class="text-[10px] font-mono opacity-40">Video</span>
+                  </button>
+                  <button type="button" data-command-mode="mv-mix" data-command-mode-keywords="mv 合成 ffmpeg 音频 字幕 片段"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">MV 合成：配乐/字幕（通用）</span>
+                    <span class="text-[10px] font-mono opacity-40">MV</span>
+                  </button>
+                  <button type="button" data-command-mode="mv-images" data-command-mode-keywords="mv 图片 序列 合成 video ffmpeg"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">MV 合成：图片→视频</span>
+                    <span class="text-[10px] font-mono opacity-40">MV</span>
+                  </button>
+                  <button type="button" data-command-mode="mv-clip" data-command-mode-keywords="mv 视频 clip 裁剪 片段 ffmpeg"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">MV 合成：视频剪辑（Clip）</span>
+                    <span class="text-[10px] font-mono opacity-40">MV</span>
+                  </button>
+                  <button type="button" data-command-mode="mv-subtitle" data-command-mode-keywords="mv 字幕 subtitles srt burn soft mov_text libass ffmpeg"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">MV 合成：加字幕</span>
+                    <span class="text-[10px] font-mono opacity-40">MV</span>
+                  </button>
+                </div>
+
+                <div data-command-mode-group="edit">
+                  <div class="px-4 pt-4 pb-2 text-[9px] font-black uppercase tracking-[0.25em] opacity-40">编辑</div>
+                  <button type="button" data-command-mode="pedit" data-command-mode-keywords="gemini image edit pro 生成 编辑"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">Gemini 生图/编辑（Pro Image）</span>
+                    <span class="text-[10px] font-mono opacity-40">Image</span>
+                  </button>
+                </div>
+
+                <div data-command-mode-group="tools">
+                  <div class="px-4 pt-4 pb-2 text-[9px] font-black uppercase tracking-[0.25em] opacity-40">工具</div>
+                  <button type="button" data-command-mode="deconstruct" data-command-mode-keywords="describe 反推 提示词 gemini"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">反推提示词（Gemini）</span>
+                    <span class="text-[10px] font-mono opacity-40">Describe</span>
+                  </button>
+                  <button type="button" data-command-mode="beautify" data-command-mode-keywords="polish 美化 提示词 gemini"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">提示词美化（Gemini）</span>
+                    <span class="text-[10px] font-mono opacity-40">Polish</span>
+                  </button>
+                  <button type="button" data-command-mode="post" data-command-mode-keywords="post 后处理 图片 图床 promote 音频 audio ffmpeg loudnorm"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">素材后处理（图/音）</span>
+                    <span class="text-[10px] font-mono opacity-40">Post</span>
+                  </button>
+                </div>
+
+                <div id="commandModeEmpty" class="hidden px-4 py-10 text-center">
+                  <div class="text-[10px] font-black uppercase tracking-[0.25em] opacity-40">No Match</div>
+                  <div class="mt-2 text-[10px] font-mono opacity-35">换个关键词试试</div>
+                </div>
+              </div>
+
               <div class="px-4 py-3 text-[9px] font-mono opacity-35 border-t border-white/10">
                 提示：小飞机会执行当前模式
               </div>
@@ -1039,6 +1092,36 @@
         <div class="px-5 pb-3 text-[9px] font-mono opacity-30">
           说明：MJ 模式会拆成多条分镜并可 “Use” 填入主输入框；Suno 模式会输出 LYRICS_PROMPT + STYLE_PROMPT，可一键复制。
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THE TRACE OVERLAY (Lineage / 链路追踪) -->
+  <div id="traceOverlay" class="fixed inset-0 z-[210] pointer-events-none group">
+    <div id="traceBackdrop"
+      class="absolute inset-0 bg-black/60 backdrop-blur-md opacity-0 transition-opacity duration-700"></div>
+    <div id="tracePanel"
+      class="absolute right-0 top-0 bottom-0 w-full max-w-3xl bg-studio-panel border-l border-white/5 translate-x-full transition-transform duration-700 ease-in-out p-10 overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between mb-8">
+        <div class="flex items-center gap-4 min-w-0">
+          <i class="fas fa-sitemap text-studio-accent text-xs"></i>
+          <div class="min-w-0">
+            <div class="text-[12px] font-black uppercase tracking-[0.4em]">链路追踪</div>
+            <div id="traceSubtitle" class="mt-1 text-[9px] font-mono opacity-35 truncate">选择一条记录查看素材路径与可重做步骤</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="traceCloseBtn" type="button"
+            class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/5 transition-all">
+            <i class="fas fa-times text-xs opacity-30"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="traceContent" class="flex-1 overflow-y-auto pr-2 scrollbar-hide"></div>
+
+      <div class="mt-6 pt-4 border-t border-white/5 text-[9px] font-mono opacity-30">
+        提示：在链路中点 “重做” 可从中间步骤重新生成（不会自动删除后续素材）。
       </div>
     </div>
   </div>

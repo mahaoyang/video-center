@@ -96,6 +96,147 @@ function mimeFromImageExt(ext: string): string {
   return 'application/octet-stream';
 }
 
+function normalizeNonImageExt(ext: string): string {
+  return String(ext || '').toLowerCase();
+}
+
+const allowedUploadExts = new Set([
+  // images (still sniffed)
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  // video
+  '.mp4',
+  '.mov',
+  '.mkv',
+  '.webm',
+  // audio
+  '.wav',
+  '.mp3',
+  '.m4a',
+  '.aac',
+  '.flac',
+  '.ogg',
+  // text
+  '.txt',
+  '.srt',
+]);
+
+const ffmpegFilterCache = new Map<string, boolean>();
+
+async function runCommand(args: string[], opts?: { cwd?: string }): Promise<{ stdout: string; stderr: string; code: number }> {
+  const proc = Bun.spawn(args, { cwd: opts?.cwd, stdout: 'pipe', stderr: 'pipe' });
+  const [stdout, stderr, code] = await Promise.all([
+    proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
+    proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
+    proc.exited,
+  ]);
+  return { stdout, stderr, code };
+}
+
+function tailLines(text: string, maxChars = 1600): string {
+  const raw = String(text || '');
+  if (raw.length <= maxChars) return raw;
+  return raw.slice(-maxChars);
+}
+
+async function ffmpegHasFilter(name: string): Promise<boolean> {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return false;
+  const cached = ffmpegFilterCache.get(key);
+  if (typeof cached === 'boolean') return cached;
+  try {
+    const res = await runCommand(['ffmpeg', '-hide_banner', '-h', `filter=${key}`]);
+    const out = `${res.stdout || ''}\n${res.stderr || ''}`;
+    const ok = !out.includes('Unknown filter') && !out.includes('No such filter');
+    ffmpegFilterCache.set(key, ok);
+    return ok;
+  } catch {
+    ffmpegFilterCache.set(key, false);
+    return false;
+  }
+}
+
+function parseLoudnormJson(stderr: string): any {
+  const matches = String(stderr || '').match(/\{[\s\S]*?\}/g);
+  if (!matches || !matches.length) throw new Error('Failed to find loudnorm JSON in ffmpeg output.');
+  try {
+    return JSON.parse(matches[matches.length - 1]!);
+  } catch {
+    throw new Error('Failed to parse loudnorm JSON in ffmpeg output.');
+  }
+}
+
+function formatLoudnormSecondPass(measure: any): string {
+  const required = ['input_i', 'input_tp', 'input_lra', 'input_thresh', 'target_offset'];
+  const missing = required.filter((k) => measure?.[k] === undefined || measure?.[k] === null);
+  if (missing.length) throw new Error(`loudnorm JSON missing keys: ${missing.join(', ')}`);
+  const f = (k: string) => `${Number(measure[k]).toFixed(6)}`;
+  return (
+    'loudnorm=I=-16:TP=-1.5:LRA=11:' +
+    `measured_I=${f('input_i')}:` +
+    `measured_TP=${f('input_tp')}:` +
+    `measured_LRA=${f('input_lra')}:` +
+    `measured_thresh=${f('input_thresh')}:` +
+    `offset=${f('target_offset')}:` +
+    'print_format=summary'
+  );
+}
+
+async function sampleRateFromFile(inputPath: string): Promise<number> {
+  try {
+    const res = await runCommand([
+      'ffprobe',
+      '-v',
+      'error',
+      '-select_streams',
+      'a:0',
+      '-show_entries',
+      'stream=sample_rate',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
+      inputPath,
+    ]);
+    const v = Number(String(res.stdout || '').trim());
+    if (Number.isFinite(v) && v > 0) return v;
+  } catch {
+    // ignore
+  }
+  return 48000;
+}
+
+async function buildAudioFiltergraph(params: { sampleRate: number; includeLoudnorm: string }): Promise<string> {
+  const tempo = 1.0003;
+  const rubberband = await ffmpegHasFilter('rubberband');
+  const firequalizer = await ffmpegHasFilter('firequalizer');
+  const vibrato = await ffmpegHasFilter('vibrato');
+
+  const tempoFilter = Math.abs(tempo - 1.0) < 1e-9 ? '' : rubberband ? `rubberband=tempo=${tempo.toFixed(7)},` : `atempo=${tempo.toFixed(7)},`;
+  const eq = firequalizer ? "firequalizer=gain='if(gt(f,16000),-0.8,0)'," : '';
+  const vib = vibrato ? 'vibrato=f=0.3:d=0.00002,' : '';
+
+  return (
+    '[0:a]' +
+    tempoFilter +
+    'aformat=channel_layouts=stereo,' +
+    'highpass=f=20,' +
+    'lowpass=f=19500,' +
+    eq +
+    'acompressor=threshold=0.1:ratio=1.15:attack=25:release=250:knee=2,' +
+    'asplit[m1][m2];' +
+    '[m1]pan=1c|c0=0.5*c0+0.5*c1[mid];' +
+    '[m2]pan=1c|c0=0.5*c0-0.5*c1,' +
+    'highpass=f=5000,' +
+    vib +
+    'volume=0.95[side];' +
+    '[mid][side]join=inputs=2:channel_layout=stereo[ms];' +
+    `[ms]pan=stereo|c0=c0+c1|c1=c0-c1,aresample=${params.sampleRate},` +
+    params.includeLoudnorm
+  );
+}
+
 function isPrivateIpv4(host: string): boolean {
   const m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
   if (!m) return false;
@@ -165,6 +306,375 @@ async function fetchExternalImageBytes(req: Request, absolute: URL): Promise<{ b
     }
   }
   throw lastError instanceof Error ? lastError : new Error('拉取图片失败');
+}
+
+function normalizeBaseUrl(url: string): string {
+  return String(url || '').trim().replace(/\/+$/, '');
+}
+
+function mediaBackendUrlFromEnv(): string {
+  const raw = process.env.PY_MEDIA_BACKEND_URL || process.env.MEDIA_BACKEND_URL || 'http://localhost:9010';
+  return normalizeBaseUrl(raw);
+}
+
+function resolveUploadsLocalPath(uploadsDir: string, src: string): string | null {
+  const raw = String(src || '').trim();
+  const m = raw.match(/^\/uploads\/([^/?#]+)$/);
+  if (!m) return null;
+  const key = basename(m[1]!);
+  if (!key || key !== m[1]) return null;
+  return join(uploadsDir, key);
+}
+
+function safeFfmpegInputForSrc(req: Request, uploadsDir: string, src: string): string {
+  const raw = String(src || '').trim();
+  if (!raw) throw new Error('素材 URL 为空');
+  if (raw.startsWith('data:')) throw new Error('不支持 data: URL 作为 ffmpeg 输入，请先上传到 /uploads');
+  if (raw.startsWith('/uploads/')) {
+    const p = resolveUploadsLocalPath(uploadsDir, raw);
+    if (!p) throw new Error('uploads 路径解析失败');
+    return p;
+  }
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  // Allow relative URLs served by this app.
+  return new URL(raw, req.url).toString();
+}
+
+function parseResolution(value: string | undefined): { w: number; h: number } | null {
+  const v = String(value || '').trim();
+  const m = v.match(/^(\d{2,5})x(\d{2,5})$/);
+  if (!m) return null;
+  const w = Number(m[1]), h = Number(m[2]);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  return { w, h };
+}
+
+type MvComposeSubtitleMode = 'burn' | 'soft';
+type MvComposeAction = 'mv' | 'clip';
+type MvComposeVisualItem = { url: string; durationSeconds?: number };
+type MvComposeRequestBody = {
+  prompt?: string;
+  text?: string;
+  visualImageUrls?: string[];
+  visualSequence?: Array<{ url?: string; durationSeconds?: number }>;
+  videoUrl?: string;
+  audioUrl?: string;
+  subtitleSrt?: string;
+  action?: string;
+  subtitleMode?: string;
+  resolution?: string;
+  fps?: number;
+  durationSeconds?: number;
+};
+
+function finiteNumberOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeMvComposeVisualSequence(input: unknown): MvComposeVisualItem[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((it) => ({
+      url: String(it?.url || '').trim(),
+      durationSeconds: typeof it?.durationSeconds === 'number' && Number.isFinite(it.durationSeconds) ? it.durationSeconds : undefined,
+    }))
+    .filter((it) => Boolean(it.url))
+    .slice(0, 24);
+}
+
+function normalizeMvComposeVisualImageUrls(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return input.map((u) => String(u || '').trim()).filter(Boolean).slice(0, 24);
+}
+
+function escapeFfmpegSubtitlesPath(path: string): string {
+  return path.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\\\'");
+}
+
+async function prepareSubtitleFileIfNeeded(opts: {
+  dryRun: boolean;
+  uploadsDir: string;
+  subtitleSrt: string;
+}): Promise<{ subtitlePath: string }> {
+  const subtitleSrt = opts.subtitleSrt;
+  if (!subtitleSrt || !subtitleSrt.trim()) return { subtitlePath: '' };
+
+  const key = `${randomUUID()}.srt`;
+  const filePath = join(opts.uploadsDir, key);
+  if (!opts.dryRun) await writeFile(filePath, subtitleSrt, 'utf8');
+  return { subtitlePath: filePath };
+}
+
+function prepareMvComposeOutput(opts: { uploadsDir: string; uploadsPublicPath: string }): {
+  outPath: string;
+  outputUrl: string;
+} {
+  const outKey = `${randomUUID()}.mp4`;
+  const outPath = join(opts.uploadsDir, outKey);
+  const outputUrl = `${opts.uploadsPublicPath}/${outKey}`;
+  return { outPath, outputUrl };
+}
+
+function buildMvComposeVf(opts: {
+  resolution: { w: number; h: number } | null;
+  subtitleMode: MvComposeSubtitleMode;
+  subtitlePath: string;
+}): string[] {
+  const vf: string[] = [];
+  if (opts.resolution) {
+    vf.push(`scale=${opts.resolution.w}:${opts.resolution.h}:force_original_aspect_ratio=decrease`);
+    vf.push(`pad=${opts.resolution.w}:${opts.resolution.h}:(ow-iw)/2:(oh-ih)/2`);
+  }
+  if (opts.subtitleMode === 'burn' && opts.subtitlePath) {
+    vf.push(`subtitles='${escapeFfmpegSubtitlesPath(opts.subtitlePath)}'`);
+  }
+  if (vf.length) vf.push('format=yuv420p');
+  return vf;
+}
+
+function getMvComposeImages(opts: {
+  visualSequence: MvComposeVisualItem[];
+  visualImageUrls: string[];
+}): MvComposeVisualItem[] {
+  return opts.visualSequence.length
+    ? opts.visualSequence
+    : opts.visualImageUrls.map((url) => ({ url, durationSeconds: undefined }));
+}
+
+function buildMvComposeImageSequenceArgs(ctx: {
+  req: Request;
+  uploadsDir: string;
+  images: MvComposeVisualItem[];
+  durationSeconds: number;
+  fps: number;
+  resolution: { w: number; h: number } | null;
+  inputAudio: string;
+  subtitleMode: MvComposeSubtitleMode;
+  subtitlePath: string;
+  outPath: string;
+}): string[] {
+  const dflt = ctx.durationSeconds;
+  const args: string[] = ['-y'];
+  for (const it of ctx.images) {
+    const d = typeof it.durationSeconds === 'number' && it.durationSeconds > 0 ? it.durationSeconds : dflt;
+    args.push('-loop', '1', '-t', String(d), '-i', safeFfmpegInputForSrc(ctx.req, ctx.uploadsDir, it.url));
+  }
+
+  let audioIndex = -1;
+  if (ctx.inputAudio) {
+    audioIndex = ctx.images.length;
+    args.push('-i', ctx.inputAudio);
+  }
+
+  let subtitleIndex = -1;
+  if (ctx.subtitleMode === 'soft' && ctx.subtitlePath) {
+    subtitleIndex = ctx.inputAudio ? ctx.images.length + 1 : ctx.images.length;
+    args.push('-i', ctx.subtitlePath);
+  }
+
+  const filters: string[] = [];
+  const concatInputs: string[] = [];
+  for (let i = 0; i < ctx.images.length; i++) {
+    concatInputs.push(`[v${i}]`);
+    filters.push(`[${i}:v]setsar=1[v${i}]`);
+  }
+
+  const post: string[] = [];
+  if (ctx.resolution) {
+    post.push(`scale=${ctx.resolution.w}:${ctx.resolution.h}:force_original_aspect_ratio=decrease`);
+    post.push(`pad=${ctx.resolution.w}:${ctx.resolution.h}:(ow-iw)/2:(oh-ih)/2`);
+  }
+  if (ctx.subtitleMode === 'burn' && ctx.subtitlePath) {
+    post.push(`subtitles='${escapeFfmpegSubtitlesPath(ctx.subtitlePath)}'`);
+  }
+  post.push(`fps=${ctx.fps}`);
+  post.push('format=yuv420p');
+
+  if (ctx.images.length > 1) {
+    filters.push(`${concatInputs.join('')}concat=n=${ctx.images.length}:v=1:a=0[vcat]`);
+    filters.push(`[vcat]${post.join(',')}[vout]`);
+  } else {
+    filters.push(`[v0]${post.join(',')}[vout]`);
+  }
+
+  args.push('-filter_complex', filters.join(';'));
+  args.push('-map', '[vout]');
+  if (ctx.inputAudio) args.push('-map', `${audioIndex}:a:0`);
+  if (subtitleIndex >= 0) args.push('-map', `${subtitleIndex}:s:0`);
+
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23');
+  if (ctx.inputAudio) args.push('-c:a', 'aac', '-b:a', '192k');
+  if (subtitleIndex >= 0) args.push('-c:s', 'mov_text');
+  args.push('-movflags', '+faststart');
+  args.push(ctx.outPath);
+  return args;
+}
+
+function buildMvComposeVideoTranscodeArgs(ctx: {
+  inputVideo: string;
+  inputImage: string;
+  inputAudio: string;
+  trimSeconds?: number;
+  fps: number;
+  subtitleMode: MvComposeSubtitleMode;
+  subtitlePath: string;
+  vf: string[];
+  outPath: string;
+}): string[] {
+  const args: string[] = ['-y'];
+  if (ctx.inputVideo) args.push('-i', ctx.inputVideo);
+  else args.push('-loop', '1', '-framerate', String(ctx.fps), '-i', ctx.inputImage);
+
+  let audioIndex = -1;
+  if (ctx.inputAudio) {
+    audioIndex = 1;
+    args.push('-i', ctx.inputAudio);
+  }
+
+  let subtitleIndex = -1;
+  if (ctx.subtitleMode === 'soft' && ctx.subtitlePath) {
+    subtitleIndex = ctx.inputAudio ? 2 : 1;
+    args.push('-i', ctx.subtitlePath);
+  }
+
+  if (typeof ctx.trimSeconds === 'number' && Number.isFinite(ctx.trimSeconds) && ctx.trimSeconds > 0) {
+    args.push('-t', String(ctx.trimSeconds));
+  }
+  if (ctx.inputAudio) args.push('-shortest');
+
+  args.push('-map', '0:v:0');
+  if (ctx.inputAudio) args.push('-map', `${audioIndex}:a:0`);
+  else if (ctx.inputVideo) args.push('-map', '0:a?:0');
+  if (subtitleIndex >= 0) args.push('-map', `${subtitleIndex}:s:0`);
+
+  if (ctx.vf.length) args.push('-vf', ctx.vf.join(','));
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23');
+  if (ctx.inputAudio) args.push('-c:a', 'aac', '-b:a', '192k');
+  else if (ctx.inputVideo) args.push('-c:a', 'copy');
+  if (subtitleIndex >= 0) args.push('-c:s', 'mov_text');
+  args.push('-movflags', '+faststart');
+  args.push(ctx.outPath);
+  return args;
+}
+
+function buildMvComposeCopyArgsIfPossible(ctx: {
+  inputVideo: string;
+  inputAudio: string;
+  trimSeconds?: number;
+  subtitleMode: MvComposeSubtitleMode;
+  subtitlePath: string;
+  vf: string[];
+  outPath: string;
+}): string[] | null {
+  if (!ctx.inputVideo) return null;
+  if (ctx.vf.length) return null;
+
+  const args: string[] = ['-y', '-i', ctx.inputVideo];
+  if (typeof ctx.trimSeconds === 'number' && Number.isFinite(ctx.trimSeconds) && ctx.trimSeconds > 0) {
+    args.push('-t', String(ctx.trimSeconds));
+  }
+
+  let audioIndex = -1;
+  if (ctx.inputAudio) {
+    audioIndex = 1;
+    args.push('-i', ctx.inputAudio);
+  }
+
+  let subtitleIndex = -1;
+  if (ctx.subtitleMode === 'soft' && ctx.subtitlePath) {
+    subtitleIndex = ctx.inputAudio ? 2 : 1;
+    args.push('-i', ctx.subtitlePath);
+  }
+
+  args.push('-map', '0:v:0');
+  if (ctx.inputAudio) args.push('-map', `${audioIndex}:a:0`);
+  else args.push('-map', '0:a?:0');
+  if (subtitleIndex >= 0) args.push('-map', `${subtitleIndex}:s:0`);
+
+  args.push('-c:v', 'copy');
+  if (ctx.inputAudio) args.push('-c:a', 'aac', '-b:a', '192k');
+  else args.push('-c:a', 'copy');
+  if (subtitleIndex >= 0) args.push('-c:s', 'mov_text');
+  args.push('-movflags', '+faststart');
+  args.push(ctx.outPath);
+  return args;
+}
+
+function buildMvComposeCandidates(ctx: {
+  uploadsDir: string;
+  inputVideo: string;
+  inputImage: string;
+  inputAudio: string;
+  imageDurationSeconds: number;
+  trimSeconds?: number;
+  fps: number;
+  resolution: { w: number; h: number } | null;
+  subtitleMode: MvComposeSubtitleMode;
+  subtitlePath: string;
+  visualSequence: MvComposeVisualItem[];
+  visualImageUrls: string[];
+  outPath: string;
+  outputUrl: string;
+  req: Request;
+}): { outputUrl: string; candidates: any[] } {
+  const vf = buildMvComposeVf({ resolution: ctx.resolution, subtitleMode: ctx.subtitleMode, subtitlePath: ctx.subtitlePath });
+
+  const candidates: any[] = [];
+
+  const copyArgs = buildMvComposeCopyArgsIfPossible({
+    inputVideo: ctx.inputVideo,
+    inputAudio: ctx.inputAudio,
+    trimSeconds: ctx.trimSeconds,
+    subtitleMode: ctx.subtitleMode,
+    subtitlePath: ctx.subtitlePath,
+    vf,
+    outPath: ctx.outPath,
+  });
+
+  if (copyArgs) {
+    candidates.push({
+      label: 'copy',
+      encodeCount: 0,
+      score: 0,
+      commands: [{ cwd: ctx.uploadsDir, args: copyArgs }],
+      fallbackCommands: [{ cwd: ctx.uploadsDir, args: ['-y', '-fflags', '+genpts', ...copyArgs.slice(1)] }],
+    });
+  }
+
+  const transcodeArgs = ctx.inputVideo
+    ? buildMvComposeVideoTranscodeArgs({
+        inputVideo: ctx.inputVideo,
+        inputImage: ctx.inputImage,
+        inputAudio: ctx.inputAudio,
+        trimSeconds: ctx.trimSeconds,
+        fps: ctx.fps,
+        subtitleMode: ctx.subtitleMode,
+        subtitlePath: ctx.subtitlePath,
+        vf,
+        outPath: ctx.outPath,
+      })
+    : buildMvComposeImageSequenceArgs({
+        req: ctx.req,
+        uploadsDir: ctx.uploadsDir,
+        images: getMvComposeImages({ visualSequence: ctx.visualSequence, visualImageUrls: ctx.visualImageUrls }),
+        durationSeconds: ctx.imageDurationSeconds,
+        fps: ctx.fps,
+        resolution: ctx.resolution,
+        inputAudio: ctx.inputAudio,
+        subtitleMode: ctx.subtitleMode,
+        subtitlePath: ctx.subtitlePath,
+        outPath: ctx.outPath,
+      });
+
+  candidates.push({
+    label: ctx.inputVideo ? 'transcode' : 'image-sequence',
+    encodeCount: 1,
+    score: copyArgs ? 10 : 0,
+    commands: [{ cwd: ctx.uploadsDir, args: transcodeArgs }],
+    fallbackCommands: [{ cwd: ctx.uploadsDir, args: ['-y', '-fflags', '+genpts', ...transcodeArgs.slice(1)] }],
+  });
+
+  return { outputUrl: ctx.outputUrl, candidates };
 }
 
 export function createApiRouter(deps: {
@@ -434,23 +944,40 @@ export function createApiRouter(deps: {
         if (!(file instanceof File)) {
           return jsonError({ status: 400, description: '缺少 file 字段（multipart/form-data）' });
         }
-        if (file.type && !file.type.startsWith('image/')) {
-          return jsonError({ status: 400, description: `仅支持图片文件（当前: ${file.type}）` });
-        }
 
         await mkdir(deps.uploads.dir, { recursive: true });
         const ab = await file.arrayBuffer();
         const bytes = new Uint8Array(ab);
-        const sniffedExt = sniffImageExt(bytes);
         const extFromName = extname(file.name || '');
-        if (!sniffedExt) {
-          return jsonError({ status: 400, description: '图片格式不支持或文件已损坏（仅支持 PNG/JPG/WEBP/GIF）' });
+        const loweredExt = normalizeNonImageExt(extFromName);
+
+        // Allow extension-less images by sniffing.
+        const isImageExt = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(loweredExt);
+        let ext = loweredExt;
+        if (!ext) {
+          const sniffedExt = sniffImageExt(bytes);
+          if (!sniffedExt) {
+            return jsonError({ status: 400, description: `不支持的文件类型：${extFromName || '(无扩展名)'}` });
+          }
+          ext = normalizeImageExt(sniffedExt);
         }
-        const normalizedSniff = normalizeImageExt(sniffedExt);
-        const normalizedNameExt = normalizeImageExt(extFromName);
-        const ext = normalizeImageExt(extFromName || sniffedExt);
-        if (extFromName && normalizedSniff !== normalizedNameExt) {
-          return jsonError({ status: 400, description: '图片文件扩展名与内容不匹配，请重新上传' });
+
+        if (!allowedUploadExts.has(ext)) {
+          return jsonError({ status: 400, description: `不支持的文件类型：${extFromName || '(无扩展名)'}` });
+        }
+
+        // Images: sniff bytes for safety (avoid mismatched extension).
+        if (['.png', '.jpg', '.webp', '.gif'].includes(normalizeImageExt(ext))) {
+          const sniffedExt = sniffImageExt(bytes);
+          if (!sniffedExt) {
+            return jsonError({ status: 400, description: '图片格式不支持或文件已损坏（仅支持 PNG/JPG/WEBP/GIF）' });
+          }
+          const normalizedSniff = normalizeImageExt(sniffedExt);
+          const normalizedNameExt = normalizeImageExt(ext);
+          ext = normalizeImageExt(ext || sniffedExt);
+          if (normalizedSniff !== normalizedNameExt) {
+            return jsonError({ status: 400, description: '图片文件扩展名与内容不匹配，请重新上传' });
+          }
         }
 
         const localKey = `${randomUUID()}${ext}`;
@@ -542,6 +1069,209 @@ export function createApiRouter(deps: {
       } catch (error) {
         console.error('Delete upload error:', error);
         return jsonError({ status: 500, description: '删除失败', error });
+      }
+    }
+
+    if (pathname === '/api/audio/process' && req.method === 'POST') {
+      try {
+        const body = await readJson<{ src?: string }>(req);
+        const src = String(body.src || '').trim();
+        if (!src) return jsonError({ status: 400, description: 'src 不能为空' });
+
+        const localPath = resolveUploadsLocalPath(deps.uploads.dir, src);
+        if (!localPath) return jsonError({ status: 400, description: '仅支持 /uploads/<key> 作为音频输入' });
+
+        const file = Bun.file(localPath);
+        if (!(await file.exists())) return jsonError({ status: 404, description: '音频不存在' });
+
+        const ext = normalizeNonImageExt(extname(localPath));
+        const allowedAudioExts = new Set(['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg']);
+        if (!allowedAudioExts.has(ext)) return jsonError({ status: 400, description: `不支持的音频格式：${ext || '(无扩展名)'}` });
+
+        await mkdir(deps.uploads.dir, { recursive: true });
+        const outKey = `${randomUUID()}_pro.wav`;
+        const outPath = join(deps.uploads.dir, outKey);
+
+        const sampleRate = await sampleRateFromFile(localPath);
+
+        try {
+          const analysisGraph = await buildAudioFiltergraph({
+            sampleRate,
+            includeLoudnorm: 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json',
+          });
+          const analysis = await runCommand([
+            'ffmpeg',
+            '-hide_banner',
+            '-nostdin',
+            '-i',
+            localPath,
+            '-filter_complex',
+            analysisGraph,
+            '-f',
+            'null',
+            '-',
+          ]);
+          if (analysis.code !== 0) {
+            throw new Error(analysis.stderr?.trim() || 'ffmpeg loudnorm analysis failed');
+          }
+
+          const measure = parseLoudnormJson(analysis.stderr || '');
+          const loudnormSecondPass = formatLoudnormSecondPass(measure);
+          const filterGraph = await buildAudioFiltergraph({ sampleRate, includeLoudnorm: loudnormSecondPass });
+
+          const proc = await runCommand([
+            'ffmpeg',
+            '-y',
+            '-hide_banner',
+            '-nostdin',
+            '-i',
+            localPath,
+            '-filter_complex',
+            filterGraph,
+            '-c:a',
+            'pcm_s24le',
+            '-ar',
+            String(sampleRate),
+            outPath,
+          ]);
+          if (proc.code !== 0) {
+            throw new Error(proc.stderr?.trim() || 'ffmpeg audio process failed');
+          }
+        } catch (error) {
+          // Fallback: single-pass loudnorm only
+          const fallback = await runCommand([
+            'ffmpeg',
+            '-y',
+            '-hide_banner',
+            '-nostdin',
+            '-i',
+            localPath,
+            '-af',
+            'loudnorm=I=-16:TP=-1.5:LRA=11',
+            '-c:a',
+            'pcm_s24le',
+            '-ar',
+            String(sampleRate),
+            outPath,
+          ]);
+          if (fallback.code !== 0) {
+            const detail = tailLines(fallback.stderr || (error as Error)?.message || '', 2000);
+            return jsonError({ status: 500, description: '音频后处理失败', error: detail });
+          }
+        }
+
+        const outputUrl = `${deps.uploads.publicPath}/${outKey}`;
+        return json({ code: 0, description: '成功', result: { outputUrl, localKey: outKey } });
+      } catch (error) {
+        console.error('Audio process error:', error);
+        return jsonError({ status: 500, description: '音频后处理失败', error });
+      }
+    }
+
+    if ((pathname === '/api/mv/compose' || pathname === '/api/mv/compose/plan') && req.method === 'POST') {
+      try {
+        const body = await readJson<MvComposeRequestBody>(req);
+        const dryRun = pathname.endsWith('/plan');
+
+        const fps = finiteNumberOr(body.fps, 25);
+        if (fps <= 0 || fps > 120) return jsonError({ status: 400, description: 'fps 不合法' });
+
+        const subtitleMode: MvComposeSubtitleMode = body.subtitleMode === 'burn' ? 'burn' : 'soft';
+        const action: MvComposeAction = body.action === 'clip' ? 'clip' : 'mv';
+        const resolutionRaw = typeof body.resolution === 'string' ? body.resolution.trim() : '';
+        const resolution = resolutionRaw && resolutionRaw !== 'source' ? parseResolution(resolutionRaw) : null;
+
+        const videoUrl = String(body.videoUrl || '').trim();
+        const audioUrl = action === 'mv' ? String(body.audioUrl || '').trim() : '';
+        const subtitleSrt = action === 'mv' && typeof body.subtitleSrt === 'string' ? body.subtitleSrt : '';
+
+        const durationProvided = typeof body.durationSeconds === 'number' && Number.isFinite(body.durationSeconds);
+        const durationSeconds = durationProvided ? (body.durationSeconds as number) : undefined;
+        let trimSeconds: number | undefined = undefined;
+        let imageDurationSeconds: number = 5;
+
+        if (videoUrl) {
+          trimSeconds = durationSeconds;
+          if (typeof trimSeconds === 'number' && (trimSeconds <= 0 || trimSeconds > 600)) {
+            return jsonError({ status: 400, description: 'durationSeconds 不合法' });
+          }
+          if (action === 'clip' && typeof trimSeconds !== 'number') {
+            return jsonError({ status: 400, description: '视频剪辑需要提供 durationSeconds' });
+          }
+        } else {
+          imageDurationSeconds = finiteNumberOr(body.durationSeconds, 5);
+          if (imageDurationSeconds <= 0 || imageDurationSeconds > 600) return jsonError({ status: 400, description: 'durationSeconds 不合法' });
+        }
+
+        const visualSequence = normalizeMvComposeVisualSequence(body.visualSequence);
+        const visualImageUrls = visualSequence.length ? visualSequence.map((it) => it.url) : normalizeMvComposeVisualImageUrls(body.visualImageUrls);
+
+        if (!videoUrl && visualImageUrls.length === 0) {
+          return jsonError({ status: 400, description: '缺少素材：需要 videoUrl 或 visualImageUrls' });
+        }
+
+        const inputVideo = videoUrl ? safeFfmpegInputForSrc(req, deps.uploads.dir, videoUrl) : '';
+        const inputImage = !videoUrl ? safeFfmpegInputForSrc(req, deps.uploads.dir, visualImageUrls[0]!) : '';
+        const inputAudio = audioUrl ? safeFfmpegInputForSrc(req, deps.uploads.dir, audioUrl) : '';
+
+        const { subtitlePath } = await prepareSubtitleFileIfNeeded({ dryRun, uploadsDir: deps.uploads.dir, subtitleSrt });
+        const { outPath, outputUrl } = prepareMvComposeOutput({ uploadsDir: deps.uploads.dir, uploadsPublicPath: deps.uploads.publicPath });
+        const { candidates } = buildMvComposeCandidates({
+          uploadsDir: deps.uploads.dir,
+          inputVideo,
+          inputImage,
+          inputAudio,
+          imageDurationSeconds,
+          trimSeconds,
+          fps,
+          resolution,
+          subtitleMode,
+          subtitlePath,
+          visualSequence,
+          visualImageUrls,
+          outPath,
+          outputUrl,
+          req,
+        });
+
+        if (dryRun) {
+          return json({ code: 0, description: '成功', result: { outputUrl, candidates } });
+        }
+
+        const backend = mediaBackendUrlFromEnv();
+        const enqueueResp = await fetch(`${backend}/api/tasks/ffmpeg/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: 'mv-compose', candidates }),
+        });
+        const enqueueJson = await enqueueResp.json();
+        if (!enqueueResp.ok || enqueueJson?.code !== 0) {
+          return jsonError({ status: 502, description: 'media-backend 入队失败', error: enqueueJson });
+        }
+        const taskId = String(enqueueJson?.result?.id || '').trim();
+        if (!taskId) return jsonError({ status: 502, description: 'media-backend 入队失败：缺少 id', error: enqueueJson });
+
+        return json({ code: 0, description: '成功', result: { taskId, outputUrl } });
+      } catch (error) {
+        console.error('MV compose error:', error);
+        return jsonError({ status: 500, description: 'MV 合成失败', error });
+      }
+    }
+
+    const mediaTaskMatch = pathname.match(/^\/api\/media\/task\/([^/]+)$/);
+    if (mediaTaskMatch && req.method === 'GET') {
+      try {
+        const taskId = mediaTaskMatch[1]!;
+        const backend = mediaBackendUrlFromEnv();
+        const resp = await fetch(`${backend}/api/tasks/${encodeURIComponent(taskId)}`);
+        const payload = await resp.json().catch(() => null);
+        if (!resp.ok) {
+          return jsonError({ status: 502, description: 'media-backend 查询失败', error: payload || { status: resp.status } });
+        }
+        return json(payload);
+      } catch (error) {
+        console.error('media task query error:', error);
+        return jsonError({ status: 500, description: '查询 media 任务失败', error });
       }
     }
 

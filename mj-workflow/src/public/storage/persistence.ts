@@ -1,5 +1,5 @@
 import type { Store } from '../state/store';
-import type { PlannerMessage, ReferenceImage, StreamMessage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
+import type { MediaAsset, PlannerMessage, ReferenceImage, StreamMessage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { randomId } from '../atoms/id';
 
 const STORAGE_KEY = 'mj-workflow:persist:v1';
@@ -20,6 +20,7 @@ type Persisted = {
     name: string;
     createdAt: number;
     originKey?: string;
+    producedByMessageId?: string;
     url: string;
     cdnUrl?: string;
     localUrl?: string;
@@ -41,6 +42,8 @@ type Persisted = {
     text?: string;
     imageUrl?: string;
     refId?: string;
+    refIds?: string[];
+    parentMessageId?: string;
     taskId?: string;
     gridImageUrl?: string;
     upscaledImageUrl?: string;
@@ -52,6 +55,35 @@ type Persisted = {
     provider?: string;
     progress?: number;
     error?: string;
+    postOutputs?: Array<{ kind: string; url: string; name?: string }>;
+
+    userPrompt?: string;
+    mjPadRefId?: string;
+    mjSrefRefId?: string;
+    mjCrefRefId?: string;
+    mjSrefImageUrl?: string;
+    mjCrefImageUrl?: string;
+    upscaleSourceTaskId?: string;
+    upscaleIndex?: number;
+    gimageAspect?: string;
+    gimageSize?: string;
+    outputRefIds?: string[];
+    videoModel?: string;
+    videoSeconds?: number;
+    videoMode?: string;
+    videoAspect?: string;
+    videoSize?: string;
+    videoStartRefId?: string;
+    videoEndRefId?: string;
+
+    mvResolution?: string;
+    mvFps?: number;
+    mvDurationSeconds?: number;
+    mvSubtitleMode?: string;
+    mvVisualRefIds?: string[];
+    mvVideoUrl?: string;
+    mvAudioUrl?: string;
+    mvSubtitleSrt?: string;
   }>;
   plannerMessages?: Array<{
     id: string;
@@ -59,6 +91,24 @@ type Persisted = {
     role: string;
     text: string;
   }>;
+
+  mediaAssets?: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    createdAt: number;
+    originKey?: string;
+    url?: string;
+    localUrl?: string;
+    localPath?: string;
+    localKey?: string;
+    text?: string;
+  }>;
+
+  // MV sequence (preferred, ordered)
+  mvSequence?: Array<{ refId: string; durationSeconds?: number }>;
+  // Legacy: only order (no durations)
+  mvVisualRefIds?: string[];
 
   commandMode?: string;
   beautifyHint?: string;
@@ -73,7 +123,19 @@ type Persisted = {
   videoStartRefId?: string;
   videoEndRefId?: string;
 
+  mvVideoAssetId?: string;
+  mvAudioAssetId?: string;
+  mvSubtitleAssetId?: string;
+  mvSubtitleText?: string;
+  mvText?: string;
+  mvResolution?: string;
+  mvFps?: number;
+  mvDurationSeconds?: number;
+  mvSubtitleMode?: string;
+  mvAction?: string;
+
   desktopHiddenStreamMessageIds?: string[];
+  traceHeadMessageId?: string;
 };
 
 function safeParse(jsonText: string | null): Persisted | null {
@@ -95,6 +157,7 @@ function toPersisted(state: WorkflowState): Persisted {
       name: r.name,
       createdAt: r.createdAt,
       originKey: typeof r.originKey === 'string' ? r.originKey : undefined,
+      producedByMessageId: typeof r.producedByMessageId === 'string' ? r.producedByMessageId : undefined,
       url: r.url!,
       cdnUrl: r.cdnUrl,
       localUrl: r.localUrl,
@@ -136,6 +199,8 @@ function toPersisted(state: WorkflowState): Persisted {
       text: m.text,
       imageUrl: typeof m.imageUrl === 'string' && m.imageUrl.startsWith('data:') ? undefined : m.imageUrl,
       refId: m.refId,
+      refIds: Array.isArray(m.refIds) ? m.refIds.map((id) => String(id || '').trim()).filter(Boolean).slice(0, 12) : undefined,
+      parentMessageId: typeof m.parentMessageId === 'string' ? m.parentMessageId : undefined,
       taskId: m.taskId,
       gridImageUrl: m.gridImageUrl,
       upscaledImageUrl: m.upscaledImageUrl,
@@ -147,12 +212,73 @@ function toPersisted(state: WorkflowState): Persisted {
       provider: m.provider,
       progress: typeof m.progress === 'number' ? m.progress : undefined,
       error: typeof m.error === 'string' ? m.error : undefined,
+      postOutputs: Array.isArray((m as any).postOutputs)
+        ? (m as any).postOutputs
+            .map((it: any) => ({
+              kind: it?.kind === 'audio' ? 'audio' : 'image',
+              url: String(it?.url || '').trim(),
+              name: typeof it?.name === 'string' ? it.name : undefined,
+            }))
+            .filter((it: any) => Boolean(it.url))
+            .slice(0, 24)
+        : undefined,
+
+      userPrompt: typeof m.userPrompt === 'string' && m.userPrompt.trim() ? m.userPrompt.trim() : undefined,
+      mjPadRefId: typeof m.mjPadRefId === 'string' ? m.mjPadRefId : undefined,
+      mjSrefRefId: typeof m.mjSrefRefId === 'string' ? m.mjSrefRefId : undefined,
+      mjCrefRefId: typeof m.mjCrefRefId === 'string' ? m.mjCrefRefId : undefined,
+      mjSrefImageUrl: typeof m.mjSrefImageUrl === 'string' ? m.mjSrefImageUrl : undefined,
+      mjCrefImageUrl: typeof m.mjCrefImageUrl === 'string' ? m.mjCrefImageUrl : undefined,
+      upscaleSourceTaskId: typeof m.upscaleSourceTaskId === 'string' ? m.upscaleSourceTaskId : undefined,
+      upscaleIndex: typeof m.upscaleIndex === 'number' ? m.upscaleIndex : undefined,
+      gimageAspect: typeof m.gimageAspect === 'string' ? m.gimageAspect : undefined,
+      gimageSize: typeof m.gimageSize === 'string' ? m.gimageSize : undefined,
+      outputRefIds: Array.isArray(m.outputRefIds)
+        ? m.outputRefIds.map((id) => String(id || '')).filter(Boolean).slice(0, 12)
+        : undefined,
+      videoModel: typeof m.videoModel === 'string' ? m.videoModel : undefined,
+      videoSeconds: typeof m.videoSeconds === 'number' ? m.videoSeconds : undefined,
+      videoMode: typeof m.videoMode === 'string' ? m.videoMode : undefined,
+      videoAspect: typeof m.videoAspect === 'string' ? m.videoAspect : undefined,
+      videoSize: typeof m.videoSize === 'string' ? m.videoSize : undefined,
+      videoStartRefId: typeof m.videoStartRefId === 'string' ? m.videoStartRefId : undefined,
+      videoEndRefId: typeof m.videoEndRefId === 'string' ? m.videoEndRefId : undefined,
+
+      mvResolution: typeof m.mvResolution === 'string' ? m.mvResolution : undefined,
+      mvFps: typeof m.mvFps === 'number' ? m.mvFps : undefined,
+      mvDurationSeconds: typeof m.mvDurationSeconds === 'number' ? m.mvDurationSeconds : undefined,
+      mvSubtitleMode: typeof m.mvSubtitleMode === 'string' ? m.mvSubtitleMode : undefined,
+      mvSequence: Array.isArray((m as any).mvSequence)
+        ? (m as any).mvSequence
+            .map((it: any) => ({
+              refId: String(it?.refId || '').trim(),
+              durationSeconds: typeof it?.durationSeconds === 'number' ? it.durationSeconds : undefined,
+            }))
+            .filter((it: any) => Boolean(it.refId))
+            .slice(0, 24)
+        : undefined,
+      mvVideoUrl: typeof m.mvVideoUrl === 'string' ? m.mvVideoUrl : undefined,
+      mvAudioUrl: typeof m.mvAudioUrl === 'string' ? m.mvAudioUrl : undefined,
+      mvSubtitleSrt: typeof m.mvSubtitleSrt === 'string' ? m.mvSubtitleSrt : undefined,
+      mvAction: typeof (m as any).mvAction === 'string' ? (m as any).mvAction : undefined,
     })),
     plannerMessages: state.plannerMessages.slice(-200).map((m) => ({
       id: m.id,
       createdAt: m.createdAt,
       role: m.role,
       text: m.text,
+    })),
+    mediaAssets: state.mediaAssets.slice(-80).map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      name: a.name,
+      createdAt: a.createdAt,
+      originKey: typeof a.originKey === 'string' ? a.originKey : undefined,
+      url: typeof a.url === 'string' ? a.url : undefined,
+      localUrl: typeof a.localUrl === 'string' ? a.localUrl : undefined,
+      localPath: typeof a.localPath === 'string' ? a.localPath : undefined,
+      localKey: typeof a.localKey === 'string' ? a.localKey : undefined,
+      text: typeof a.text === 'string' ? a.text : undefined,
     })),
     desktopHiddenStreamMessageIds: Array.isArray(state.desktopHiddenStreamMessageIds)
       ? state.desktopHiddenStreamMessageIds.map((id) => String(id || '').trim()).filter(Boolean).slice(-400)
@@ -169,6 +295,30 @@ function toPersisted(state: WorkflowState): Persisted {
     videoSize: state.videoSize,
     videoStartRefId: state.videoStartRefId,
     videoEndRefId: state.videoEndRefId,
+
+    mvVisualRefIds: Array.isArray(state.mvVisualRefIds)
+      ? state.mvVisualRefIds.map((id) => String(id || '')).filter(Boolean).slice(0, 24)
+      : [],
+    mvVideoAssetId: typeof state.mvVideoAssetId === 'string' ? state.mvVideoAssetId : undefined,
+    mvAudioAssetId: typeof state.mvAudioAssetId === 'string' ? state.mvAudioAssetId : undefined,
+    mvSubtitleAssetId: typeof state.mvSubtitleAssetId === 'string' ? state.mvSubtitleAssetId : undefined,
+    mvSubtitleText: typeof state.mvSubtitleText === 'string' ? state.mvSubtitleText : undefined,
+    mvText: typeof state.mvText === 'string' ? state.mvText : undefined,
+    mvResolution: typeof state.mvResolution === 'string' ? state.mvResolution : undefined,
+    mvFps: typeof state.mvFps === 'number' ? state.mvFps : undefined,
+    mvDurationSeconds: typeof state.mvDurationSeconds === 'number' ? state.mvDurationSeconds : undefined,
+    mvSubtitleMode: typeof state.mvSubtitleMode === 'string' ? state.mvSubtitleMode : undefined,
+    mvAction: typeof state.mvAction === 'string' ? state.mvAction : undefined,
+    mvSequence: Array.isArray(state.mvSequence)
+      ? state.mvSequence
+          .map((it) => ({ refId: String(it.refId || '').trim(), durationSeconds: typeof it.durationSeconds === 'number' ? it.durationSeconds : undefined }))
+          .filter((it) => Boolean(it.refId))
+          .slice(0, 24)
+      : [],
+    mvVisualRefIds: Array.isArray(state.mvSequence)
+      ? state.mvSequence.map((it) => String(it.refId || '').trim()).filter(Boolean).slice(0, 24)
+      : [],
+    traceHeadMessageId: typeof state.traceHeadMessageId === 'string' ? state.traceHeadMessageId : undefined,
   };
 }
 
@@ -184,6 +334,7 @@ export function loadPersistedState(): {
   activeImageId?: string;
   streamMessages: StreamMessage[];
   plannerMessages: PlannerMessage[];
+  mediaAssets: MediaAsset[];
   desktopHiddenStreamMessageIds: string[];
   commandMode?: string;
   beautifyHint?: string;
@@ -197,6 +348,18 @@ export function loadPersistedState(): {
   videoSize?: string;
   videoStartRefId?: string;
   videoEndRefId?: string;
+  mvSequence?: Array<{ refId: string; durationSeconds?: number }>;
+  mvVideoAssetId?: string;
+  mvAudioAssetId?: string;
+  mvSubtitleAssetId?: string;
+  mvSubtitleText?: string;
+  mvText?: string;
+  mvResolution?: string;
+  mvFps?: number;
+  mvDurationSeconds?: number;
+  mvSubtitleMode?: string;
+  mvAction?: string;
+  traceHeadMessageId?: string;
 } {
   const parsed = safeParse(localStorage.getItem(STORAGE_KEY));
   if (!parsed)
@@ -206,6 +369,7 @@ export function loadPersistedState(): {
       selectedReferenceIds: [],
       streamMessages: [],
       plannerMessages: [],
+      mediaAssets: [],
       desktopHiddenStreamMessageIds: [],
     };
 
@@ -214,6 +378,7 @@ export function loadPersistedState(): {
     name: r.name || 'reference',
     createdAt: r.createdAt || Date.now(),
     originKey: typeof r.originKey === 'string' ? r.originKey : undefined,
+    producedByMessageId: typeof r.producedByMessageId === 'string' ? r.producedByMessageId : undefined,
     url: r.url,
     cdnUrl: typeof r.cdnUrl === 'string' ? r.cdnUrl : undefined,
     localUrl: typeof r.localUrl === 'string' ? r.localUrl : undefined,
@@ -244,12 +409,14 @@ export function loadPersistedState(): {
       createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
       role: m.role === 'ai' ? 'ai' : 'user',
       kind:
-        m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' || m.kind === 'video'
+        m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' || m.kind === 'video' || m.kind === 'postprocess'
           ? m.kind
           : 'generate',
       text: typeof m.text === 'string' ? m.text : undefined,
       imageUrl: typeof m.imageUrl === 'string' ? m.imageUrl : undefined,
       refId: typeof m.refId === 'string' ? m.refId : undefined,
+      refIds: Array.isArray(m.refIds) ? m.refIds.map((id: any) => String(id || '')).filter(Boolean).slice(0, 12) : undefined,
+      parentMessageId: typeof m.parentMessageId === 'string' ? m.parentMessageId : undefined,
       taskId: typeof m.taskId === 'string' ? m.taskId : undefined,
       gridImageUrl: typeof m.gridImageUrl === 'string' ? m.gridImageUrl : undefined,
       upscaledImageUrl: typeof m.upscaledImageUrl === 'string' ? m.upscaledImageUrl : undefined,
@@ -265,6 +432,48 @@ export function loadPersistedState(): {
       provider: typeof m.provider === 'string' ? m.provider : undefined,
       progress: typeof m.progress === 'number' ? m.progress : undefined,
       error: typeof m.error === 'string' ? m.error : undefined,
+      postOutputs: Array.isArray(m.postOutputs)
+        ? m.postOutputs
+            .map((it: any) => ({
+              kind: it?.kind === 'audio' ? 'audio' : 'image',
+              url: String(it?.url || '').trim(),
+              name: typeof it?.name === 'string' ? it.name : undefined,
+            }))
+            .filter((it: any) => Boolean(it.url))
+            .slice(0, 24)
+        : undefined,
+
+      userPrompt: typeof m.userPrompt === 'string' ? m.userPrompt : undefined,
+      mjPadRefId: typeof m.mjPadRefId === 'string' ? m.mjPadRefId : undefined,
+      mjSrefRefId: typeof m.mjSrefRefId === 'string' ? m.mjSrefRefId : undefined,
+      mjCrefRefId: typeof m.mjCrefRefId === 'string' ? m.mjCrefRefId : undefined,
+      mjSrefImageUrl: typeof m.mjSrefImageUrl === 'string' ? m.mjSrefImageUrl : undefined,
+      mjCrefImageUrl: typeof m.mjCrefImageUrl === 'string' ? m.mjCrefImageUrl : undefined,
+      upscaleSourceTaskId: typeof m.upscaleSourceTaskId === 'string' ? m.upscaleSourceTaskId : undefined,
+      upscaleIndex: typeof m.upscaleIndex === 'number' ? m.upscaleIndex : undefined,
+      gimageAspect: typeof m.gimageAspect === 'string' ? m.gimageAspect : undefined,
+      gimageSize: typeof m.gimageSize === 'string' ? m.gimageSize : undefined,
+      outputRefIds: Array.isArray(m.outputRefIds)
+        ? m.outputRefIds.map((id: any) => String(id || '')).filter(Boolean).slice(0, 12)
+        : undefined,
+      videoModel: typeof m.videoModel === 'string' ? m.videoModel : undefined,
+      videoSeconds: typeof m.videoSeconds === 'number' ? m.videoSeconds : undefined,
+      videoMode: typeof m.videoMode === 'string' ? m.videoMode : undefined,
+      videoAspect: typeof m.videoAspect === 'string' ? m.videoAspect : undefined,
+      videoSize: typeof m.videoSize === 'string' ? m.videoSize : undefined,
+      videoStartRefId: typeof m.videoStartRefId === 'string' ? m.videoStartRefId : undefined,
+      videoEndRefId: typeof m.videoEndRefId === 'string' ? m.videoEndRefId : undefined,
+
+      mvResolution: typeof m.mvResolution === 'string' ? m.mvResolution : undefined,
+      mvFps: typeof m.mvFps === 'number' ? m.mvFps : undefined,
+      mvDurationSeconds: typeof m.mvDurationSeconds === 'number' ? m.mvDurationSeconds : undefined,
+      mvSubtitleMode: typeof m.mvSubtitleMode === 'string' ? m.mvSubtitleMode : undefined,
+      mvVisualRefIds: Array.isArray(m.mvVisualRefIds)
+        ? m.mvVisualRefIds.map((id: any) => String(id || '')).filter(Boolean).slice(0, 24)
+        : undefined,
+      mvVideoUrl: typeof m.mvVideoUrl === 'string' ? m.mvVideoUrl : undefined,
+      mvAudioUrl: typeof m.mvAudioUrl === 'string' ? m.mvAudioUrl : undefined,
+      mvSubtitleSrt: typeof m.mvSubtitleSrt === 'string' ? m.mvSubtitleSrt : undefined,
     }))
     .slice(-200);
 
@@ -277,6 +486,39 @@ export function loadPersistedState(): {
     }))
     .filter((m) => Boolean(m.text && m.text.trim()))
     .slice(-200);
+
+  const mediaAssets: MediaAsset[] = Array.isArray((parsed as any).mediaAssets)
+    ? (parsed as any).mediaAssets
+        .map((a: any) => ({
+          id: a.id || randomId('asset'),
+          kind: a.kind === 'video' || a.kind === 'audio' || a.kind === 'text' || a.kind === 'subtitle' ? a.kind : 'text',
+          name: typeof a.name === 'string' && a.name.trim() ? a.name : 'asset',
+          createdAt: typeof a.createdAt === 'number' ? a.createdAt : Date.now(),
+          originKey: typeof a.originKey === 'string' ? a.originKey : undefined,
+          url: typeof a.url === 'string' ? a.url : undefined,
+          localUrl: typeof a.localUrl === 'string' ? a.localUrl : undefined,
+          localPath: typeof a.localPath === 'string' ? a.localPath : undefined,
+          localKey: typeof a.localKey === 'string' ? a.localKey : undefined,
+          text: typeof a.text === 'string' ? a.text : undefined,
+        }))
+        .slice(-120)
+    : [];
+
+  const mvSequence: Array<{ refId: string; durationSeconds?: number }> = Array.isArray((parsed as any).mvSequence)
+    ? (parsed as any).mvSequence
+        .map((it: any) => ({
+          refId: String(it?.refId || '').trim(),
+          durationSeconds: typeof it?.durationSeconds === 'number' ? it.durationSeconds : undefined,
+        }))
+        .filter((it: any) => Boolean(it.refId))
+        .slice(0, 24)
+    : Array.isArray((parsed as any).mvVisualRefIds)
+      ? (parsed as any).mvVisualRefIds
+          .map((id: any) => String(id || '').trim())
+          .filter(Boolean)
+          .slice(0, 24)
+          .map((refId: string) => ({ refId }))
+      : [];
 
   const desktopHiddenStreamMessageIds: string[] = Array.isArray((parsed as any).desktopHiddenStreamMessageIds)
     ? (parsed as any).desktopHiddenStreamMessageIds
@@ -297,6 +539,7 @@ export function loadPersistedState(): {
     activeImageId: typeof (parsed as any).activeImageId === 'string' ? (parsed as any).activeImageId : undefined,
     streamMessages,
     plannerMessages,
+    mediaAssets,
     desktopHiddenStreamMessageIds,
     commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,
     beautifyHint: typeof (parsed as any).beautifyHint === 'string' ? (parsed as any).beautifyHint : undefined,
@@ -310,6 +553,18 @@ export function loadPersistedState(): {
     videoSize: typeof (parsed as any).videoSize === 'string' ? (parsed as any).videoSize : undefined,
     videoStartRefId: typeof (parsed as any).videoStartRefId === 'string' ? (parsed as any).videoStartRefId : undefined,
     videoEndRefId: typeof (parsed as any).videoEndRefId === 'string' ? (parsed as any).videoEndRefId : undefined,
+    mvSequence,
+    mvVideoAssetId: typeof (parsed as any).mvVideoAssetId === 'string' ? (parsed as any).mvVideoAssetId : undefined,
+    mvAudioAssetId: typeof (parsed as any).mvAudioAssetId === 'string' ? (parsed as any).mvAudioAssetId : undefined,
+    mvSubtitleAssetId: typeof (parsed as any).mvSubtitleAssetId === 'string' ? (parsed as any).mvSubtitleAssetId : undefined,
+    mvSubtitleText: typeof (parsed as any).mvSubtitleText === 'string' ? (parsed as any).mvSubtitleText : undefined,
+    mvText: typeof (parsed as any).mvText === 'string' ? (parsed as any).mvText : undefined,
+    mvResolution: typeof (parsed as any).mvResolution === 'string' ? (parsed as any).mvResolution : undefined,
+    mvFps: typeof (parsed as any).mvFps === 'number' ? (parsed as any).mvFps : undefined,
+    mvDurationSeconds: typeof (parsed as any).mvDurationSeconds === 'number' ? (parsed as any).mvDurationSeconds : undefined,
+    mvSubtitleMode: typeof (parsed as any).mvSubtitleMode === 'string' ? (parsed as any).mvSubtitleMode : undefined,
+    mvAction: typeof (parsed as any).mvAction === 'string' ? (parsed as any).mvAction : undefined,
+    traceHeadMessageId: typeof (parsed as any).traceHeadMessageId === 'string' ? (parsed as any).traceHeadMessageId : undefined,
   };
 }
 

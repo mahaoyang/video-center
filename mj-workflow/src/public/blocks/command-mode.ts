@@ -18,6 +18,7 @@ export function createCommandModeBlock(params: {
   pedit: { applyEdit: () => void | Promise<void> };
   video: { setVisible: (visible: boolean) => void; generateVideoFromCurrentPrompt: () => void | Promise<void> };
   mv: { cook: (recipe: CommandMode) => void | Promise<void> };
+  post: { run: () => void | Promise<void> };
 }) {
   const modeBtn = byId<HTMLElement>('commandModeBtn');
   const modeMenu = byId<HTMLElement>('commandModeMenu');
@@ -93,6 +94,7 @@ export function createCommandModeBlock(params: {
       raw === 'deconstruct' ||
       raw === 'pedit' ||
       raw === 'beautify' ||
+      raw === 'post' ||
       raw === 'mv-mix' ||
       raw === 'mv-images' ||
       raw === 'mv-clip' ||
@@ -119,7 +121,9 @@ export function createCommandModeBlock(params: {
               ? 'DESC'
               : mode === 'pedit'
                 ? 'IMG'
-                : 'POL';
+                : mode === 'beautify'
+                  ? 'POL'
+                  : 'POST';
     modeMenu.querySelectorAll<HTMLElement>('button[data-command-mode]').forEach((el) => {
       const v = String((el as any).dataset?.commandMode || '').trim();
       el.classList.toggle('bg-white/5', v === mode);
@@ -139,6 +143,7 @@ export function createCommandModeBlock(params: {
         v === 'deconstruct' ||
         v === 'pedit' ||
         v === 'beautify' ||
+        v === 'post' ||
         v === 'mv-mix' ||
         v === 'mv-images' ||
         v === 'mv-clip' ||
@@ -200,6 +205,10 @@ export function createCommandModeBlock(params: {
         await params.mv.cook(modeNow);
         return;
       }
+      if (modeNow === 'post') {
+        await params.post.run();
+        return;
+      }
       if (modeNow === 'beautify') {
         const promptInput = byId<HTMLTextAreaElement>('promptInput');
         const prompt = normalizeSpaces(promptInput.value);
@@ -249,6 +258,7 @@ export function createCommandModeBlock(params: {
       m === 'deconstruct' ||
       m === 'pedit' ||
       m === 'beautify' ||
+      m === 'post' ||
       m === 'mv-mix' ||
       m === 'mv-images' ||
       m === 'mv-clip' ||

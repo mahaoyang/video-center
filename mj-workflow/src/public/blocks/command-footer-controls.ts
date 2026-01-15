@@ -5,10 +5,13 @@ import { createPopoverMenu } from '../atoms/popover-menu';
 import { clearAspectRatio, parseMjParams, removeMjParams, setAspectRatio, upsertMjParam } from '../atoms/mj-params';
 import { getPreferredMjAspectRatio, setPreferredMjAspectRatio } from '../atoms/mj-preferences';
 import { scrollAreaViewport, setupScrollArea } from '../atoms/scroll-area';
+import { setTraceOpen } from '../atoms/overlays';
+import { showError } from '../atoms/notify';
 
 function readMode(state: WorkflowState): CommandMode {
   const m = state.commandMode;
-  return m === 'mj' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' ? m : 'mj';
+  if (typeof m === 'string' && m.startsWith('mv')) return 'mv';
+  return m === 'mj' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' || m === 'post' ? m : 'mj';
 }
 
 function getPromptInput(): HTMLTextAreaElement | null {
@@ -93,7 +96,20 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   const root = byId<HTMLElement>('commandFooterChips');
   root.innerHTML = '';
   root.classList.add('relative');
-  root.classList.add('flex', 'items-center', 'gap-2', 'justify-end', 'flex-nowrap');
+  root.classList.add('flex', 'items-center', 'gap-2', 'justify-between', 'flex-nowrap');
+  root.classList.remove('justify-end');
+  root.classList.remove('overflow-x-auto', 'scrollbar-hide');
+
+  const modeLabel = document.createElement('div');
+  modeLabel.className =
+    'px-3 py-2 rounded-2xl bg-white/5 border border-white/10 text-[8px] font-black uppercase tracking-[0.2em] text-white/55 hidden flex-shrink-0';
+  modeLabel.textContent = 'MV';
+
+  const chips = document.createElement('div');
+  chips.className = 'flex items-center gap-2 flex-nowrap justify-end overflow-x-auto scrollbar-hide';
+
+  root.appendChild(modeLabel);
+  root.appendChild(chips);
 
   function positionFooterMenu(button: HTMLElement, menu: HTMLElement) {
     const gap = 8;
@@ -166,6 +182,93 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
 
   const video = document.createElement('div');
   video.className = 'flex items-center gap-2 flex-nowrap hidden';
+
+  const mv = document.createElement('div');
+  mv.className = 'flex items-center gap-2 flex-nowrap hidden';
+
+  // --- MV controls (ffmpeg compose)
+  const mvHeadBtn = mkBtn('HEAD');
+  const mvTraceBtn = mkIconBtn('选择分支（Trace）', 'fas fa-sitemap');
+
+  const mvResWrap = document.createElement('div');
+  mvResWrap.className = 'relative';
+  const mvResBtn = mkBtn('Res');
+  const mvResMenu = mkMenu();
+  mvResWrap.appendChild(mvResBtn);
+  mvResWrap.appendChild(mvResMenu);
+  const mvResPopover = createFooterPopover({ button: mvResBtn, menu: mvResMenu });
+
+  const mvFpsWrap = document.createElement('div');
+  mvFpsWrap.className = 'relative';
+  const mvFpsBtn = mkBtn('FPS');
+  const mvFpsMenu = mkMenu();
+  mvFpsWrap.appendChild(mvFpsBtn);
+  mvFpsWrap.appendChild(mvFpsMenu);
+  const mvFpsPopover = createFooterPopover({ button: mvFpsBtn, menu: mvFpsMenu });
+
+  const mvDurWrap = document.createElement('div');
+  mvDurWrap.className = 'relative';
+  const mvDurBtn = mkBtn('Dur');
+  const mvDurMenu = mkMenu();
+  mvDurWrap.appendChild(mvDurBtn);
+  mvDurWrap.appendChild(mvDurMenu);
+  const mvDurPopover = createFooterPopover({ button: mvDurBtn, menu: mvDurMenu });
+
+  const mvSubWrap = document.createElement('div');
+  mvSubWrap.className = 'relative';
+  const mvSubBtn = mkBtn('Sub');
+  const mvSubMenu = mkMenu();
+  mvSubWrap.appendChild(mvSubBtn);
+  mvSubWrap.appendChild(mvSubMenu);
+  const mvSubPopover = createFooterPopover({ button: mvSubBtn, menu: mvSubMenu });
+
+  mv.appendChild(mvHeadBtn);
+  mv.appendChild(mvTraceBtn);
+  mv.appendChild(mvResWrap);
+  mv.appendChild(mvFpsWrap);
+  mv.appendChild(mvDurWrap);
+  mv.appendChild(mvSubWrap);
+
+  function shortId(id: string): string {
+    const s = String(id || '').trim();
+    if (!s) return '-';
+    if (s.length <= 14) return s;
+    return `${s.slice(0, 6)}…${s.slice(-4)}`;
+  }
+
+  function prettyResolution(value: string): string {
+    const v = String(value || '').trim();
+    if (!v || v === 'source') return 'Source';
+    if (v === '1280x720') return '720P';
+    if (v === '1920x1080') return '1080P';
+    return v;
+  }
+
+  function prettySubtitleMode(value: string): string {
+    return value === 'burn' ? 'Burn' : 'Soft';
+  }
+
+  mvHeadBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const st = store.get();
+    const head = typeof st.traceHeadMessageId === 'string' ? st.traceHeadMessageId.trim() : '';
+    if (!head) return showError('当前没有 HEAD');
+    store.update((s) => ({ ...s, traceTarget: { type: 'message', id: head }, traceReturnTo: undefined }));
+    setTraceOpen(true);
+  });
+
+  mvTraceBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const st = store.get();
+    const head = typeof st.traceHeadMessageId === 'string' ? st.traceHeadMessageId.trim() : '';
+    const fallback = (st.streamMessages || []).filter((m) => m.role === 'ai').at(-1)?.id || '';
+    const targetId = head || fallback;
+    if (!targetId) return showError('暂无可追踪记录');
+    store.update((s) => ({ ...s, traceTarget: { type: 'message', id: targetId }, traceReturnTo: undefined }));
+    setTraceOpen(true);
+  });
 
   const beautify = document.createElement('div');
   beautify.className = 'flex items-center gap-2 flex-nowrap hidden';
@@ -1019,6 +1122,80 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     if (overlayHint && overlayHint.value !== v) overlayHint.value = v;
   }
 
+  function renderMv(state: WorkflowState) {
+    const cmd = String(state.commandMode || '').trim();
+    const recipe =
+      cmd === 'mv-mix' || cmd === 'mv-images' || cmd === 'mv-clip' || cmd === 'mv-subtitle' ? (cmd as any) : ('mv' as const);
+
+    const head = typeof state.traceHeadMessageId === 'string' ? state.traceHeadMessageId.trim() : '';
+    mvHeadBtn.textContent = `HEAD ${shortId(head)}`;
+
+    const hasImages = Array.isArray(state.selectedReferenceIds) && state.selectedReferenceIds.length > 0;
+    const showFps = recipe === 'mv-images' || (recipe === 'mv-mix' && hasImages);
+    const showDur = recipe === 'mv-clip' || recipe === 'mv-images' || (recipe === 'mv-mix' && hasImages);
+    const showSub = recipe === 'mv-mix' || recipe === 'mv-subtitle';
+    mvFpsWrap.classList.toggle('hidden', !showFps);
+    mvDurWrap.classList.toggle('hidden', !showDur);
+    mvSubWrap.classList.toggle('hidden', !showSub);
+
+    const currentRes = typeof state.mvResolution === 'string' && state.mvResolution.trim() ? state.mvResolution.trim() : '1280x720';
+    mvResBtn.textContent = `Res ${prettyResolution(currentRes)}`;
+    buildSingleSelectMenu({
+      menu: mvResMenu,
+      current: prettyResolution(currentRes),
+      options: ['Source', '720P', '1080P'],
+      onPick: (v) => {
+        const next = v === 'Source' ? 'source' : v === '1080P' ? '1920x1080' : '1280x720';
+        store.update((s) => ({ ...s, mvResolution: next }));
+        mvResPopover.close();
+      },
+    });
+
+    if (showFps) {
+      const fps = typeof state.mvFps === 'number' && Number.isFinite(state.mvFps) ? state.mvFps : 25;
+      mvFpsBtn.textContent = `FPS ${fps}`;
+      buildSingleSelectMenu({
+        menu: mvFpsMenu,
+        current: String(fps),
+        options: ['24', '25', '30', '60'],
+        onPick: (v) => {
+          store.update((s) => ({ ...s, mvFps: Number(v) }));
+          mvFpsPopover.close();
+        },
+      });
+    }
+
+    if (showDur) {
+      const dur = typeof state.mvDurationSeconds === 'number' && Number.isFinite(state.mvDurationSeconds) ? state.mvDurationSeconds : 5;
+      mvDurBtn.textContent = recipe === 'mv-clip' ? `Trim ${dur}s` : `Dur ${dur}s`;
+
+      const opts = recipe === 'mv-clip' ? ['5', '10', '15', '30', '60', '120'] : ['2', '3', '5', '8', '10', '15'];
+      buildSingleSelectMenu({
+        menu: mvDurMenu,
+        current: String(dur),
+        options: opts,
+        onPick: (v) => {
+          store.update((s) => ({ ...s, mvDurationSeconds: Number(v) }));
+          mvDurPopover.close();
+        },
+      });
+    }
+
+    if (showSub) {
+      const mode = state.mvSubtitleMode === 'burn' ? 'burn' : 'soft';
+      mvSubBtn.textContent = `Sub ${prettySubtitleMode(mode)}`;
+      buildSingleSelectMenu({
+        menu: mvSubMenu,
+        current: prettySubtitleMode(mode),
+        options: ['Soft', 'Burn'],
+        onPick: (v) => {
+          store.update((s) => ({ ...s, mvSubtitleMode: v === 'Burn' ? 'burn' : 'soft' }));
+          mvSubPopover.close();
+        },
+      });
+    }
+  }
+
   // --- DECONSTRUCT controls: keep empty (avoid non-actionable labels)
   const clearSelected = mkIconBtn('清空参考图选择', 'fas fa-ban');
   clearSelected.addEventListener('click', (e) => {
@@ -1028,19 +1205,40 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   });
   deconstruct.appendChild(clearSelected);
 
-  root.appendChild(mj);
-  root.appendChild(pedit);
-  root.appendChild(video);
-  root.appendChild(beautify);
-  root.appendChild(deconstruct);
+  chips.appendChild(mj);
+  chips.appendChild(pedit);
+  chips.appendChild(video);
+  chips.appendChild(mv);
+  chips.appendChild(beautify);
+  chips.appendChild(deconstruct);
 
   function applyModeVisibility(state: WorkflowState) {
     const mode = readMode(state);
     mj.classList.toggle('hidden', mode !== 'mj');
     pedit.classList.toggle('hidden', mode !== 'pedit');
     video.classList.toggle('hidden', mode !== 'video');
+    mv.classList.toggle('hidden', mode !== 'mv');
     beautify.classList.toggle('hidden', mode !== 'beautify');
     deconstruct.classList.toggle('hidden', mode !== 'deconstruct');
+
+    const cmd = String(state.commandMode || '').trim();
+    const mvLabel =
+      cmd === 'mv-images'
+        ? 'MV 图片→视频'
+        : cmd === 'mv-clip'
+          ? 'MV 视频剪辑'
+          : cmd === 'mv-subtitle'
+            ? 'MV 字幕'
+            : cmd.startsWith('mv')
+              ? 'MV 合成'
+              : '';
+    if (mvLabel) {
+      modeLabel.textContent = mvLabel;
+      modeLabel.classList.remove('hidden');
+    } else {
+      modeLabel.textContent = '';
+      modeLabel.classList.add('hidden');
+    }
   }
 
   function render(state: WorkflowState) {
@@ -1049,6 +1247,7 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     if (mode === 'mj') renderMj(state);
     else if (mode === 'pedit') renderPedit(state);
     else if (mode === 'video') renderVideo(state);
+    else if (mode === 'mv') renderMv(state);
     else if (mode === 'beautify') renderBeautify(state);
   }
 
