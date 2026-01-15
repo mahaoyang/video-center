@@ -381,7 +381,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       selectBtn.className =
         'w-10 h-10 rounded-2xl border border-white/10 bg-black/55 backdrop-blur flex items-center justify-center ' +
         (selected
-          ? 'text-studio-bg bg-studio-accent border-studio-accent shadow-[0_0_18px_rgba(197,243,65,0.25)]'
+          ? 'text-studio-accent bg-black border-studio-accent/40 shadow-[0_0_18px_rgba(197,243,65,0.18)]'
           : 'text-white/80 hover:border-studio-accent/40 hover:text-studio-accent');
       selectBtn.innerHTML = selected ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
       selectBtn.addEventListener('click', (e) => {
