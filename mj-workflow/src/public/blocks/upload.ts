@@ -342,7 +342,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
 
       const frame = document.createElement('div');
       frame.className =
-        'relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 bg-black/20 flex items-center justify-center ' +
+        'relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 bg-studio-panel flex items-center justify-center ' +
         (selected ? 'ring-2 ring-studio-accent border-studio-accent/30' : '');
       frame.title = `${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材：${selected ? '点击取消选择' : '点击选择'}（Ctrl/⌘ 打开）`;
 
@@ -365,7 +365,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       const name = document.createElement('div');
       name.className =
         'absolute left-1 right-1 bottom-1 text-[7px] font-mono text-white/80 truncate ' +
-        'px-1 py-0.5 rounded-md bg-black/85 border border-white/15';
+        'px-1 py-0.5 rounded-md bg-black border border-white/15';
       name.textContent = String(a.name || kind);
       frame.appendChild(name);
 
