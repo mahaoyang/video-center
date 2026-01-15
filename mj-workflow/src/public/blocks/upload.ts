@@ -344,7 +344,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       frame.className =
         'relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 bg-black/20 flex items-center justify-center ' +
         (selected ? 'ring-2 ring-studio-accent border-studio-accent/30' : '');
-      frame.title = `${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材：点击选择（Ctrl/⌘ 打开）`;
+      frame.title = `${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材：${selected ? '点击取消选择' : '点击选择'}（Ctrl/⌘ 打开）`;
 
       const icon = document.createElement('div');
       icon.className = 'text-white/50';
@@ -366,6 +366,36 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       name.className = 'absolute left-1 right-1 bottom-1 text-[7px] font-mono opacity-60 truncate';
       name.textContent = String(a.name || kind);
       frame.appendChild(name);
+
+      const selectOverlay = document.createElement('div');
+      selectOverlay.className =
+        'absolute inset-0 flex items-center justify-center opacity-0 group-hover/ref:opacity-100 transition-opacity z-20';
+
+      const selectBtn = document.createElement('button');
+      selectBtn.type = 'button';
+      const kindLabel = kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕';
+      selectBtn.title = selected ? `取消选择${kindLabel}` : `选择${kindLabel}`;
+      selectBtn.setAttribute('aria-label', selected ? `取消选择${kindLabel}` : `选择${kindLabel}`);
+      selectBtn.className =
+        'w-10 h-10 rounded-2xl border border-white/10 bg-black/55 backdrop-blur flex items-center justify-center ' +
+        (selected
+          ? 'text-studio-bg bg-studio-accent border-studio-accent shadow-[0_0_18px_rgba(197,243,65,0.25)]'
+          : 'text-white/80 hover:border-studio-accent/40 hover:text-studio-accent');
+      selectBtn.innerHTML = selected ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
+      selectBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        store.update((st) => ({
+          ...st,
+          mvVideoAssetId: kind === 'video' ? (st.mvVideoAssetId === a.id ? undefined : a.id) : st.mvVideoAssetId,
+          mvAudioAssetId: kind === 'audio' ? (st.mvAudioAssetId === a.id ? undefined : a.id) : st.mvAudioAssetId,
+          mvSubtitleAssetId: kind === 'subtitle' ? (st.mvSubtitleAssetId === a.id ? undefined : a.id) : st.mvSubtitleAssetId,
+        }));
+        showMessage(`${selected ? '已取消选择' : '已选择'}${kindLabel}素材（用于 MV）`);
+        renderTray();
+      });
+
+      selectOverlay.appendChild(selectBtn);
+      frame.appendChild(selectOverlay);
 
       const del = document.createElement('button');
       del.type = 'button';
@@ -391,11 +421,11 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
         }
         store.update((st) => ({
           ...st,
-          mvVideoAssetId: kind === 'video' ? a.id : st.mvVideoAssetId,
-          mvAudioAssetId: kind === 'audio' ? a.id : st.mvAudioAssetId,
-          mvSubtitleAssetId: kind === 'subtitle' ? a.id : st.mvSubtitleAssetId,
+          mvVideoAssetId: kind === 'video' ? (st.mvVideoAssetId === a.id ? undefined : a.id) : st.mvVideoAssetId,
+          mvAudioAssetId: kind === 'audio' ? (st.mvAudioAssetId === a.id ? undefined : a.id) : st.mvAudioAssetId,
+          mvSubtitleAssetId: kind === 'subtitle' ? (st.mvSubtitleAssetId === a.id ? undefined : a.id) : st.mvSubtitleAssetId,
         }));
-        showMessage(`已选择 ${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材（用于 MV）`);
+        showMessage(`${selected ? '已取消选择' : '已选择'} ${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材（用于 MV）`);
         renderTray();
       });
 
