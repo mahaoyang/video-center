@@ -22,6 +22,7 @@ import { setupScrollAreas } from './atoms/scroll-area';
 import { createTraceBlock } from './blocks/trace';
 import { createMvComposeBlock } from './blocks/mv-compose';
 import { createPostprocessBlock } from './blocks/postprocess';
+import { keepStreamBottomPaddingClear } from './blocks/stream-bottom-padding';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -103,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   initOverlays();
   setupScrollAreas(document);
+  keepStreamBottomPaddingClear();
 
   createTraceBlock({ store });
 
