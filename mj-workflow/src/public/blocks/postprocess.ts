@@ -153,6 +153,23 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
     }
 
     const msgId = randomId('msg');
+    const totalSteps = refIds.length + (audio ? 1 : 0);
+    let doneSteps = 0;
+
+    function progressPercent(): number {
+      if (!totalSteps) return 0;
+      return Math.max(0, Math.min(99, Math.round((doneSteps / totalSteps) * 100)));
+    }
+
+    function updateCard(text: string) {
+      params.store.update((st) => ({
+        ...st,
+        streamMessages: st.streamMessages.map((m) =>
+          m.id === msgId ? { ...m, text: normalizeMultiline(text), progress: progressPercent() } : m
+        ),
+      }));
+    }
+
     const pending: StreamMessage = {
       id: msgId,
       createdAt: Date.now(),
@@ -170,12 +187,17 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
     try {
       const outputs: PostprocessOutput[] = [];
 
-      for (const refId of refIds) {
+      for (let i = 0; i < refIds.length; i++) {
+        const refId = refIds[i]!;
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n图片 ${i + 1}/${refIds.length}：上传到图床…`);
         const r = await promoteImage(refId);
         outputs.push({ kind: 'image', url: r.url, name: r.name });
+        doneSteps += 1;
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n图片 ${i + 1}/${refIds.length}：完成（${r.name}）`);
       }
 
       if (audio) {
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n音频：响度归一化处理中…`);
         const src = pickAudioUrl(audio);
         if (!src) throw new Error('音频缺少可用 URL，请重新上传');
         const resp = await params.api.audioProcess({ src });
@@ -184,6 +206,8 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
         const url = typeof result?.outputUrl === 'string' ? result.outputUrl : '';
         if (!url) throw new Error('音频后处理失败：缺少 outputUrl');
         outputs.push({ kind: 'audio', url, name: String(audio.name || 'audio_pro') });
+        doneSteps += 1;
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n音频：完成（${String(audio.name || 'audio')}）`);
       }
 
       params.store.update((st) => ({
@@ -206,4 +230,3 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
 
   return { run };
 }
-

@@ -466,6 +466,7 @@ function renderPostprocessMessage(m: StreamMessage): HTMLElement {
 
   const outputs = Array.isArray((m as any).postOutputs) ? ((m as any).postOutputs as any[]).slice(0, 24) : [];
   const pending = !outputs.length && !m.error && (typeof m.progress !== 'number' || m.progress < 100);
+  const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
 
   msg.className = 'group animate-fade-in-up';
   if (pending) {
@@ -477,7 +478,7 @@ function renderPostprocessMessage(m: StreamMessage): HTMLElement {
           </div>
           <div class="flex flex-col">
             <span class="text-[10px] font-black uppercase tracking-[0.3em]">Post Processing</span>
-            <span class="text-[9px] font-mono opacity-40">处理中…</span>
+            <span class="text-[9px] font-mono opacity-40">处理中…（${p}%）</span>
           </div>
         </div>
         <div class="mt-6 text-[11px] font-mono opacity-70 whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
