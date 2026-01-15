@@ -122,6 +122,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     if (!editPrompt) return showError('请输入提示词主体（会忽略 --ar / URL 等参数）');
 
     const selected = getSelectedRefsOrdered(state);
+    const refIds = selected.map((r) => r.id);
     const inputImageUrls = selected
       .map((r) => bestEditSourceUrl(r))
       .filter((u): u is string => typeof u === 'string' && u.trim());
@@ -136,6 +137,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     busy = true;
 
     const aiMsgId = randomId('msg');
+    const parentMessageId = params.store.get().traceHeadMessageId;
     const pending: StreamMessage = {
       id: aiMsgId,
       createdAt: Date.now(),
@@ -143,10 +145,14 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       kind: 'pedit',
       text: editPrompt,
       imageUrl: inputImageUrls[0],
+      refIds,
       inputImageUrls,
+      gimageAspect: aspectRatio,
+      gimageSize: imageSize,
+      parentMessageId: typeof parentMessageId === 'string' ? parentMessageId : undefined,
       progress: 1,
     };
-    params.store.update((s) => ({ ...s, streamMessages: [...s.streamMessages, pending].slice(-200) }));
+    params.store.update((s) => ({ ...s, traceHeadMessageId: aiMsgId, streamMessages: [...s.streamMessages, pending].slice(-200) }));
 
     try {
       const res = await params.api.geminiProImage({ prompt: editPrompt, imageUrls: inputImageUrls, aspectRatio, imageSize });
@@ -167,6 +173,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
             name: `G-${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}-${idx + 1}`,
             createdAt,
             originKey: localKey ? `gemini-pro-image:localKey:${localKey}` : undefined,
+            producedByMessageId: aiMsgId,
             url,
             localUrl,
             localKey,
@@ -181,7 +188,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
         referenceImages: [...st.referenceImages, ...newRefs],
         selectedReferenceIds: [...(st.selectedReferenceIds || []), ...newRefs.map((r) => r.id)],
         streamMessages: st.streamMessages.map((m) =>
-          m.id === aiMsgId ? { ...m, peditImageUrls, peditImageUrl, progress: 100 } : m
+          m.id === aiMsgId ? { ...m, peditImageUrls, peditImageUrl, outputRefIds: newRefs.map((r) => r.id), progress: 100 } : m
         ),
       }));
 

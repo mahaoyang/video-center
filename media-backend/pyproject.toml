@@ -1,0 +1,11 @@
+[project]
+name = "media-backend"
+version = "0.1.0"
+description = "Heavy async media tasks backend (FastAPI + Postgres)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "psycopg[binary]>=3.1",
+]

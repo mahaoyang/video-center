@@ -1,0 +1,18 @@
+services:
+  pg:
+    image: postgres:16-alpine
+    container_name: video-center-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: media_backend
+    ports:
+      - "${PG_PORT:-5433}:5432"
+    volumes:
+      - ./.data/pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d media_backend"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped

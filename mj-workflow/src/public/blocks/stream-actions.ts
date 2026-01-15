@@ -7,6 +7,40 @@ import { onStreamTileEvent } from '../atoms/stream-events';
 import type { Store } from '../state/store';
 import type { StreamMessage, WorkflowState } from '../state/workflow';
 
+function canonicalMediaUrl(raw: string): string {
+  const u = String(raw || '').trim();
+  if (!u) return '';
+  try {
+    if (u.startsWith('/api/image?src=')) return decodeURIComponent(u.slice('/api/image?src='.length));
+    if (u.startsWith('/api/video?src=')) return decodeURIComponent(u.slice('/api/video?src='.length));
+    if (u.startsWith('/api/slice?')) {
+      const qs = u.split('?', 2)[1] || '';
+      const p = new URLSearchParams(qs);
+      const src = p.get('src');
+      return src ? decodeURIComponent(src) : u;
+    }
+  } catch {
+    // ignore
+  }
+  return u;
+}
+
+function findProducerMessageIdByUrl(state: WorkflowState, url: string): string | undefined {
+  const target = canonicalMediaUrl(url);
+  if (!target) return undefined;
+  for (const m of state.streamMessages || []) {
+    const outs: string[] = [];
+    if (typeof m.gridImageUrl === 'string') outs.push(m.gridImageUrl);
+    if (typeof m.upscaledImageUrl === 'string') outs.push(m.upscaledImageUrl);
+    if (typeof m.thumbnailUrl === 'string') outs.push(m.thumbnailUrl);
+    if (typeof m.videoUrl === 'string') outs.push(m.videoUrl);
+    if (Array.isArray(m.peditImageUrls)) outs.push(...m.peditImageUrls);
+    if (typeof m.peditImageUrl === 'string') outs.push(m.peditImageUrl);
+    if (outs.map(canonicalMediaUrl).includes(target)) return m.id;
+  }
+  return undefined;
+}
+
 function updateMessageById(store: Store<WorkflowState>, id: string, patch: Partial<StreamMessage>) {
   store.update((s) => ({
     ...s,
@@ -59,6 +93,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       const url = String(result.url);
       const cdnUrl = typeof result.cdnUrl === 'string' ? result.cdnUrl : undefined;
       const localUrl = typeof result.localUrl === 'string' ? result.localUrl : undefined;
+      const producedByMessageId = findProducerMessageIdByUrl(params.store.get(), src);
 
       params.store.update((s) => ({
         ...s,
@@ -69,6 +104,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             name: `slice-${index}`,
             createdAt,
             originKey,
+            producedByMessageId,
             url,
             cdnUrl,
             localUrl,
@@ -89,8 +125,11 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
     if (!taskId) return;
     const msgId = randomId('msg');
     try {
+      const parent = (params.store.get().streamMessages || []).find((m) => m.kind === 'generate' && m.taskId === taskId);
+      const parentMessageId = parent?.id;
       params.store.update((s) => ({
         ...s,
+        traceHeadMessageId: msgId,
         streamMessages: [
           ...s.streamMessages,
           {
@@ -99,6 +138,9 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             role: 'ai',
             kind: 'upscale',
             taskId: '',
+            upscaleSourceTaskId: taskId,
+            upscaleIndex: index,
+            parentMessageId,
             progress: 0,
           } satisfies StreamMessage,
         ].slice(-200),
@@ -147,6 +189,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       const createdAt = Date.now();
       const cdnUrl = typeof result.cdnUrl === 'string' ? result.cdnUrl : undefined;
       const localUrl = typeof result.localUrl === 'string' ? result.localUrl : undefined;
+      const producedByMessageId = findProducerMessageIdByUrl(params.store.get(), src);
 
       params.store.update((s) => ({
         ...s,
@@ -158,6 +201,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             name: `selected-${index}`,
             createdAt,
             originKey,
+            producedByMessageId,
             url,
             cdnUrl,
             localUrl,
@@ -195,6 +239,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       const createdAt = Date.now();
       const cdnUrl = typeof result.cdnUrl === 'string' ? result.cdnUrl : undefined;
       const localUrl = typeof result.localUrl === 'string' ? result.localUrl : undefined;
+      const producedByMessageId = findProducerMessageIdByUrl(params.store.get(), src);
 
       params.store.update((s) => ({
         ...s,
@@ -206,6 +251,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             name: `upscale-${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
             createdAt,
             originKey,
+            producedByMessageId,
             url,
             cdnUrl,
             localUrl,
@@ -230,4 +276,6 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
     if (d.action === 'select') void selectFromSlice(d.src, d.index);
     if (d.action === 'selectUrl') void selectFromUrl(d.src);
   });
+
+  return { addPadFromSlice, upscaleFromGrid, selectFromSlice, selectFromUrl };
 }

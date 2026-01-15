@@ -220,6 +220,29 @@ mj-workflow/
 }
 ```
 
+### POST /api/mv/compose/plan
+生成 MV 合成计划（不入队）
+
+**说明**：返回将要提交给 `media-backend` 的候选 ffmpeg 命令（`candidates`），用于分步工作流的“预检/确认”。
+
+### POST /api/mv/compose
+提交 MV 合成任务（入队 `media-backend`）
+
+**响应**：
+```json
+{
+  "code": 0,
+  "description": "成功",
+  "result": {
+    "taskId": "media-backend 任务 ID",
+    "outputUrl": "/uploads/<uuid>.mp4"
+  }
+}
+```
+
+### GET /api/media/task/:taskId
+查询 MV 合成任务状态（代理到 `media-backend`）
+
 ## 扩图 Demo
 
 项目包含一个独立的扩图 demo（从 Python 迁移到 TypeScript）：

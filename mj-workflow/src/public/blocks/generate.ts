@@ -102,15 +102,27 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
     });
 
     const jobMsgId = randomId('msg');
+    const parentMessageId = params.store.get().traceHeadMessageId;
     const pending: StreamMessage = {
       id: jobMsgId,
       createdAt: Date.now(),
       role: 'ai',
       kind: 'generate',
       text: finalPrompt,
+      userPrompt: prompt,
+      mjPadRefId: s.mjPadRefId,
+      mjSrefRefId: s.mjSrefRefId,
+      mjCrefRefId: s.mjCrefRefId,
+      mjSrefImageUrl: s.mjSrefRefId ? undefined : srefUrl || undefined,
+      mjCrefImageUrl: s.mjCrefRefId ? undefined : crefUrl || undefined,
+      parentMessageId: typeof parentMessageId === 'string' ? parentMessageId : undefined,
       progress: 0,
     };
-    params.store.update((st) => ({ ...st, streamMessages: [...st.streamMessages, pending].slice(-200) }));
+    params.store.update((st) => ({
+      ...st,
+      traceHeadMessageId: jobMsgId,
+      streamMessages: [...st.streamMessages, pending].slice(-200),
+    }));
 
     void (async () => {
       try {

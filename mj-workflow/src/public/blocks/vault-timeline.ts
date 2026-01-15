@@ -3,6 +3,7 @@ import type { WorkflowState } from '../state/workflow';
 import { byId } from '../atoms/ui';
 import { escapeHtml } from '../atoms/html';
 import { openImagePreview } from '../atoms/image-preview';
+import { setTraceOpen, setVaultOpen } from '../atoms/overlays';
 import { deriveTimelineItems, type TimelineItem, type TimelineResource } from '../state/timeline';
 
 function formatTime(ts: number): string {
@@ -41,6 +42,7 @@ function downloadJson(filename: string, data: unknown) {
 
 function renderResource(res: TimelineResource): string {
   const label = typeof res.label === 'string' && res.label.trim() ? res.label.trim() : '';
+  const title = label || (res.type === 'video' ? 'VIDEO' : 'IMAGE');
   const labelHtml = label
     ? `<div class="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[6px] font-black uppercase tracking-widest rounded">${escapeHtml(label)}</div>`
     : '';
@@ -52,6 +54,7 @@ function renderResource(res: TimelineResource): string {
       : `<div class="w-full h-full flex items-center justify-center bg-black/30 text-white/40"><i class="fas fa-film"></i></div>`;
     return `
       <a data-vault-resource="1" data-type="video" data-url="${escapeHtml(res.url)}"
+        title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"
         class="relative w-16 h-16 flex-shrink-0 rounded-2xl overflow-hidden border border-white/10 bg-black/20 hover:border-studio-accent/40 transition-all cursor-pointer">
         ${thumbHtml}
         <div class="absolute inset-0 flex items-center justify-center">
@@ -66,6 +69,7 @@ function renderResource(res: TimelineResource): string {
 
   return `
     <button data-vault-resource="1" data-type="image" data-url="${escapeHtml(res.url)}" type="button"
+      title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"
       class="relative w-16 h-16 flex-shrink-0 rounded-2xl overflow-hidden border border-white/10 bg-black/20 hover:border-studio-accent/40 transition-all">
       <img src="${escapeHtml(res.url)}" referrerpolicy="no-referrer" class="w-full h-full object-cover bg-black/30" />
       ${labelHtml}
@@ -102,6 +106,11 @@ function renderTimelineItem(item: TimelineItem): HTMLElement {
   wrap.innerHTML = `
     <div class="absolute left-3 top-7 w-2.5 h-2.5 rounded-full ${hasError ? 'bg-red-400' : 'bg-studio-accent'} shadow-[0_0_12px_rgba(197,243,65,0.35)]"></div>
     <div class="ml-10 group relative rounded-[2rem] border border-white/5 bg-white/[0.02] p-6 shadow-2xl transition-all duration-500 hover:border-studio-accent/25">
+      <button data-vault-action="trace" type="button"
+        class="absolute top-4 right-14 w-9 h-9 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-studio-accent/30 hover:text-white hover:scale-105 transition-all flex items-center justify-center"
+        title="链路追踪">
+        <i class="fas fa-sitemap text-[11px]"></i>
+      </button>
       <button data-vault-action="delete" type="button"
         class="absolute top-4 right-4 w-9 h-9 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-red-400/30 hover:text-red-300 hover:scale-105 transition-all flex items-center justify-center"
         title="Delete">
@@ -186,14 +195,32 @@ export function createVaultTimeline(store: Store<WorkflowState>) {
       deleteItem(id);
       return;
     }
+    if (actionBtn?.dataset.vaultAction === 'trace') {
+      e.preventDefault();
+      e.stopPropagation();
+      const row = actionBtn.closest<HTMLElement>('[data-vault-item-id]');
+      const id = row?.dataset.vaultItemId || '';
+      if (!id) return;
+      store.update((s) => ({ ...s, traceTarget: { type: 'message', id }, traceReturnTo: 'vault' }));
+      setVaultOpen(false);
+      setTraceOpen(true);
+      return;
+    }
 
     const resEl = target.closest<HTMLElement>('[data-vault-resource="1"]');
     if (!resEl) return;
     e.preventDefault();
     e.stopPropagation();
+    const mouse = e as MouseEvent;
     const type = resEl.dataset.type;
     const url = resEl.dataset.url || '';
     if (!url) return;
+    if (mouse.ctrlKey || mouse.metaKey) {
+      store.update((s) => ({ ...s, traceTarget: { type: 'url', url, resourceType: type === 'video' ? 'video' : 'image' }, traceReturnTo: 'vault' }));
+      setVaultOpen(false);
+      setTraceOpen(true);
+      return;
+    }
     if (type === 'image') openImagePreview(url);
     else window.open(url, '_blank', 'noreferrer');
   });

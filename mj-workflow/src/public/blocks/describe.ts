@@ -51,6 +51,7 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
 
     try {
       const s = params.store.get();
+      const baseHead = s.traceHeadMessageId;
       const selected = s.selectedReferenceIds.length
         ? s.referenceImages.filter((r) => s.selectedReferenceIds.includes(r.id))
         : (() => {
@@ -64,9 +65,11 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
         const r = selected[i]!;
         const previewUrl = bestPreviewUrl(r);
         const aiMsgId = randomId('msg');
+        const parentMessageId = r.producedByMessageId || baseHead;
 
         params.store.update((st) => ({
           ...st,
+          traceHeadMessageId: aiMsgId,
           streamMessages: [
             ...st.streamMessages,
             {
@@ -78,6 +81,7 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
               progress: 1,
               imageUrl: previewUrl || undefined,
               refId: r.id,
+              parentMessageId: typeof parentMessageId === 'string' ? parentMessageId : undefined,
             } satisfies StreamMessage,
           ].slice(-200),
         }));

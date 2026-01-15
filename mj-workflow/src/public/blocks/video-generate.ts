@@ -467,6 +467,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
     }
 
     const aiMsgId = randomId('msg');
+    const parentMessageId = params.store.get().traceHeadMessageId;
     const pending: StreamMessage = {
       id: aiMsgId,
       createdAt: Date.now(),
@@ -476,9 +477,17 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       text: prompt,
       imageUrl: startImageUrl,
       refId: startRefId || undefined,
+      videoModel: model || undefined,
+      videoSeconds: seconds,
+      videoAspect: aspect,
+      videoSize: size,
+      videoMode: mode,
+      videoStartRefId: startRefId || undefined,
+      videoEndRefId: endRefId || undefined,
+      parentMessageId: typeof parentMessageId === 'string' ? parentMessageId : undefined,
       progress: 0,
     };
-    params.store.update((s) => ({ ...s, streamMessages: [...s.streamMessages, pending].slice(-200) }));
+    params.store.update((s) => ({ ...s, traceHeadMessageId: aiMsgId, streamMessages: [...s.streamMessages, pending].slice(-200) }));
 
     try {
       const created = await params.api.videoCreate({

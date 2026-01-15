@@ -1,4 +1,4 @@
-import { setMatrixOpen, setPlannerOpen, setVaultOpen } from '../atoms/overlays';
+import { setMatrixOpen, setPlannerOpen, setTraceOpen, setVaultOpen } from '../atoms/overlays';
 
 function byId(id: string): HTMLElement | null {
   return document.getElementById(id) as HTMLElement | null;
@@ -37,4 +37,3 @@ export function initOverlays() {
   bindClose('plannerBackdrop', () => setPlannerOpen(false));
   bindClose('plannerCloseBtn', () => setPlannerOpen(false));
 }
-
