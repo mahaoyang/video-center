@@ -789,6 +789,12 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     }
   }
 
+  function isPostprocessPending(m: StreamMessage): boolean {
+    if (m.kind !== 'postprocess') return false;
+    const outputs = Array.isArray((m as any).postOutputs) ? ((m as any).postOutputs as any[]) : [];
+    return !outputs.length && !m.error && (typeof m.progress !== 'number' || m.progress < 100);
+  }
+
   function reconcile(messages: StreamMessage[]) {
     const atBottom = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 200;
     const state = params.store.get();
@@ -851,6 +857,14 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
           : '';
       const peditTransition = prev.kind === 'pedit' && prev.role === 'ai' && prevPeditSig !== nextPeditSig;
       const videoTransition = prev.kind === 'video' && prev.role === 'ai' && prev.videoUrl !== resolved.videoUrl;
+      const postprocessTransition =
+        prev.kind === 'postprocess' &&
+        prev.role === 'ai' &&
+        (isPostprocessPending(prev) !== isPostprocessPending(resolved) ||
+          JSON.stringify(((prev as any).postOutputs || []).slice(0, 24)) !==
+            JSON.stringify((((resolved as any).postOutputs || []) as any[]).slice(0, 24)) ||
+          (prev.text || '') !== (resolved.text || '') ||
+          (prev.error || '') !== (resolved.error || ''));
       const kindChanged = prev.kind !== resolved.kind || prev.role !== resolved.role;
       const needsReplace =
         kindChanged ||
@@ -858,6 +872,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
         upscaleTransition ||
         peditTransition ||
         videoTransition ||
+        postprocessTransition ||
         (prev.kind === 'deconstruct' && (prev.text !== resolved.text || prev.imageUrl !== resolved.imageUrl)) ||
         (prev.kind === 'generate' && prev.role === 'user' && prev.text !== resolved.text) ||
         (prev.kind === 'upscale' && prev.role === 'user' && prev.text !== resolved.text) ||
