@@ -365,7 +365,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       const name = document.createElement('div');
       name.className =
         'absolute left-1 right-1 bottom-1 text-[7px] font-mono text-white/80 truncate ' +
-        'px-1 py-0.5 rounded-md bg-black/55 border border-white/10 backdrop-blur-sm';
+        'px-1 py-0.5 rounded-md bg-black/85 border border-white/15';
       name.textContent = String(a.name || kind);
       frame.appendChild(name);
 
