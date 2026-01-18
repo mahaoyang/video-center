@@ -490,9 +490,12 @@ function renderPostprocessMessage(m: StreamMessage): HTMLElement {
 
   const rows = outputs
     .map((o) => {
-      const kind = o?.kind === 'audio' ? 'audio' : 'image';
-      const url = kind === 'audio' ? toAppVideoSrc(String(o?.url || '')) : toAppImageSrc(String(o?.url || ''));
-      const downloadName = safeDownloadName(String(o?.name || ''), kind === 'audio' ? 'audio_pro.wav' : 'image');
+      const kind = o?.kind === 'audio' ? 'audio' : o?.kind === 'video' ? 'video' : 'image';
+      const url = kind === 'image' ? toAppImageSrc(String(o?.url || '')) : toAppVideoSrc(String(o?.url || ''));
+      const downloadName = safeDownloadName(
+        String(o?.name || ''),
+        kind === 'audio' ? 'audio_pro.wav' : kind === 'video' ? 'video_post.mp4' : 'image'
+      );
       if (!url) return '';
 
       if (kind === 'audio') {
@@ -506,6 +509,24 @@ function renderPostprocessMessage(m: StreamMessage): HTMLElement {
               </a>
             </div>
             <audio src="${escapeHtml(url)}" controls class="w-full"></audio>
+            <div class="text-[10px] font-mono opacity-40 break-all">${escapeHtml(String(o?.url || ''))}</div>
+          </div>
+        `;
+      }
+
+      if (kind === 'video') {
+        return `
+          <div class="rounded-2xl border border-white/10 bg-black/20 p-5 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Video</div>
+              <a href="${escapeHtml(url)}" download="${escapeHtml(downloadName)}"
+                class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-widest">
+                Download
+              </a>
+            </div>
+            <div class="rounded-2xl overflow-hidden border border-white/10 bg-black/30">
+              <video src="${escapeHtml(url)}" controls class="w-full h-auto block"></video>
+            </div>
             <div class="text-[10px] font-mono opacity-40 break-all">${escapeHtml(String(o?.url || ''))}</div>
           </div>
         `;

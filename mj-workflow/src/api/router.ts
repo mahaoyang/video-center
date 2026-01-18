@@ -1168,6 +1168,138 @@ export function createApiRouter(deps: {
       }
     }
 
+    if (pathname === '/api/video/process' && req.method === 'POST') {
+      try {
+        const body = await readJson<{ src?: string; preset?: string; crf?: number }>(req);
+        const src = String(body.src || '').trim();
+        if (!src) return jsonError({ status: 400, description: 'src 不能为空' });
+
+        const localPath = resolveUploadsLocalPath(deps.uploads.dir, src);
+        if (!localPath) return jsonError({ status: 400, description: '仅支持 /uploads/<key> 作为视频输入' });
+
+        const file = Bun.file(localPath);
+        if (!(await file.exists())) return jsonError({ status: 404, description: '视频不存在' });
+
+        const ext = normalizeNonImageExt(extname(localPath));
+        const allowedVideoExts = new Set(['.mp4', '.mov', '.mkv', '.webm']);
+        if (!allowedVideoExts.has(ext)) return jsonError({ status: 400, description: `不支持的视频格式：${ext || '(无扩展名)'}` });
+
+        const presetRaw = String(body.preset || '').trim().toLowerCase();
+        const preset =
+          presetRaw === 'pet' ||
+          presetRaw === 'bw' ||
+          presetRaw === 'sepia' ||
+          presetRaw === 'soft' ||
+          presetRaw === 'sharpen' ||
+          presetRaw === 'denoise' ||
+          presetRaw === 'none'
+            ? presetRaw
+            : 'enhance';
+
+        const crf = typeof body.crf === 'number' && Number.isFinite(body.crf) ? Math.round(body.crf) : 23;
+        if (crf < 10 || crf > 40) return jsonError({ status: 400, description: 'crf 不合法（建议 10~40）' });
+
+        await mkdir(deps.uploads.dir, { recursive: true });
+        const outKey = `${randomUUID()}_post_${preset}.mp4`;
+        const outPath = join(deps.uploads.dir, outKey);
+
+        let vfGraph: string | undefined;
+        const vf: string[] = [];
+
+        if (preset === 'pet') {
+          const zscale = await ffmpegHasFilter('zscale');
+          const sobel = await ffmpegHasFilter('sobel');
+          const maskedmerge = await ffmpegHasFilter('maskedmerge');
+          const noise = await ffmpegHasFilter('noise');
+          const deband = await ffmpegHasFilter('deband');
+          const tmix = await ffmpegHasFilter('tmix');
+          const tblend = await ffmpegHasFilter('tblend');
+
+          if (zscale && sobel && maskedmerge && noise && tmix && tblend) {
+            const linearize = `zscale=t=linear,format=gbrpf32le`;
+            const delinearize = `zscale=t=bt709:d=error_diffusion,format=yuv420p`;
+            const maybeDeband = deband ? ',deband=1thr=0.015:2thr=0.012:3thr=0.012:range=18:blur=1:coupling=0' : '';
+
+            // PET-ish pipeline (fast, single ffmpeg run):
+            // Linearize -> build JND-ish mask (edge + temporal diff) -> apply subtle temporally-correlated grain only on masked areas -> deband -> dither -> output.
+            vfGraph = [
+              `[0:v]${linearize},split=3[base0][masksrc][noise0]`,
+              `[base0]eq=contrast=1.02:saturation=1.02[base]`,
+              `[noise0]noise=alls=6:allf=t+u+a,tmix=frames=3:weights='1 2 1'[noisy]`,
+              `[masksrc]format=gray,split=2[ly0][ly1]`,
+              `[ly0]sobel=scale=2[edge]`,
+              `[ly1]tblend=all_mode=difference,format=gray,lut=y='min(val*3,255)'[tdiff]`,
+              `[edge][tdiff]blend=all_mode=addition:all_opacity=0.7,format=gray,lut=y='min(val*1.4,255)'[mask]`,
+              `[base][noisy][mask]maskedmerge${maybeDeband},${delinearize}[vout]`,
+            ].join(';');
+          } else {
+            // Fallback: if the required filters are missing, gracefully degrade to "enhance".
+            vf.push('eq=contrast=1.06:brightness=0.01:saturation=1.10');
+            vf.push('unsharp=luma_msize_x=5:luma_msize_y=5:luma_amount=0.7:chroma_msize_x=5:chroma_msize_y=5:chroma_amount=0');
+          }
+        } else if (preset === 'enhance') {
+          vf.push('eq=contrast=1.08:brightness=0.02:saturation=1.15');
+          vf.push('unsharp=luma_msize_x=5:luma_msize_y=5:luma_amount=0.9:chroma_msize_x=5:chroma_msize_y=5:chroma_amount=0');
+        } else if (preset === 'bw') {
+          vf.push('hue=s=0');
+          vf.push('eq=contrast=1.08:brightness=0.02');
+        } else if (preset === 'sepia') {
+          vf.push('colorchannelmixer=0.393:0.769:0.189:0:0.349:0.686:0.168:0:0.272:0.534:0.131');
+        } else if (preset === 'soft') {
+          vf.push('eq=contrast=0.98:saturation=1.05');
+          vf.push('boxblur=1:1');
+        } else if (preset === 'sharpen') {
+          vf.push('unsharp=luma_msize_x=7:luma_msize_y=7:luma_amount=1.2:chroma_msize_x=7:chroma_msize_y=7:chroma_amount=0');
+        } else if (preset === 'denoise') {
+          const hqdn3d = await ffmpegHasFilter('hqdn3d');
+          if (hqdn3d) vf.push('hqdn3d=1.5:1.5:6:6');
+          else vf.push('boxblur=1:1');
+          vf.push('eq=contrast=1.04:saturation=1.05');
+        }
+        if (!vfGraph) {
+          vf.push('format=yuv420p');
+          vfGraph = vf.join(',');
+        }
+
+        const proc = await runCommand([
+          'ffmpeg',
+          '-y',
+          '-hide_banner',
+          '-nostdin',
+          '-i',
+          localPath,
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a?:0',
+          ...(vfGraph ? ['-vf', vfGraph] : []),
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          String(crf),
+          '-c:a',
+          'aac',
+          '-b:a',
+          '192k',
+          '-movflags',
+          '+faststart',
+          outPath,
+        ]);
+        if (proc.code !== 0) {
+          const detail = tailLines(proc.stderr || proc.stdout || '', 2000);
+          return jsonError({ status: 500, description: '视频后处理失败', error: detail });
+        }
+
+        const outputUrl = `${deps.uploads.publicPath}/${outKey}`;
+        return json({ code: 0, description: '成功', result: { outputUrl, localKey: outKey, preset, crf } });
+      } catch (error) {
+        console.error('Video process error:', error);
+        return jsonError({ status: 500, description: '视频后处理失败', error });
+      }
+    }
+
     if ((pathname === '/api/mv/compose' || pathname === '/api/mv/compose/plan') && req.method === 'POST') {
       try {
         const body = await readJson<MvComposeRequestBody>(req);

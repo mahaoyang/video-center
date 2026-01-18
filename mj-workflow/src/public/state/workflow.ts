@@ -28,7 +28,7 @@ export interface WorkflowHistoryItem {
 export type StreamMessageRole = 'user' | 'ai';
 export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'postprocess';
 
-export type PostprocessOutputKind = 'image' | 'audio';
+export type PostprocessOutputKind = 'image' | 'audio' | 'video';
 export interface PostprocessOutput {
   kind: PostprocessOutputKind;
   url: string;
@@ -236,6 +236,10 @@ export interface WorkflowState {
   mvDurationSeconds?: number; // default image duration (seconds) for mvSequence items
   mvSubtitleMode?: 'soft' | 'burn';
   mvAction?: 'clip' | 'mv';
+
+  // Postprocess (ffmpeg)
+  postVideoPreset?: string;
+  postVideoCrf?: number;
 }
 
 export function createInitialWorkflowState(): WorkflowState {
@@ -265,5 +269,8 @@ export function createInitialWorkflowState(): WorkflowState {
     mvDurationSeconds: 5,
     mvSubtitleMode: 'soft',
     mvAction: 'mv',
+
+    postVideoPreset: 'pet',
+    postVideoCrf: 23,
   };
 }

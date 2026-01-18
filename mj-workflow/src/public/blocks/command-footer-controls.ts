@@ -183,6 +183,9 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   const video = document.createElement('div');
   video.className = 'flex items-center gap-2 flex-nowrap hidden';
 
+  const post = document.createElement('div');
+  post.className = 'flex items-center gap-2 flex-nowrap hidden';
+
   const mv = document.createElement('div');
   mv.className = 'flex items-center gap-2 flex-nowrap hidden';
 
@@ -1099,6 +1102,98 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     rebuildMenu(videoEndMenu, 'end');
   }
 
+  // --- POST controls: video postprocess (ffmpeg)
+  const postPresetWrap = document.createElement('div');
+  postPresetWrap.className = 'relative';
+  const postPresetBtn = mkBtn('VFX');
+  const postPresetMenu = mkMenu();
+  postPresetWrap.appendChild(postPresetBtn);
+  postPresetWrap.appendChild(postPresetMenu);
+  const postPresetPopover = createFooterPopover({ button: postPresetBtn, menu: postPresetMenu });
+
+  const postCrfWrap = document.createElement('div');
+  postCrfWrap.className = 'relative';
+  const postCrfBtn = mkBtn('Q');
+  const postCrfMenu = mkMenu();
+  postCrfWrap.appendChild(postCrfBtn);
+  postCrfWrap.appendChild(postCrfMenu);
+  const postCrfPopover = createFooterPopover({ button: postCrfBtn, menu: postCrfMenu });
+
+  post.appendChild(postPresetWrap);
+  post.appendChild(postCrfWrap);
+
+  function prettyPostPreset(preset: string): string {
+    const p = String(preset || '').trim().toLowerCase();
+    if (p === 'pet') return 'PET';
+    if (p === 'bw') return 'BW';
+    if (p === 'sepia') return 'Sepia';
+    if (p === 'soft') return 'Soft';
+    if (p === 'sharpen') return 'Sharpen';
+    if (p === 'denoise') return 'Denoise';
+    if (p === 'none') return 'None';
+    return 'Enhance';
+  }
+
+  function renderPost(state: WorkflowState) {
+    const preset = typeof state.postVideoPreset === 'string' && state.postVideoPreset.trim() ? state.postVideoPreset.trim() : 'enhance';
+    const presetLabel = prettyPostPreset(preset);
+    postPresetBtn.textContent = `VFX ${presetLabel}`;
+    buildSingleSelectMenu({
+      menu: postPresetMenu,
+      current: presetLabel,
+      options: ['PET', 'Enhance', 'BW', 'Sepia', 'Soft', 'Sharpen', 'Denoise', 'None'],
+      onPick: (v) => {
+        const next =
+          v === 'PET'
+            ? 'pet'
+            : v === 'BW'
+            ? 'bw'
+            : v === 'Sepia'
+              ? 'sepia'
+            : v === 'Soft'
+                ? 'soft'
+                : v === 'Sharpen'
+                  ? 'sharpen'
+                  : v === 'Denoise'
+                    ? 'denoise'
+                    : v === 'None'
+                      ? 'none'
+                      : 'enhance';
+        store.update((s) => ({ ...s, postVideoPreset: next }));
+        postPresetPopover.close();
+      },
+      onClear: () => {
+        store.update((s) => ({ ...s, postVideoPreset: undefined }));
+        postPresetPopover.close();
+      },
+    });
+
+    const crf = typeof state.postVideoCrf === 'number' && Number.isFinite(state.postVideoCrf) ? Math.round(state.postVideoCrf) : 23;
+    postCrfBtn.textContent = `Q ${crf}`;
+    const crfOptions = [
+      { label: '18 (High)', value: 18 },
+      { label: '20', value: 20 },
+      { label: '23 (Default)', value: 23 },
+      { label: '26', value: 26 },
+      { label: '30', value: 30 },
+      { label: '34 (Small)', value: 34 },
+    ];
+    buildSingleSelectMenu({
+      menu: postCrfMenu,
+      current: crfOptions.find((it) => it.value === crf)?.label || String(crf),
+      options: crfOptions.map((it) => it.label),
+      onPick: (label) => {
+        const next = crfOptions.find((it) => it.label === label)?.value ?? 23;
+        store.update((s) => ({ ...s, postVideoCrf: next }));
+        postCrfPopover.close();
+      },
+      onClear: () => {
+        store.update((s) => ({ ...s, postVideoCrf: undefined }));
+        postCrfPopover.close();
+      },
+    });
+  }
+
   // --- BEAUTIFY controls: hint input (synced with settings overlay input)
   const beautifyHint = document.createElement('input');
   beautifyHint.type = 'text';
@@ -1208,6 +1303,7 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   chips.appendChild(mj);
   chips.appendChild(pedit);
   chips.appendChild(video);
+  chips.appendChild(post);
   chips.appendChild(mv);
   chips.appendChild(beautify);
   chips.appendChild(deconstruct);
@@ -1217,6 +1313,7 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     mj.classList.toggle('hidden', mode !== 'mj');
     pedit.classList.toggle('hidden', mode !== 'pedit');
     video.classList.toggle('hidden', mode !== 'video');
+    post.classList.toggle('hidden', mode !== 'post');
     mv.classList.toggle('hidden', mode !== 'mv');
     beautify.classList.toggle('hidden', mode !== 'beautify');
     deconstruct.classList.toggle('hidden', mode !== 'deconstruct');
@@ -1247,6 +1344,7 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     if (mode === 'mj') renderMj(state);
     else if (mode === 'pedit') renderPedit(state);
     else if (mode === 'video') renderVideo(state);
+    else if (mode === 'post') renderPost(state);
     else if (mode === 'mv') renderMv(state);
     else if (mode === 'beautify') renderBeautify(state);
   }

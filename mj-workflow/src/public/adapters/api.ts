@@ -3,6 +3,7 @@ export interface ApiClient {
   deleteUpload(params: { localKey: string }): Promise<any>;
   promoteUpload(params: { localKey: string }): Promise<any>;
   audioProcess(params: { src: string }): Promise<any>;
+  videoProcess(params: { src: string; preset?: string; crf?: number }): Promise<any>;
   mvCompose(params: {
     prompt?: string;
     text?: string;
@@ -126,6 +127,7 @@ export function createApiClient(apiBase = '/api'): ApiClient {
     deleteUpload: async (params) => await requestJson('POST', `${apiBase}/upload/delete`, params),
     promoteUpload: async (params) => await requestJson('POST', `${apiBase}/upload/promote`, params),
     audioProcess: async (params) => await requestJson('POST', `${apiBase}/audio/process`, params),
+    videoProcess: async (params) => await requestJson('POST', `${apiBase}/video/process`, params),
     mvCompose: async (params) => await requestJson('POST', `${apiBase}/mv/compose`, params),
     mvComposePlan: async (params) => await requestJson('POST', `${apiBase}/mv/compose/plan`, params),
     mediaTask: async (params) =>

@@ -140,20 +140,29 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
     return asset;
   }
 
+  function selectedVideoAsset(state: WorkflowState): MediaAsset | undefined {
+    const id = typeof state.mvVideoAssetId === 'string' ? state.mvVideoAssetId : '';
+    if (!id) return undefined;
+    const asset = state.mediaAssets.find((a) => a.id === id);
+    if (!asset || asset.kind !== 'video') return undefined;
+    return asset;
+  }
+
   async function run() {
     const s0 = params.store.get();
     const refIds = Array.isArray(s0.selectedReferenceIds)
       ? s0.selectedReferenceIds.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 24)
       : [];
     const audio = selectedAudioAsset(s0);
+    const video = selectedVideoAsset(s0);
 
-    if (!refIds.length && !audio) {
-      showError('请先在素材区选中需要后处理的图片/音频（图片点击高亮；音频点击选中）');
+    if (!refIds.length && !audio && !video) {
+      showError('请先在素材区选中需要后处理的图片/音频/视频（图片点击高亮；音频/视频点击选中）');
       return;
     }
 
     const msgId = randomId('msg');
-    const totalSteps = refIds.length + (audio ? 1 : 0);
+    const totalSteps = refIds.length + (audio ? 1 : 0) + (video ? 1 : 0);
     let doneSteps = 0;
 
     function progressPercent(): number {
@@ -175,7 +184,7 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
       createdAt: Date.now(),
       role: 'ai',
       kind: 'postprocess',
-      text: normalizeMultiline(`后处理中…\n图片: ${refIds.length}${audio ? `\n音频: 1` : ''}`),
+      text: normalizeMultiline(`后处理中…\n图片: ${refIds.length}${audio ? `\n音频: 1` : ''}${video ? `\n视频: 1` : ''}`),
       progress: 0,
     };
     params.store.update((st) => ({
@@ -208,6 +217,22 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
         outputs.push({ kind: 'audio', url, name: String(audio.name || 'audio_pro') });
         doneSteps += 1;
         updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n音频：完成（${String(audio.name || 'audio')}）`);
+      }
+
+      if (video) {
+        const preset = typeof s0.postVideoPreset === 'string' ? String(s0.postVideoPreset || '').trim() : '';
+        const crf = typeof s0.postVideoCrf === 'number' && Number.isFinite(s0.postVideoCrf) ? s0.postVideoCrf : undefined;
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n视频：${preset ? `应用 ${preset}…` : '处理中…'}`);
+        const src = pickAudioUrl(video);
+        if (!src) throw new Error('视频缺少可用 URL，请重新上传');
+        const resp = await params.api.videoProcess({ src, preset: preset || undefined, crf: crf || undefined });
+        const result = resp?.result;
+        if (resp?.code !== 0) throw new Error(String(resp?.description || '视频后处理失败'));
+        const url = typeof result?.outputUrl === 'string' ? result.outputUrl : '';
+        if (!url) throw new Error('视频后处理失败：缺少 outputUrl');
+        outputs.push({ kind: 'video', url, name: `${safeFileName(String(video.name || 'video'))}_post.mp4` });
+        doneSteps += 1;
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n视频：完成（${String(video.name || 'video')}）`);
       }
 
       params.store.update((st) => ({

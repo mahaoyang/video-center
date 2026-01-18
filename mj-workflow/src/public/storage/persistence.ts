@@ -112,6 +112,8 @@ type Persisted = {
 
   commandMode?: string;
   beautifyHint?: string;
+  postVideoPreset?: string;
+  postVideoCrf?: number;
   gimageAspect?: string;
   gimageSize?: string;
   videoProvider?: string;
@@ -285,6 +287,8 @@ function toPersisted(state: WorkflowState): Persisted {
       : [],
     commandMode: state.commandMode,
     beautifyHint: typeof state.beautifyHint === 'string' && state.beautifyHint.trim() ? state.beautifyHint.trim() : undefined,
+    postVideoPreset: typeof state.postVideoPreset === 'string' && state.postVideoPreset.trim() ? state.postVideoPreset.trim() : undefined,
+    postVideoCrf: typeof state.postVideoCrf === 'number' && Number.isFinite(state.postVideoCrf) ? state.postVideoCrf : undefined,
     gimageAspect: state.gimageAspect,
     gimageSize: state.gimageSize,
     videoProvider: state.videoProvider,
@@ -338,6 +342,8 @@ export function loadPersistedState(): {
   desktopHiddenStreamMessageIds: string[];
   commandMode?: string;
   beautifyHint?: string;
+  postVideoPreset?: string;
+  postVideoCrf?: number;
   gimageAspect?: string;
   gimageSize?: string;
   videoProvider?: string;
@@ -543,6 +549,8 @@ export function loadPersistedState(): {
     desktopHiddenStreamMessageIds,
     commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,
     beautifyHint: typeof (parsed as any).beautifyHint === 'string' ? (parsed as any).beautifyHint : undefined,
+    postVideoPreset: typeof (parsed as any).postVideoPreset === 'string' ? (parsed as any).postVideoPreset : undefined,
+    postVideoCrf: typeof (parsed as any).postVideoCrf === 'number' ? (parsed as any).postVideoCrf : undefined,
     gimageAspect: typeof (parsed as any).gimageAspect === 'string' ? (parsed as any).gimageAspect : undefined,
     gimageSize: typeof (parsed as any).gimageSize === 'string' ? (parsed as any).gimageSize : undefined,
     videoProvider: typeof (parsed as any).videoProvider === 'string' ? (parsed as any).videoProvider : undefined,

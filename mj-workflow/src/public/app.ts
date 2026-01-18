@@ -47,6 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (persisted.commandMode) initial.commandMode = persisted.commandMode as any;
   if (persisted.beautifyHint) initial.beautifyHint = persisted.beautifyHint as any;
+  if (persisted.postVideoPreset) initial.postVideoPreset = persisted.postVideoPreset as any;
+  if (typeof persisted.postVideoCrf === 'number') initial.postVideoCrf = persisted.postVideoCrf;
   if (persisted.gimageAspect) initial.gimageAspect = persisted.gimageAspect as any;
   if (persisted.gimageSize) initial.gimageSize = persisted.gimageSize as any;
   if (persisted.videoProvider) initial.videoProvider = persisted.videoProvider as any;
