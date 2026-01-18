@@ -93,11 +93,14 @@ function isAddrInUse(err: unknown): boolean {
   return Boolean(err && typeof err === 'object' && 'code' in err && (err as { code?: unknown }).code === 'EADDRINUSE');
 }
 
+const bindHostRaw = process.env.BIND_HOST?.trim();
+const bindHost = bindHostRaw ? bindHostRaw : undefined;
+
 let port = config.port;
 let server: ReturnType<typeof Bun.serve> | undefined;
 for (let attempt = 0; attempt < 20; attempt++) {
   try {
-    server = Bun.serve({ port, ...serveOptions });
+    server = Bun.serve({ port, hostname: bindHost, ...serveOptions });
     break;
   } catch (err) {
     if (isAddrInUse(err) && config.diagnostics.portSource === 'default') {

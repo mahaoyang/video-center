@@ -121,14 +121,48 @@ if "%PY_ENABLED%"=="1" (
   )
 )
 
+call :ResolveBun BUN_EXE || (
+  echo [mj-workflow] bun not found on PATH. 1>&2
+  echo [mj-workflow] Install Bun (Windows) then retry: winget install --id Oven-sh.Bun -e 1>&2
+  exit /b 9009
+)
+
 echo [mj-workflow] web: http://localhost:%PORT%
 echo.
 echo Tip: close the extra cmd windows to stop media-backend; press Ctrl+C here to stop mj-workflow.
 echo.
-bun run dev
+if /I not "%NO_BROWSER%"=="1" (
+  echo [mj-workflow] opening browser: http://localhost:%PORT%
+  start "" "http://localhost:%PORT%"
+)
+"%BUN_EXE%" run dev
 exit /b %errorlevel%
 
 rem --- helpers ---
+
+:ResolveBun
+set "OUT=%~1"
+set "BUN="
+
+for /f "delims=" %%B in ('where bun 2^>nul') do (
+  if exist "%%B" set "BUN=%%B"
+  if defined BUN goto :ResolveBunDone
+)
+
+if not defined BUN if exist "%USERPROFILE%\.bun\bin\bun.exe" set "BUN=%USERPROFILE%\.bun\bin\bun.exe"
+if not defined BUN if exist "%USERPROFILE%\scoop\apps\bun\current\bun.exe" set "BUN=%USERPROFILE%\scoop\apps\bun\current\bun.exe"
+
+if not defined BUN (
+  for /f "delims=" %%B in ('dir /b /s "%LOCALAPPDATA%\Microsoft\WinGet\Packages\Oven-sh.Bun_*\\bun-windows-*\\bun.exe" 2^>nul') do (
+    set "BUN=%%B"
+    goto :ResolveBunDone
+  )
+)
+
+:ResolveBunDone
+if not defined BUN exit /b 1
+set "%OUT%=%BUN%"
+exit /b 0
 
 :ReadEnvPort
 set "ENV_FILE=%~1"
@@ -200,7 +234,7 @@ set "P=%~1"
 set "TAG=%~2"
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":%P% .*LISTENING" 2^>nul') do (
   if not "%%P"=="0" (
-    echo %TAG% Port %P% in use (pid: %%P), stopping...
+    echo %TAG% Port %P% in use ^(pid: %%P^), stopping...
     taskkill /F /PID %%P >nul 2>&1
   )
 )
@@ -273,11 +307,11 @@ if not exist "%COMPOSE_FILE%" (
   exit /b 1
 )
 
-call :IsPortInUse %DB_PORT%
-if not errorlevel 1 (
-  echo [media-backend] Postgres port :%DB_PORT% already open (skip docker compose)
-  exit /b 0
-)
+	call :IsPortInUse %DB_PORT%
+	if not errorlevel 1 (
+	  echo [media-backend] Postgres port :%DB_PORT% already open ^(skip docker compose^)
+	  exit /b 0
+	)
 
 echo [media-backend] starting Postgres via docker compose (%COMPOSE_FILE%) on host port :%DB_PORT%
 cmd /c "set PG_PORT=%DB_PORT%&& %COMPOSE% -f \"%COMPOSE_FILE%\" up -d" || exit /b 1
@@ -311,12 +345,12 @@ if not defined DATABASE_URL (
 
 call :StartPostgresIfNeeded || exit /b 1
 
-if not exist "%MEDIA_DIR%\.venv\Scripts\python.exe" (
-  echo [media-backend] creating venv + installing deps (first run)
-  pushd "%MEDIA_DIR%" >nul
-  uv venv || (popd >nul & exit /b 1)
-  popd >nul
-)
+	if not exist "%MEDIA_DIR%\.venv\Scripts\python.exe" (
+	  echo [media-backend] creating venv + installing deps ^(first run^)
+	  pushd "%MEDIA_DIR%" >nul
+	  uv venv || (popd >nul & exit /b 1)
+	  popd >nul
+	)
 
 echo [media-backend] ensuring python deps
 pushd "%MEDIA_DIR%" >nul
@@ -330,4 +364,3 @@ echo [media-backend] api: http://localhost:%MEDIA_PORT_VAL%  (DATABASE_URL confi
 start "media-backend api" cmd /k "cd /d \"%MEDIA_DIR%\" && set DATABASE_URL=%DATABASE_URL%&& .venv\\Scripts\\python -m uvicorn media_backend.main:app --host 0.0.0.0 --port %MEDIA_PORT_VAL% %RELOAD_ARG%"
 start "media-backend worker" cmd /k "cd /d \"%MEDIA_DIR%\" && set DATABASE_URL=%DATABASE_URL%&& .venv\\Scripts\\python worker.py"
 exit /b 0
-

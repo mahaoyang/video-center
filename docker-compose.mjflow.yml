@@ -1,0 +1,18 @@
+services:
+  mjflow:
+    build:
+      context: ./mj-workflow
+      dockerfile: Dockerfile
+    environment:
+      PORT: "3015"
+      BIND_HOST: "0.0.0.0"
+    env_file:
+      - ./.env.local
+    ports:
+      - "3015:3015"
+    restart: unless-stopped
+    volumes:
+      - mjflow_data:/app/.data
+
+volumes:
+  mjflow_data:

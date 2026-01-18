@@ -75,6 +75,16 @@ bun run dev
 ./start.sh
 ```
 
+### Docker（推荐：不依赖本机 Bun/Windows 环境）
+
+在仓库根目录运行（会读取根目录 `./.env.local`，并暴露到宿主机 `3015`）：
+
+```bash
+docker compose -f docker-compose.mjflow.yml up --build
+```
+
+打开 `http://localhost:3015`。
+
 ### 4. 构建生产版本
 
 ```bash
