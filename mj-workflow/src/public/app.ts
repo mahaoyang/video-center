@@ -24,7 +24,7 @@ import { createMvComposeBlock } from './blocks/mv-compose';
 import { createPostprocessBlock } from './blocks/postprocess';
 import { keepStreamBottomPaddingClear } from './blocks/stream-bottom-padding';
 import { createSunoBlock } from './blocks/suno';
-import { cleanupOrphanUploads } from './atoms/uploads-gc';
+import { cleanupOrphanUploads } from './headless/uploads-gc';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');

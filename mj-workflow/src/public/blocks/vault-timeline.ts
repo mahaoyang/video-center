@@ -6,7 +6,7 @@ import { openImagePreview } from '../atoms/image-preview';
 import { setTraceOpen, setVaultOpen } from '../atoms/overlays';
 import { deriveTimelineItems, type TimelineItem, type TimelineResource } from '../state/timeline';
 import type { ApiClient } from '../adapters/api';
-import { cleanupOrphanUploads } from '../atoms/uploads-gc';
+import { cleanupOrphanUploads } from '../headless/uploads-gc';
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleString([], {

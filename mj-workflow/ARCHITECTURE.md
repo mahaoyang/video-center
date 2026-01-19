@@ -1,6 +1,6 @@
 # mj-workflow Architecture (规范化分层)
 
-目标：把“存储 → 后端 → UI数据对接层 → UI组件数据层 → 无头UI → 纯UI”拆成清晰层级，并用导入边界保证“闭合原子化”和“复合积木禁止交联”。
+目标：把“后端 → 存储 → UI 数据对接层 → UI 组件数据层 → 无头 UI → 纯 UI”拆成清晰层级，并用导入边界保证“闭合原子化”和“复合积木禁止交联”。
 
 ## 核心原则（必须遵守）
 
@@ -64,3 +64,82 @@
 
 ## 约束检查
 - 使用 `bun run check:imports` 扫描 `src/public` 的相对导入，违反规则会直接失败。
+- 当前导入边界（由 `scripts/check-imports.ts` 强制）：
+  - `atoms` 只能 import `atoms`
+  - `state/adapters/storage` 不能 import `blocks/app/headless`
+  - `headless` 不能 import `blocks/app`（且不能 import “other”）
+  - `blocks` 不能 import `blocks/app/other`（允许 import `headless`、`atoms`、`state`、`adapters`、`storage`）
+
+---
+
+## 运行时结构（后端）
+
+### 入口与静态资源
+- 入口：`src/index.ts`
+  - dist 运行时会把 `cwd` 切到 `dist`，确保相对路径一致（`publicDir`、`.data`）。
+  - 静态资源：`dist/public/*`（dev 时为 `src/public/*`）。
+  - 本地上传目录：`<project>/.data/uploads`，通过 `GET /uploads/<key>` 直接访问。
+
+### API 路由
+- 路由汇总：`src/api/router.ts`
+- 典型依赖：
+  - MJ：`src/lib/mj-api.ts`
+  - 聚合模型/识图：`src/lib/yunwu-chat.ts`、`src/lib/gemini-vision.ts`
+  - 图床/转存：`src/lib/imageproxy.ts`
+  - 视频：`src/lib/video-api.ts`、`src/lib/gemini-video.ts`
+  - 媒体后端：`media-backend`（HTTP 代理 + 任务轮询）
+
+### 本地 uploads 生命周期（关键）
+- `POST /api/upload`：上传到本地 `uploads`（返回 `localKey/localUrl`）
+- `POST /api/upload/promote`：把本地文件转存到图床（返回 `cdnUrl`）
+- `POST /api/upload/delete`：删除本地文件（仅影响 `.data/uploads`）
+- `POST /api/upload/cleanup`：清理“无主文件”
+  - 入参：`keepLocalKeys[]`（前端根据当前本地状态/历史计算出的引用集合）
+  - 出参：`scanned/deleted/deletedKeys`
+  - 默认安全策略：若未传 `minAgeSeconds`，默认保留最近 24h 文件，避免误删“刚生成/刚上传但状态尚未落盘”的文件。
+
+---
+
+## 前端：数据与 UI 分层（落地实现）
+
+### 状态模型（单一事实来源）
+- `src/public/state/workflow.ts`
+  - `WorkflowState` 是 UI 的单一事实来源（Store 中持有）。
+  - “删除”语义分两类：
+    - **从对话界面移出**（UI-only）：写入 `desktopHiddenStreamMessageIds` / `desktopHiddenPlannerMessageIds`
+    - **删除历史记录**（真实删除本地历史）：从 `streamMessages` 移除（Vault/Timeline 中操作）
+
+### 持久化（localStorage）
+- `src/public/storage/persistence.ts`
+  - 启动时 `loadPersistedState()` 恢复 `streamMessages/referenceImages/history/...`。
+  - `startPersistence()` 对 Store 订阅，增量写入 localStorage。
+  - UI-only 的隐藏列表同样会持久化（避免刷新后“隐藏失效”）。
+
+### UI 与“删除”行为（符合你的需求）
+
+#### 1) 对话框右上角“删除”（只移出，不删历史/本地数据）
+- Stream 主对话卡片：`src/public/blocks/stream-history.ts`
+  - 点击删除：把 messageId 加入 `desktopHiddenStreamMessageIds`，UI 即刻移除该卡片。
+- Planner Chat：`src/public/blocks/planner-chat.ts`
+  - 点击删除：把 messageId 加入 `desktopHiddenPlannerMessageIds`，UI 即刻移除该气泡。
+
+#### 2) 历史记录删除（触发真正清理）
+- Vault/Timeline：`src/public/blocks/vault-timeline.ts`
+  - 删除单条 / 清空全部：从 `streamMessages` 真正移除，并触发一次 uploads GC（见下节）。
+
+### 无主文件清理（GC）
+- 计算引用集合（keep list）：`src/public/headless/uploads-gc.ts`
+  - 从 `WorkflowState` 派生出所有可能引用到 `/uploads/<key>` 的 URL / `localKey`：
+    - `referenceImages`、`history` 快照、`streamMessages` 输出、`mediaAssets` 等
+- 触发清理：
+  - 启动后：`src/public/app.ts` 会延迟触发一次（默认 24h 宽限）
+  - 删除历史后：`src/public/blocks/vault-timeline.ts` 立即触发一次（`minAgeSeconds=0`，尽快回收）
+
+---
+
+## 实践建议（避免踩坑）
+
+- “对话界面删除”必须是 UI-only：不要改 `streamMessages`，否则会影响历史与可追溯性。
+- “历史删除”才做数据清理：以 `streamMessages` 为准，历史里不再引用的本地文件才有资格被清掉。
+- uploads 清理一定要有“宽限期”：
+  - 前端状态落盘（localStorage）与文件写入（uploads）存在时序差，默认 24h 能显著降低误删概率。

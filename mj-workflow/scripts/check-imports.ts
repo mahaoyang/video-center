@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-type Layer = 'atoms' | 'state' | 'adapters' | 'storage' | 'blocks' | 'app' | 'other';
+type Layer = 'atoms' | 'state' | 'adapters' | 'storage' | 'headless' | 'blocks' | 'app' | 'other';
 
 const ROOT = resolve(process.cwd(), 'src/public');
 
@@ -22,6 +22,7 @@ function layerOf(absPath: string): Layer {
   if (rel.startsWith('state/')) return 'state';
   if (rel.startsWith('adapters/')) return 'adapters';
   if (rel.startsWith('storage/')) return 'storage';
+  if (rel.startsWith('headless/')) return 'headless';
   if (rel.startsWith('blocks/')) return 'blocks';
   if (rel === 'app.ts') return 'app';
   return 'other';
@@ -63,7 +64,11 @@ function isViolation(from: Layer, to: Layer): string | null {
     if (to !== 'atoms') return 'atoms must only import atoms';
   }
   if (from === 'state' || from === 'adapters' || from === 'storage') {
-    if (to === 'blocks' || to === 'app') return `${from} must not import ${to}`;
+    if (to === 'blocks' || to === 'app' || to === 'headless') return `${from} must not import ${to}`;
+  }
+  if (from === 'headless') {
+    if (to === 'blocks' || to === 'app') return `headless must not import ${to}`;
+    if (to === 'other') return 'headless must not import other (keep headless closed to primitives)';
   }
   if (from === 'blocks') {
     if (to === 'blocks') return 'blocks must not import blocks (no same-level links)';
