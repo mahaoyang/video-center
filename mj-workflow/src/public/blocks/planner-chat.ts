@@ -8,6 +8,7 @@ import { setPlannerOpen } from '../atoms/overlays';
 import { beautifyPromptBodyZh } from '../adapters/mj-prompt-ai';
 import type { Store } from '../state/store';
 import type { PlannerMessage, WorkflowState } from '../state/workflow';
+import { hidePlannerMessageUiOnly } from '../headless/conversation-actions';
 
 export function createPlannerChat(params: { api: ApiClient; store: Store<WorkflowState> }) {
   const list = byId<HTMLElement>('plannerMessages');
@@ -486,10 +487,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
       del.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        params.store.update((s) => ({
-          ...s,
-          desktopHiddenPlannerMessageIds: Array.from(new Set([...(s.desktopHiddenPlannerMessageIds || []), m.id])).slice(-400),
-        }));
+        params.store.update((s) => hidePlannerMessageUiOnly(s, m.id));
       });
       bubble.appendChild(del);
 

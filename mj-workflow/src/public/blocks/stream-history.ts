@@ -10,6 +10,7 @@ import { toAppVideoSrc } from '../atoms/video-src';
 import { setTraceOpen } from '../atoms/overlays';
 import { showError, showMessage } from '../atoms/notify';
 import { randomId } from '../atoms/id';
+import { hideAllStreamMessagesUiOnly, hideStreamMessageUiOnly } from '../headless/conversation-actions';
 
 function ensureZeroState(stream: HTMLElement, hasMessages: boolean) {
   const zero = stream.querySelector<HTMLElement>('#zeroState');
@@ -1091,10 +1092,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   }
 
   function clearDesktopUi() {
-    params.store.update((s) => ({
-      ...s,
-      desktopHiddenStreamMessageIds: Array.from(new Set(s.streamMessages.map((m) => m.id))).slice(-400),
-    }));
+    params.store.update((s) => hideAllStreamMessagesUiOnly(s));
   }
 
   const clearUiBtn = document.getElementById('streamClearUiBtn') as HTMLButtonElement | null;
@@ -1115,10 +1113,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
       const card = hide.closest<HTMLElement>('[data-message-id]');
       const id = card?.dataset.messageId || '';
       if (!id) return;
-      params.store.update((s) => ({
-        ...s,
-        desktopHiddenStreamMessageIds: Array.from(new Set([...(s.desktopHiddenStreamMessageIds || []), id])).slice(-400),
-      }));
+      params.store.update((s) => hideStreamMessageUiOnly(s, id));
       return;
     }
 

@@ -7,6 +7,7 @@ import { setTraceOpen, setVaultOpen } from '../atoms/overlays';
 import { deriveTimelineItems, type TimelineItem, type TimelineResource } from '../state/timeline';
 import type { ApiClient } from '../adapters/api';
 import { cleanupOrphanUploads } from '../headless/uploads-gc';
+import { clearVaultMessages, deleteVaultMessage } from '../headless/conversation-actions';
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleString([], {
@@ -153,17 +154,13 @@ export function createVaultTimeline(params: { store: Store<WorkflowState>; api: 
   const saveBtn = document.getElementById('saveConversationBtn') as HTMLButtonElement | null;
 
   function deleteItem(id: string) {
-    params.store.update((s) => ({
-      ...s,
-      streamMessages: s.streamMessages.filter((m) => m.id !== id),
-      desktopHiddenStreamMessageIds: s.desktopHiddenStreamMessageIds.filter((x) => x !== id),
-    }));
+    params.store.update((s) => deleteVaultMessage(s, id));
     void cleanupOrphanUploads({ api: params.api, state: params.store.get(), minAgeSeconds: 0 });
   }
 
   function clearAll() {
     if (!confirm('清空全部历史记录？（仅删除本地浏览器缓存，不影响 CDN）')) return;
-    params.store.update((s) => ({ ...s, streamMessages: [], desktopHiddenStreamMessageIds: [] }));
+    params.store.update((s) => clearVaultMessages(s));
     void cleanupOrphanUploads({ api: params.api, state: params.store.get(), minAgeSeconds: 0 });
   }
 
