@@ -31,7 +31,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
   }
 
   function rerender() {
-    render(params.store.get().plannerMessages);
+    render(params.store.get());
   }
 
   function autosizeComposer(textarea: HTMLTextAreaElement) {
@@ -462,7 +462,9 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     return row;
   }
 
-  function render(messages: PlannerMessage[]) {
+  function render(state: WorkflowState) {
+    const hidden = new Set(state.desktopHiddenPlannerMessageIds || []);
+    const messages = (state.plannerMessages || []).filter((m) => !hidden.has(m.id));
     list.innerHTML = '';
     for (const m of messages) {
       const row = document.createElement('div');
@@ -473,7 +475,23 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
         (m.role === 'user'
           ? 'max-w-[85%] rounded-[1.8rem] border border-white/10 bg-white/5 px-5 py-4'
           : 'w-full max-w-none rounded-[1.8rem] border border-white/10 bg-studio-panel/60 px-5 py-4') +
-        ' shadow-xl';
+        ' shadow-xl relative group';
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.title = '删除（仅从对话界面移出）';
+      del.className =
+        'absolute top-3 right-3 w-8 h-8 rounded-2xl bg-white/5 border border-white/10 text-white/50 hover:border-red-400/30 hover:text-red-200 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100';
+      del.innerHTML = '<i class="fas fa-trash text-[10px]"></i>';
+      del.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        params.store.update((s) => ({
+          ...s,
+          desktopHiddenPlannerMessageIds: Array.from(new Set([...(s.desktopHiddenPlannerMessageIds || []), m.id])).slice(-400),
+        }));
+      });
+      bubble.appendChild(del);
 
       if (m.role === 'ai') {
         const shotPrompts = extractPlannerShots(m.text);
@@ -612,8 +630,8 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     params.store.update((s) => ({ ...s, plannerMessages: [] }));
   });
 
-  render(params.store.get().plannerMessages);
-  params.store.subscribe((s) => render(s.plannerMessages));
+  render(params.store.get());
+  params.store.subscribe((s) => render(s));
 
   return { sendMessage };
 }

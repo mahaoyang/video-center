@@ -141,6 +141,7 @@ type Persisted = {
   mvAction?: string;
 
   desktopHiddenStreamMessageIds?: string[];
+  desktopHiddenPlannerMessageIds?: string[];
   traceHeadMessageId?: string;
 };
 
@@ -302,6 +303,9 @@ function toPersisted(state: WorkflowState): Persisted {
     desktopHiddenStreamMessageIds: Array.isArray(state.desktopHiddenStreamMessageIds)
       ? state.desktopHiddenStreamMessageIds.map((id) => String(id || '').trim()).filter(Boolean).slice(-400)
       : [],
+    desktopHiddenPlannerMessageIds: Array.isArray((state as any).desktopHiddenPlannerMessageIds)
+      ? (state as any).desktopHiddenPlannerMessageIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(-400)
+      : [],
     commandMode: state.commandMode,
     beautifyHint: typeof state.beautifyHint === 'string' && state.beautifyHint.trim() ? state.beautifyHint.trim() : undefined,
     postVideoPreset: typeof state.postVideoPreset === 'string' && state.postVideoPreset.trim() ? state.postVideoPreset.trim() : undefined,
@@ -359,6 +363,7 @@ export function loadPersistedState(): {
   mediaAssets: MediaAsset[];
   selectedMediaAssetIds: string[];
   desktopHiddenStreamMessageIds: string[];
+  desktopHiddenPlannerMessageIds: string[];
   commandMode?: string;
   beautifyHint?: string;
   postVideoPreset?: string;
@@ -568,6 +573,13 @@ export function loadPersistedState(): {
         .slice(-400)
     : [];
 
+  const desktopHiddenPlannerMessageIds: string[] = Array.isArray((parsed as any).desktopHiddenPlannerMessageIds)
+    ? (parsed as any).desktopHiddenPlannerMessageIds
+        .map((id: any) => String(id || '').trim())
+        .filter(Boolean)
+        .slice(-400)
+    : [];
+
   const mjPadRefIds: string[] = Array.from(
     new Set(
       (Array.isArray((parsed as any).mjPadRefIds)
@@ -598,6 +610,7 @@ export function loadPersistedState(): {
     mediaAssets,
     selectedMediaAssetIds,
     desktopHiddenStreamMessageIds,
+    desktopHiddenPlannerMessageIds,
     commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,
     beautifyHint: typeof (parsed as any).beautifyHint === 'string' ? (parsed as any).beautifyHint : undefined,
     postVideoPreset: typeof (parsed as any).postVideoPreset === 'string' ? (parsed as any).postVideoPreset : undefined,

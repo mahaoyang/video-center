@@ -201,6 +201,9 @@ export interface WorkflowState {
   // UI-only: hide these message IDs from the main stream (desktop), without deleting history.
   desktopHiddenStreamMessageIds: string[];
 
+  // UI-only: hide these message IDs from Planner Chat, without deleting local history.
+  desktopHiddenPlannerMessageIds: string[];
+
   // UI-only: current trace drawer target
   traceTarget?: TraceTarget;
   // UI-only: if trace was opened from another overlay, return to it on close
@@ -261,6 +264,7 @@ export function createInitialWorkflowState(): WorkflowState {
     streamMessages: [],
     desktopHiddenStreamMessageIds: [],
     plannerMessages: [],
+    desktopHiddenPlannerMessageIds: [],
     commandMode: 'mj',
     beautifyHint: '',
     gimageAspect: '16:9',

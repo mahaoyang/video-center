@@ -6,7 +6,7 @@ import type { ImageProxyClient } from '../lib/imageproxy';
 import type { VideoApi } from '../lib/video-api';
 import type { VisionDescribeRequest } from '../types';
 import { json, jsonError, readJson } from '../http/json';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -1143,7 +1143,8 @@ export function createApiRouter(deps: {
         const localKey = String(body.localKey || '').trim();
         if (!localKey) return jsonError({ status: 400, description: 'localKey 不能为空' });
         if (basename(localKey) !== localKey) return jsonError({ status: 400, description: 'localKey 非法' });
-        if (!/^[0-9a-fA-F-]{36}(\.[a-zA-Z0-9]+)?$/.test(localKey)) {
+        // Allow uuid-based keys with an optional safe suffix (e.g. "<uuid>.png", "<uuid>_pro.wav")
+        if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:[._-][a-zA-Z0-9][a-zA-Z0-9._-]{0,96})?$/.test(localKey)) {
           return jsonError({ status: 400, description: 'localKey 格式不正确' });
         }
 
@@ -1158,6 +1159,77 @@ export function createApiRouter(deps: {
       } catch (error) {
         console.error('Delete upload error:', error);
         return jsonError({ status: 500, description: '删除失败', error });
+      }
+    }
+
+    if (pathname === '/api/upload/cleanup' && req.method === 'POST') {
+      try {
+        const body = await readJson<{ keepLocalKeys?: unknown; minAgeSeconds?: unknown }>(req);
+        const rawList = Array.isArray(body.keepLocalKeys) ? body.keepLocalKeys : [];
+        const keep = new Set<string>();
+        for (const it of rawList.slice(0, 5000)) {
+          const key = String(it || '').trim();
+          if (
+            /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:[._-][a-zA-Z0-9][a-zA-Z0-9._-]{0,96})?$/.test(
+              key
+            )
+          ) {
+            keep.add(key);
+          }
+        }
+
+        const hasMinAge = Object.prototype.hasOwnProperty.call(body as any, 'minAgeSeconds');
+        const minAgeSecondsRaw = hasMinAge
+          ? typeof body.minAgeSeconds === 'number'
+            ? body.minAgeSeconds
+            : Number(String(body.minAgeSeconds || '').trim() || 0)
+          : 24 * 3600; // default: keep very recent files to avoid accidental deletion
+        const minAgeMs = Number.isFinite(minAgeSecondsRaw) && minAgeSecondsRaw > 0 ? Math.floor(minAgeSecondsRaw * 1000) : 0;
+        const now = Date.now();
+
+        let deleted = 0;
+        let scanned = 0;
+        const deletedKeys: string[] = [];
+
+        let entries: Array<{ name: string }> = [];
+        try {
+          const dirents = await readdir(deps.uploads.dir, { withFileTypes: true });
+          entries = dirents.filter((d) => d.isFile()).map((d) => ({ name: d.name }));
+        } catch {
+          // uploads dir may not exist yet
+          return json({ code: 0, description: 'OK', result: { scanned: 0, deleted: 0, deletedKeys: [] } });
+        }
+
+        for (const ent of entries) {
+          const name = ent.name;
+          scanned++;
+          if (keep.has(name)) continue;
+          if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:[._-][a-zA-Z0-9][a-zA-Z0-9._-]{0,96})?$/.test(name)) continue;
+
+          const p = join(deps.uploads.dir, name);
+          if (minAgeMs > 0) {
+            try {
+              const st = await stat(p);
+              const age = now - st.mtimeMs;
+              if (age < minAgeMs) continue;
+            } catch {
+              // If we can't stat, attempt delete anyway.
+            }
+          }
+
+          try {
+            await unlink(p);
+            deleted++;
+            deletedKeys.push(name);
+          } catch {
+            // ignore
+          }
+        }
+
+        return json({ code: 0, description: 'OK', result: { scanned, deleted, deletedKeys } });
+      } catch (error) {
+        console.error('Upload cleanup error:', error);
+        return jsonError({ status: 500, description: '清理失败', error });
       }
     }
 

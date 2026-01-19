@@ -24,6 +24,7 @@ import { createMvComposeBlock } from './blocks/mv-compose';
 import { createPostprocessBlock } from './blocks/postprocess';
 import { keepStreamBottomPaddingClear } from './blocks/stream-bottom-padding';
 import { createSunoBlock } from './blocks/suno';
+import { cleanupOrphanUploads } from './atoms/uploads-gc';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -42,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.streamMessages = persisted.streamMessages || [];
   initial.desktopHiddenStreamMessageIds = persisted.desktopHiddenStreamMessageIds || [];
   initial.plannerMessages = persisted.plannerMessages || [];
+  initial.desktopHiddenPlannerMessageIds = persisted.desktopHiddenPlannerMessageIds || [];
   initial.mediaAssets = persisted.mediaAssets || [];
   initial.selectedMediaAssetIds = persisted.selectedMediaAssetIds || [];
   initial.traceHeadMessageId = persisted.traceHeadMessageId;
@@ -78,9 +80,13 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.step = 4;
   const store = createStore(initial);
 
+  // Opportunistic local uploads GC: remove orphan files (not referenced by local state/history).
+  // Keep a small grace window to avoid racing with in-flight operations.
+  setTimeout(() => void cleanupOrphanUploads({ api, state: store.get(), minAgeSeconds: 24 * 3600 }), 8000);
+
   initUpload(store, api);
   createReferencePicker({ store, api });
-  createVaultTimeline(store);
+  createVaultTimeline({ store, api });
   createMjPromptPreview(store);
   createMjParamsPanel(store);
   createCommandFooterControls(store);

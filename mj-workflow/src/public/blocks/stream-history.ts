@@ -928,6 +928,17 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     // Add Trace entry on every stream card (主流消息卡片).
     const panel = el.querySelector<HTMLElement>('.glass-panel') || el;
     panel.classList.add('relative');
+
+    const hideBtn = document.createElement('button');
+    hideBtn.type = 'button';
+    hideBtn.dataset.streamHide = '1';
+    hideBtn.title = '从对话界面移除（不删除历史/本地数据）';
+    hideBtn.className =
+      'absolute top-4 right-[5.5rem] w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-red-400/30 hover:text-red-200 transition-all flex items-center justify-center ' +
+      'opacity-0 group-hover:opacity-100';
+    hideBtn.innerHTML = '<i class="fas fa-trash text-[11px]"></i>';
+    panel.appendChild(hideBtn);
+
     const edit = document.createElement('button');
     edit.type = 'button';
     edit.dataset.streamEdit = '1';
@@ -1096,6 +1107,20 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   stream.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
     if (!target) return;
+
+    const hide = target.closest<HTMLElement>('[data-stream-hide="1"]');
+    if (hide) {
+      e.preventDefault();
+      e.stopPropagation();
+      const card = hide.closest<HTMLElement>('[data-message-id]');
+      const id = card?.dataset.messageId || '';
+      if (!id) return;
+      params.store.update((s) => ({
+        ...s,
+        desktopHiddenStreamMessageIds: Array.from(new Set([...(s.desktopHiddenStreamMessageIds || []), id])).slice(-400),
+      }));
+      return;
+    }
 
     const edit = target.closest<HTMLElement>('[data-stream-edit="1"]');
     if (edit) {

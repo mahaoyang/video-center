@@ -5,6 +5,8 @@ import { escapeHtml } from '../atoms/html';
 import { openImagePreview } from '../atoms/image-preview';
 import { setTraceOpen, setVaultOpen } from '../atoms/overlays';
 import { deriveTimelineItems, type TimelineItem, type TimelineResource } from '../state/timeline';
+import type { ApiClient } from '../adapters/api';
+import { cleanupOrphanUploads } from '../atoms/uploads-gc';
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleString([], {
@@ -144,27 +146,29 @@ function renderTimelineItem(item: TimelineItem): HTMLElement {
   return wrap;
 }
 
-export function createVaultTimeline(store: Store<WorkflowState>) {
+export function createVaultTimeline(params: { store: Store<WorkflowState>; api: ApiClient }) {
   const list = byId<HTMLElement>('historyList');
 
   const clearBtn = document.getElementById('clearConversationBtn') as HTMLButtonElement | null;
   const saveBtn = document.getElementById('saveConversationBtn') as HTMLButtonElement | null;
 
   function deleteItem(id: string) {
-    store.update((s) => ({
+    params.store.update((s) => ({
       ...s,
       streamMessages: s.streamMessages.filter((m) => m.id !== id),
       desktopHiddenStreamMessageIds: s.desktopHiddenStreamMessageIds.filter((x) => x !== id),
     }));
+    void cleanupOrphanUploads({ api: params.api, state: params.store.get(), minAgeSeconds: 0 });
   }
 
   function clearAll() {
     if (!confirm('清空全部历史记录？（仅删除本地浏览器缓存，不影响 CDN）')) return;
-    store.update((s) => ({ ...s, streamMessages: [], desktopHiddenStreamMessageIds: [] }));
+    params.store.update((s) => ({ ...s, streamMessages: [], desktopHiddenStreamMessageIds: [] }));
+    void cleanupOrphanUploads({ api: params.api, state: params.store.get(), minAgeSeconds: 0 });
   }
 
   function saveAll() {
-    const data = store.get().streamMessages;
+    const data = params.store.get().streamMessages;
     const filename = `mj-vault-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     downloadJson(filename, { version: 1, exportedAt: Date.now(), messages: data });
   }
@@ -201,7 +205,7 @@ export function createVaultTimeline(store: Store<WorkflowState>) {
       const row = actionBtn.closest<HTMLElement>('[data-vault-item-id]');
       const id = row?.dataset.vaultItemId || '';
       if (!id) return;
-      store.update((s) => ({ ...s, traceTarget: { type: 'message', id }, traceReturnTo: 'vault' }));
+      params.store.update((s) => ({ ...s, traceTarget: { type: 'message', id }, traceReturnTo: 'vault' }));
       setVaultOpen(false);
       setTraceOpen(true);
       return;
@@ -216,7 +220,11 @@ export function createVaultTimeline(store: Store<WorkflowState>) {
     const url = resEl.dataset.url || '';
     if (!url) return;
     if (mouse.ctrlKey || mouse.metaKey) {
-      store.update((s) => ({ ...s, traceTarget: { type: 'url', url, resourceType: type === 'video' ? 'video' : 'image' }, traceReturnTo: 'vault' }));
+      params.store.update((s) => ({
+        ...s,
+        traceTarget: { type: 'url', url, resourceType: type === 'video' ? 'video' : 'image' },
+        traceReturnTo: 'vault',
+      }));
       setVaultOpen(false);
       setTraceOpen(true);
       return;
@@ -258,6 +266,6 @@ export function createVaultTimeline(store: Store<WorkflowState>) {
     list.appendChild(rail);
   }
 
-  render(store.get());
-  store.subscribe(render);
+  render(params.store.get());
+  params.store.subscribe(render);
 }
