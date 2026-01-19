@@ -203,26 +203,39 @@ export function createHistoryView(store: Store<WorkflowState>) {
     }
 
     store.update((s) => {
-      const first = item.references?.[0];
-      if (!first) return { ...s, prompt, step: 4 };
+      const refs = Array.isArray(item.references) ? item.references : [];
+      if (!refs.length) return { ...s, prompt, step: 4 };
 
-      const existing = s.referenceImages.find((r) => r.id === first.id);
-      if (existing) {
-        return { ...s, prompt, mjPadRefId: existing.id, step: 4 };
+      const nextLibrary = s.referenceImages.slice();
+      const padIds: string[] = [];
+
+      for (const ref of refs.slice(0, 12)) {
+        const existing = nextLibrary.find((r) => r.id === ref.id);
+        if (existing) {
+          padIds.push(existing.id);
+          continue;
+        }
+
+        const url = ref.cdnUrl || ref.url || ref.localUrl;
+        if (!url) continue;
+
+        const id = randomId('ref');
+        nextLibrary.push({
+          id,
+          name: ref.name || 'restored',
+          createdAt: Date.now(),
+          url,
+          cdnUrl: ref.cdnUrl,
+          localUrl: ref.localUrl,
+        });
+        padIds.push(id);
       }
 
-      const url = first.cdnUrl || first.url || first.localUrl;
-      if (!url) return { ...s, prompt, step: 4 };
-
-      const id = randomId('ref');
       return {
         ...s,
         prompt,
-        referenceImages: [
-          ...s.referenceImages,
-          { id, name: first.name || 'restored', createdAt: Date.now(), url, cdnUrl: first.cdnUrl, localUrl: first.localUrl },
-        ],
-        mjPadRefId: id,
+        referenceImages: nextLibrary,
+        mjPadRefIds: padIds,
         step: 4,
       };
     });

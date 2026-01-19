@@ -454,6 +454,153 @@ function renderVideoMessage(m: StreamMessage): HTMLElement {
   return msg;
 }
 
+function parseSunoBlocks(text: string): { control: string; style: string } | null {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  const m1 = raw.match(/CONTROL_PROMPT\s*:\s*/i);
+  const m2 = raw.match(/STYLE_PROMPT\s*:\s*/i);
+  if (!m1 || !m2) return null;
+  const i1 = m1.index ?? -1;
+  const i2 = m2.index ?? -1;
+  if (i1 < 0 || i2 < 0 || i2 <= i1) return null;
+  const control = raw.slice(i1 + m1[0].length, i2).trim();
+  const style = raw.slice(i2 + m2[0].length).trim();
+  if (!control || !style) return null;
+  return { control, style };
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  const value = String(text || '').trim();
+  if (!value) return false;
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function renderSunoMessage(m: StreamMessage): HTMLElement {
+  const msg = document.createElement('div');
+  msg.dataset.streamMessage = '1';
+  const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
+  const pending = !m.error && (p < 100 || !m.text || !m.text.trim() || (!m.text.includes('CONTROL_PROMPT:') && !m.text.includes('STYLE_PROMPT:')));
+
+  msg.className = 'group animate-fade-in-up';
+  if (pending) {
+    msg.innerHTML = `
+      <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60">
+        <div class="flex items-center justify-between gap-6">
+          <div class="flex items-center gap-4 opacity-60">
+            <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-[10px] font-black uppercase tracking-[0.3em]">SUNO</span>
+              <span class="text-[9px] font-mono opacity-40">生成中…（${p}%）</span>
+            </div>
+          </div>
+        </div>
+        <div class="mt-6 text-[11px] font-mono opacity-70 whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
+        <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+      </div>
+    `;
+    const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
+    if (panel) {
+      const thumbs = Array.isArray(m.inputImageUrls) && m.inputImageUrls.length ? m.inputImageUrls : [];
+      const showThumbs = thumbs.slice(0, 3);
+      for (let i = 0; i < showThumbs.length; i++) {
+        const u = showThumbs[i]!;
+        const thumb = document.createElement('img');
+        thumb.src = toAppImageSrc(u);
+        thumb.referrerPolicy = 'no-referrer';
+        thumb.className =
+          'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
+        if (i === 1) thumb.style.left = '2.75rem';
+        if (i === 2) thumb.style.left = '5.5rem';
+        panel.appendChild(thumb);
+      }
+    }
+    return msg;
+  }
+
+  const parsed = parseSunoBlocks(m.text || '');
+  const control = parsed ? parsed.control : String(m.text || '').trim();
+  const style = parsed ? parsed.style : '';
+
+  msg.innerHTML = `
+    <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60 space-y-6">
+      <div class="flex items-center justify-between gap-6">
+        <div class="flex items-center gap-3 opacity-60">
+          <i class="fas fa-music text-studio-accent text-[12px]"></i>
+          <span class="text-[10px] font-black uppercase tracking-[0.3em]">SUNO PROMPTS</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button data-suno-copy="control" type="button"
+            class="px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black uppercase tracking-widest">
+            Copy Control
+          </button>
+          <button data-suno-copy="style" type="button" ${style ? '' : 'disabled'}
+            class="px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed">
+            Copy Style
+          </button>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-white/10 bg-black/20 p-5">
+        <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Control Prompt（粘贴到 Suno Lyrics）</div>
+        <div data-suno-control="1" class="text-[11px] font-mono opacity-80 leading-relaxed whitespace-pre-wrap break-words select-text">${escapeHtml(control)}</div>
+      </div>
+
+      ${style ? `
+        <div class="rounded-2xl border border-white/10 bg-black/20 p-5">
+          <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Style Prompt（粘贴到 Suno Style of Music）</div>
+          <div data-suno-style="1" class="text-[11px] font-mono opacity-80 leading-relaxed whitespace-pre-wrap break-words select-text">${escapeHtml(style)}</div>
+        </div>
+      ` : ''}
+
+      <div data-error-text="1" class="text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+    </div>
+  `;
+
+  const copyBtns = Array.from(msg.querySelectorAll<HTMLButtonElement>('button[data-suno-copy]'));
+  for (const btn of copyBtns) {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const kind = String(btn.dataset.sunoCopy || '').trim();
+      const target =
+        kind === 'control'
+          ? msg.querySelector<HTMLElement>('[data-suno-control="1"]')?.textContent || ''
+          : msg.querySelector<HTMLElement>('[data-suno-style="1"]')?.textContent || '';
+      const ok = await copyToClipboard(target);
+      if (ok) {
+        const prev = btn.textContent || '';
+        btn.textContent = 'Copied';
+        setTimeout(() => (btn.textContent = prev), 1200);
+      } else {
+        showMessage(`复制失败，请手动复制：\n${target}`);
+      }
+    });
+  }
+
+  bindPreview(msg);
+  return msg;
+}
+
 function safeDownloadName(name: string, fallback: string): string {
   const raw = String(name || '').trim();
   const cleaned = raw.replace(/[^\w.-]+/g, '_');
@@ -576,6 +723,7 @@ function renderMessage(m: StreamMessage): HTMLElement {
   if (m.kind === 'pedit') return renderPeditMessage(m);
   if (m.kind === 'video') return renderVideoMessage(m);
   if (m.kind === 'postprocess') return renderPostprocessMessage(m);
+  if (m.kind === 'suno') return renderSunoMessage(m);
   return renderGenerateMessage(m);
 }
 
@@ -594,14 +742,22 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
       if (msg.kind === 'generate') {
         const prompt = (typeof msg.userPrompt === 'string' && msg.userPrompt.trim() ? msg.userPrompt.trim() : msg.text || '').trim();
         if (!prompt) return showError('提示词为空');
-        const ids = [msg.mjPadRefId, msg.mjSrefRefId, msg.mjCrefRefId].filter(
-          (x): x is string => typeof x === 'string' && x.trim()
+        const padRefIds = (Array.isArray(msg.mjPadRefIds) ? msg.mjPadRefIds : typeof msg.mjPadRefId === 'string' ? [msg.mjPadRefId] : [])
+          .map((x) => String(x || '').trim())
+          .filter(Boolean)
+          .slice(0, 12);
+        const ids = Array.from(
+          new Set(
+            [...padRefIds, msg.mjSrefRefId, msg.mjCrefRefId]
+              .map((x) => (typeof x === 'string' ? x.trim() : ''))
+              .filter(Boolean)
+          )
         );
         params.store.update((st) => ({
           ...st,
           traceHeadMessageId: msg.id,
           commandMode: 'mj',
-          mjPadRefId: typeof msg.mjPadRefId === 'string' ? msg.mjPadRefId : undefined,
+          mjPadRefIds: padRefIds,
           mjSrefRefId: typeof msg.mjSrefRefId === 'string' ? msg.mjSrefRefId : undefined,
           mjCrefRefId: typeof msg.mjCrefRefId === 'string' ? msg.mjCrefRefId : undefined,
           mjSrefImageUrl: typeof msg.mjSrefImageUrl === 'string' ? msg.mjSrefImageUrl : undefined,

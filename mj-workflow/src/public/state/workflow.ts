@@ -26,7 +26,7 @@ export interface WorkflowHistoryItem {
 }
 
 export type StreamMessageRole = 'user' | 'ai';
-export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'postprocess';
+export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'postprocess' | 'suno';
 
 export type PostprocessOutputKind = 'image' | 'audio' | 'video';
 export interface PostprocessOutput {
@@ -57,6 +57,7 @@ export interface StreamMessage {
   imageUrl?: string; // preview image (CDN preferred)
   refId?: string; // optional reference image id
   refIds?: string[]; // optional multi reference image ids (preferred)
+  // Back-compat: legacy single ref id fields (prefer refIds).
 
   // Lineage: main-branch parent (git-like)
   parentMessageId?: string;
@@ -81,7 +82,8 @@ export interface StreamMessage {
   userPrompt?: string; // raw prompt typed by user before translation/wrapping
 
   // MJ Generate snapshot
-  mjPadRefId?: string;
+  mjPadRefIds?: string[]; // PAD (垫图) - multi image reference (preferred)
+  mjPadRefId?: string; // legacy single PAD ref id (back-compat)
   mjSrefRefId?: string;
   mjCrefRefId?: string;
   mjSrefImageUrl?: string;
@@ -119,6 +121,7 @@ export interface StreamMessage {
 
 export type CommandMode =
   | 'mj'
+  | 'suno'
   | 'video'
   | 'deconstruct'
   | 'pedit'
@@ -168,9 +171,10 @@ export interface WorkflowState {
 
   referenceImages: ReferenceImage[];
   selectedReferenceIds: string[]; // multi-select buffer (used by Deconstruct)
+  postSelectedReferenceIds: string[]; // Postprocess: explicit selection buffer
 
-  // MJ prompt "PAD" (垫图) - single image reference
-  mjPadRefId?: string;
+  // MJ prompt "PAD" (垫图) - multi image reference
+  mjPadRefIds: string[];
 
   // Active image for Step2 (describe/vision)
   activeImageId?: string;
@@ -225,6 +229,8 @@ export interface WorkflowState {
 
   // MV compose (FFmpeg)
   mediaAssets: MediaAsset[];
+  // Postprocess: multi-select buffer for audio/video assets
+  selectedMediaAssetIds: string[];
   mvSequence: MvSequenceItem[];
   mvVideoAssetId?: string;
   mvAudioAssetId?: string;
@@ -249,6 +255,8 @@ export function createInitialWorkflowState(): WorkflowState {
     upscaledImages: [],
     referenceImages: [],
     selectedReferenceIds: [],
+    postSelectedReferenceIds: [],
+    mjPadRefIds: [],
     history: [],
     streamMessages: [],
     desktopHiddenStreamMessageIds: [],
@@ -261,6 +269,7 @@ export function createInitialWorkflowState(): WorkflowState {
     videoModel: 'jimeng-video-3.0',
 
     mediaAssets: [],
+    selectedMediaAssetIds: [],
     mvSequence: [],
     mvSubtitleText: '',
     mvText: '',

@@ -253,6 +253,36 @@ mj-workflow/
 ### GET /api/media/task/:taskId
 查询 MV 合成任务状态（代理到 `media-backend`）
 
+### POST /api/audio/process
+音频后处理（两段 loudnorm + “抗压缩冗余测试”可调参）
+
+**请求**：
+```json
+{
+  "src": "/uploads/<key>",
+  "redundancyPreset": "distribution",
+  "tempo": 1.0003,
+  "stereo_delay_ms": 0.01,
+  "noise_dbfs": -84
+}
+```
+
+说明：
+- `redundancyPreset`: `off | conservative | distribution`（也可用环境变量 `AUDIO_REDUNDANCY_PRESET`）
+- `tempo / stereo_delay_ms / noise_dbfs` 可直接在请求体传入（也可用 `AUDIO_TEMPO / AUDIO_STEREO_DELAY_MS / AUDIO_NOISE_DBFS` 作为默认值）
+
+**响应**：
+```json
+{
+  "code": 0,
+  "description": "成功",
+  "result": {
+    "outputUrl": "/uploads/<uuid>_pro.wav",
+    "localKey": "<uuid>_pro.wav"
+  }
+}
+```
+
 ## 扩图 Demo
 
 项目包含一个独立的扩图 demo（从 Python 迁移到 TypeScript）：

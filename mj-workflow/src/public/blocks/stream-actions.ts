@@ -52,7 +52,9 @@ function selectExistingReference(store: Store<WorkflowState>, id: string) {
   store.update((s) => {
     const selected = new Set(s.selectedReferenceIds);
     selected.add(id);
-    return { ...s, selectedReferenceIds: Array.from(selected), mjPadRefId: id };
+    const padIds = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.slice() : [];
+    if (!padIds.includes(id)) padIds.push(id);
+    return { ...s, selectedReferenceIds: Array.from(selected), mjPadRefIds: padIds.slice(0, 12) };
   });
 }
 
@@ -113,7 +115,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
           },
         ],
         selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
-        mjPadRefId: referenceId,
+        mjPadRefIds: Array.from(new Set([...(Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds : []), referenceId])).slice(0, 12),
       }));
     } catch (e) {
       console.error('streamAddPadFromSlice failed:', e);
@@ -210,7 +212,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
           },
         ],
         selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
-        mjPadRefId: referenceId,
+        mjPadRefIds: Array.from(new Set([...(Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds : []), referenceId])).slice(0, 12),
       }));
 
       showMessage('已选中该图，并加入垫图（PAD）');
@@ -260,7 +262,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
           },
         ],
         selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
-        mjPadRefId: referenceId,
+        mjPadRefIds: Array.from(new Set([...(Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds : []), referenceId])).slice(0, 12),
       }));
 
       showMessage('已加入图片栏并设为 PAD');

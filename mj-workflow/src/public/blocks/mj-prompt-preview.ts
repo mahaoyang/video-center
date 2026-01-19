@@ -13,8 +13,11 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
   function compute(state: WorkflowState): string {
     const basePrompt = (promptInput.value.trim() || (state.prompt || '').trim()).trim();
 
-    const padRef = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
-    const padUrl = isHttpUrl(padRef?.cdnUrl) ? padRef?.cdnUrl : isHttpUrl(padRef?.url) ? padRef?.url : undefined;
+    const padUrls = (Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds : [])
+      .map((id) => state.referenceImages.find((r) => r.id === id))
+      .filter((r): r is NonNullable<typeof r> => Boolean(r))
+      .map((r) => (isHttpUrl(r.cdnUrl) ? r.cdnUrl : isHttpUrl(r.url) ? r.url : undefined))
+      .filter((u): u is string => Boolean(u));
 
     const srefRef = state.mjSrefRefId ? state.referenceImages.find((r) => r.id === state.mjSrefRefId) : undefined;
     const crefRef = state.mjCrefRefId ? state.referenceImages.find((r) => r.id === state.mjCrefRefId) : undefined;
@@ -27,7 +30,7 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
 
     return buildMjPrompt({
       basePrompt,
-      padImages: padUrl ? [padUrl] : [],
+      padImages: padUrls,
       srefImageUrl: srefUrl,
       crefImageUrl: crefUrl,
     });
@@ -38,8 +41,10 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
     if (preview) preview.textContent = text;
 
     if (stats) {
-      const padRef = state.mjPadRefId ? state.referenceImages.find((r) => r.id === state.mjPadRefId) : undefined;
-      const hasPadUrl = Boolean(isHttpUrl(padRef?.cdnUrl || padRef?.url));
+      const padRefs = (Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds : [])
+        .map((id) => state.referenceImages.find((r) => r.id === id))
+        .filter((r): r is NonNullable<typeof r> => Boolean(r));
+      const padUrlReady = padRefs.filter((r) => isHttpUrl(r.cdnUrl || r.url)).length;
       const srefRef = state.mjSrefRefId ? state.referenceImages.find((r) => r.id === state.mjSrefRefId) : undefined;
       const crefRef = state.mjCrefRefId ? state.referenceImages.find((r) => r.id === state.mjCrefRefId) : undefined;
       const hasSrefUrl = Boolean(isHttpUrl(srefRef?.cdnUrl || srefRef?.url) || isHttpUrl(state.mjSrefImageUrl));
@@ -47,7 +52,7 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
       const hasSrefSelected = Boolean(state.mjSrefRefId || isHttpUrl(state.mjSrefImageUrl));
       const hasCrefSelected = Boolean(state.mjCrefRefId || isHttpUrl(state.mjCrefImageUrl));
       stats.textContent =
-        `PAD(URL): ${hasPadUrl ? 1 : 0}  PAD(base64): -` +
+        `PAD(URL): ${padUrlReady}/${padRefs.length}  PAD(base64): -` +
         (hasSrefSelected ? `  SREF: ${hasSrefUrl ? '✓' : '…'}` : `  SREF: -`) +
         (hasCrefSelected ? `  CREF: ${hasCrefUrl ? '✓' : '…'}` : `  CREF: -`);
     }

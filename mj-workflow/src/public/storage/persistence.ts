@@ -28,6 +28,8 @@ type Persisted = {
     localKey?: string;
   }>;
   selectedReferenceIds: string[];
+  postSelectedReferenceIds?: string[];
+  mjPadRefIds?: string[];
   mjPadRefId?: string;
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
@@ -58,6 +60,7 @@ type Persisted = {
     postOutputs?: Array<{ kind: string; url: string; name?: string }>;
 
     userPrompt?: string;
+    mjPadRefIds?: string[];
     mjPadRefId?: string;
     mjSrefRefId?: string;
     mjCrefRefId?: string;
@@ -104,6 +107,7 @@ type Persisted = {
     localKey?: string;
     text?: string;
   }>;
+  selectedMediaAssetIds?: string[];
 
   // MV sequence (preferred, ordered)
   mvSequence?: Array<{ refId: string; durationSeconds?: number }>;
@@ -187,7 +191,12 @@ function toPersisted(state: WorkflowState): Persisted {
     })),
     referenceLibrary: referenceLibrary.slice(-40),
     selectedReferenceIds: state.selectedReferenceIds.slice(),
-    mjPadRefId: state.mjPadRefId,
+    postSelectedReferenceIds: Array.isArray((state as any).postSelectedReferenceIds)
+      ? (state as any).postSelectedReferenceIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 24)
+      : [],
+    mjPadRefIds: Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds.slice(0, 12) : [],
+    // Back-compat: keep legacy single field as the first PAD ref (if any).
+    mjPadRefId: Array.isArray(state.mjPadRefIds) && state.mjPadRefIds.length ? state.mjPadRefIds[0] : undefined,
     mjSrefImageUrl: state.mjSrefImageUrl,
     mjCrefImageUrl: state.mjCrefImageUrl,
     mjSrefRefId: state.mjSrefRefId,
@@ -226,6 +235,11 @@ function toPersisted(state: WorkflowState): Persisted {
         : undefined,
 
       userPrompt: typeof m.userPrompt === 'string' && m.userPrompt.trim() ? m.userPrompt.trim() : undefined,
+      mjPadRefIds: Array.isArray((m as any).mjPadRefIds)
+        ? (m as any).mjPadRefIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 12)
+        : typeof (m as any).mjPadRefId === 'string'
+          ? [String((m as any).mjPadRefId).trim()].filter(Boolean)
+          : undefined,
       mjPadRefId: typeof m.mjPadRefId === 'string' ? m.mjPadRefId : undefined,
       mjSrefRefId: typeof m.mjSrefRefId === 'string' ? m.mjSrefRefId : undefined,
       mjCrefRefId: typeof m.mjCrefRefId === 'string' ? m.mjCrefRefId : undefined,
@@ -282,6 +296,9 @@ function toPersisted(state: WorkflowState): Persisted {
       localKey: typeof a.localKey === 'string' ? a.localKey : undefined,
       text: typeof a.text === 'string' ? a.text : undefined,
     })),
+    selectedMediaAssetIds: Array.isArray((state as any).selectedMediaAssetIds)
+      ? (state as any).selectedMediaAssetIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 36)
+      : [],
     desktopHiddenStreamMessageIds: Array.isArray(state.desktopHiddenStreamMessageIds)
       ? state.desktopHiddenStreamMessageIds.map((id) => String(id || '').trim()).filter(Boolean).slice(-400)
       : [],
@@ -330,7 +347,8 @@ export function loadPersistedState(): {
   history: WorkflowHistoryItem[];
   referenceImages: ReferenceImage[];
   selectedReferenceIds: string[];
-  mjPadRefId?: string;
+  postSelectedReferenceIds: string[];
+  mjPadRefIds: string[];
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
   mjSrefRefId?: string;
@@ -339,6 +357,7 @@ export function loadPersistedState(): {
   streamMessages: StreamMessage[];
   plannerMessages: PlannerMessage[];
   mediaAssets: MediaAsset[];
+  selectedMediaAssetIds: string[];
   desktopHiddenStreamMessageIds: string[];
   commandMode?: string;
   beautifyHint?: string;
@@ -373,9 +392,12 @@ export function loadPersistedState(): {
       history: [],
       referenceImages: [],
       selectedReferenceIds: [],
+      postSelectedReferenceIds: [],
+      mjPadRefIds: [],
       streamMessages: [],
       plannerMessages: [],
       mediaAssets: [],
+      selectedMediaAssetIds: [],
       desktopHiddenStreamMessageIds: [],
     };
 
@@ -415,7 +437,7 @@ export function loadPersistedState(): {
       createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
       role: m.role === 'ai' ? 'ai' : 'user',
       kind:
-        m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' || m.kind === 'video' || m.kind === 'postprocess'
+        m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' || m.kind === 'video' || m.kind === 'postprocess' || m.kind === 'suno'
           ? m.kind
           : 'generate',
       text: typeof m.text === 'string' ? m.text : undefined,
@@ -450,6 +472,11 @@ export function loadPersistedState(): {
         : undefined,
 
       userPrompt: typeof m.userPrompt === 'string' ? m.userPrompt : undefined,
+      mjPadRefIds: Array.isArray(m.mjPadRefIds)
+        ? m.mjPadRefIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 12)
+        : typeof m.mjPadRefId === 'string'
+          ? [String(m.mjPadRefId).trim()].filter(Boolean)
+          : undefined,
       mjPadRefId: typeof m.mjPadRefId === 'string' ? m.mjPadRefId : undefined,
       mjSrefRefId: typeof m.mjSrefRefId === 'string' ? m.mjSrefRefId : undefined,
       mjCrefRefId: typeof m.mjCrefRefId === 'string' ? m.mjCrefRefId : undefined,
@@ -510,6 +537,14 @@ export function loadPersistedState(): {
         .slice(-120)
     : [];
 
+  const selectedMediaAssetIds: string[] = Array.isArray((parsed as any).selectedMediaAssetIds)
+    ? (parsed as any).selectedMediaAssetIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 36)
+    : [];
+
+  const postSelectedReferenceIds: string[] = Array.isArray((parsed as any).postSelectedReferenceIds)
+    ? (parsed as any).postSelectedReferenceIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 24)
+    : [];
+
   const mvSequence: Array<{ refId: string; durationSeconds?: number }> = Array.isArray((parsed as any).mvSequence)
     ? (parsed as any).mvSequence
         .map((it: any) => ({
@@ -533,11 +568,26 @@ export function loadPersistedState(): {
         .slice(-400)
     : [];
 
+  const mjPadRefIds: string[] = Array.from(
+    new Set(
+      (Array.isArray((parsed as any).mjPadRefIds)
+        ? (parsed as any).mjPadRefIds
+        : typeof (parsed as any).mjPadRefId === 'string'
+          ? [(parsed as any).mjPadRefId]
+          : []
+      )
+        .map((id: any) => String(id || '').trim())
+        .filter(Boolean)
+        .slice(0, 12)
+    )
+  );
+
   return {
     history,
     referenceImages,
     selectedReferenceIds: parsed.selectedReferenceIds || [],
-    mjPadRefId: typeof (parsed as any).mjPadRefId === 'string' ? (parsed as any).mjPadRefId : undefined,
+    postSelectedReferenceIds,
+    mjPadRefIds,
     mjSrefImageUrl: typeof (parsed as any).mjSrefImageUrl === 'string' ? (parsed as any).mjSrefImageUrl : undefined,
     mjCrefImageUrl: typeof (parsed as any).mjCrefImageUrl === 'string' ? (parsed as any).mjCrefImageUrl : undefined,
     mjSrefRefId: typeof (parsed as any).mjSrefRefId === 'string' ? (parsed as any).mjSrefRefId : undefined,
@@ -546,6 +596,7 @@ export function loadPersistedState(): {
     streamMessages,
     plannerMessages,
     mediaAssets,
+    selectedMediaAssetIds,
     desktopHiddenStreamMessageIds,
     commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,
     beautifyHint: typeof (parsed as any).beautifyHint === 'string' ? (parsed as any).beautifyHint : undefined,

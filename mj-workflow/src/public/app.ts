@@ -23,6 +23,7 @@ import { createTraceBlock } from './blocks/trace';
 import { createMvComposeBlock } from './blocks/mv-compose';
 import { createPostprocessBlock } from './blocks/postprocess';
 import { keepStreamBottomPaddingClear } from './blocks/stream-bottom-padding';
+import { createSunoBlock } from './blocks/suno';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -31,7 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.history = persisted.history;
   initial.referenceImages = persisted.referenceImages;
   initial.selectedReferenceIds = persisted.selectedReferenceIds || [];
-  initial.mjPadRefId = persisted.mjPadRefId;
+  initial.postSelectedReferenceIds = (persisted as any).postSelectedReferenceIds || [];
+  initial.mjPadRefIds = Array.isArray(persisted.mjPadRefIds) ? persisted.mjPadRefIds : [];
   initial.mjSrefImageUrl = persisted.mjSrefImageUrl;
   initial.mjCrefImageUrl = persisted.mjCrefImageUrl;
   initial.mjSrefRefId = persisted.mjSrefRefId;
@@ -41,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.desktopHiddenStreamMessageIds = persisted.desktopHiddenStreamMessageIds || [];
   initial.plannerMessages = persisted.plannerMessages || [];
   initial.mediaAssets = persisted.mediaAssets || [];
+  initial.selectedMediaAssetIds = persisted.selectedMediaAssetIds || [];
   initial.traceHeadMessageId = persisted.traceHeadMessageId;
   if (!initial.traceHeadMessageId && initial.streamMessages.length) {
     initial.traceHeadMessageId = initial.streamMessages.at(-1)!.id;
@@ -85,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   startPersistence(store);
 
   const generate = createGenerateBlock({ api, store, activateStep: (s) => { } });
+  const suno = createSunoBlock({ api, store });
   const describe = createDescribeBlock({ api, store });
   createExportBlock(store);
 
@@ -98,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
     api,
     store,
     generate,
+    suno,
     describe,
     pedit,
     video,

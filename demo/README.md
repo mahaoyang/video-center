@@ -267,3 +267,20 @@ python3 demo/main.py audio input.wav output_pro.wav
 `demo/audio_processing.py` uses a two-pass `loudnorm` run (analysis to `null`, then apply with `measured_*`) for more stable loudness results.
 
 Optional enhancement: `python3 demo/main.py audio input.wav output_pro.wav --exciter`
+
+Redundancy-sim modules (for streaming/SRC robustness experiments):
+
+```bash
+# Target -14 LUFS (typical streaming) + controlled entropy injection
+python3 demo/main.py audio input.wav output_pro.wav \
+  --target-lufs -14 \
+  --noise-dbfs -84 --noise-highpass-hz 12000 --noise-lowpass-hz 19000
+```
+
+Parameter sweep (search a "distribution-optimal" set under an ODG-proxy constraint):
+
+```bash
+python3 demo/main.py audio-sweep input.wav --out-dir demo/out/audio_sweep --target-lufs -14 --candidates 32
+```
+
+Note: `audio-sweep` uses `asdr` (signal-to-distortion ratio) to build an `odg_proxy` score. This is a lightweight transparency proxy, not a true PEAQ ODG implementation.

@@ -14,6 +14,7 @@ export function createCommandModeBlock(params: {
   api: ApiClient;
   store: Store<WorkflowState>;
   generate: { generateImage: () => void };
+  suno: { run: () => void | Promise<void> };
   describe: { deconstructAssets: () => void | Promise<void> };
   pedit: { applyEdit: () => void | Promise<void> };
   video: { setVisible: (visible: boolean) => void; generateVideoFromCurrentPrompt: () => void | Promise<void> };
@@ -90,6 +91,7 @@ export function createCommandModeBlock(params: {
     }
     if (raw === 'mv-sub-soft' || raw === 'mv-sub-burn') return 'mv-subtitle';
     return raw === 'mj' ||
+      raw === 'suno' ||
       raw === 'video' ||
       raw === 'deconstruct' ||
       raw === 'pedit' ||
@@ -113,6 +115,8 @@ export function createCommandModeBlock(params: {
     modeBadge.textContent =
       mode === 'mj'
         ? 'MJ'
+        : mode === 'suno'
+          ? 'SUNO'
         : mode === 'video'
           ? 'VID'
           : isMv
@@ -139,6 +143,7 @@ export function createCommandModeBlock(params: {
       const v = String(btn.dataset.commandMode || '').trim();
       const next: CommandMode =
         v === 'mj' ||
+        v === 'suno' ||
         v === 'video' ||
         v === 'deconstruct' ||
         v === 'pedit' ||
@@ -187,6 +192,10 @@ export function createCommandModeBlock(params: {
       const modeNow = readMode();
       if (modeNow === 'mj') {
         params.generate.generateImage();
+        return;
+      }
+      if (modeNow === 'suno') {
+        await params.suno.run();
         return;
       }
       if (modeNow === 'deconstruct') {
@@ -246,19 +255,20 @@ export function createCommandModeBlock(params: {
 
   // Initial UI
   if (String(params.store.get().commandMode || '').startsWith('mv')) setMode(readMode());
-  const initialMode = readMode();
-  if (initialMode !== 'beautify') lastNonBeautifyMode = initialMode;
-  applyModeUi(initialMode);
-  applyModeFilter();
-  params.store.subscribe((s) => {
-    const m = s.commandMode;
-    if (
-      m === 'mj' ||
-      m === 'video' ||
-      m === 'deconstruct' ||
-      m === 'pedit' ||
-      m === 'beautify' ||
-      m === 'post' ||
+    const initialMode = readMode();
+    if (initialMode !== 'beautify') lastNonBeautifyMode = initialMode;
+    applyModeUi(initialMode);
+    applyModeFilter();
+    params.store.subscribe((s) => {
+      const m = s.commandMode;
+      if (
+        m === 'mj' ||
+        m === 'suno' ||
+        m === 'video' ||
+        m === 'deconstruct' ||
+        m === 'pedit' ||
+        m === 'beautify' ||
+        m === 'post' ||
       m === 'mv-mix' ||
       m === 'mv-images' ||
       m === 'mv-clip' ||

@@ -4,11 +4,13 @@
 
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import sharp from 'sharp';
+import { SUNO_METATAGS_GUIDE } from './suno-metatags-guide';
 
 export interface GeminiVisionClient {
   imageToPrompt(imageUrl: string): Promise<string>;
   chat(messages: Array<{ role: string; content: string }>): Promise<string>;
   generateText(system: string, user: string): Promise<string>;
+  sunoPrompt(params: { requirement: string; imageUrls?: string[] }): Promise<string>;
   editImage(imageUrl: string, editPrompt: string): Promise<string | null>;
   generateOrEditImages(params: {
     prompt: string;
@@ -180,6 +182,51 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
       const response = await getAi().models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
+      });
+
+      return response.text?.trim() || '';
+    },
+
+    async sunoPrompt(params: { requirement: string; imageUrls?: string[] }): Promise<string> {
+      const requirement = String(params?.requirement || '').trim();
+      if (!requirement) return '';
+
+      const urls = Array.isArray(params?.imageUrls) ? params.imageUrls.map((u) => String(u || '').trim()).filter(Boolean) : [];
+      const images = await Promise.all(urls.slice(0, 8).map((u) => compressImage(u)));
+
+      const system = [
+        'You are a Suno prompt designer.',
+        'Goal: create a complete song design using Suno metatags for the "Lyrics" field, plus a matching "Style of Music" prompt.',
+        '',
+        'You MUST follow the metatags guide below.',
+        '',
+        SUNO_METATAGS_GUIDE,
+        '',
+        'Hard rules:',
+        '- Output MUST be in Simplified Chinese (简体中文), except tags can be English inside [ ... ].',
+        '- Do NOT include Markdown code fences.',
+        '- Do NOT include explanations.',
+        '- The CONTROL_PROMPT must include BOTH variants: Instrumental and Lyrics.',
+        '- The STYLE_PROMPT must be ONE line, comma-separated descriptors.',
+        '',
+        'The user will provide requirements; images (if any) are visual references for mood/genre/instrumentation.',
+      ].join('\n');
+
+      const user = `USER_REQUIREMENTS:\n${requirement}`.trim();
+
+      const response = await getAi().models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [
+          {
+            parts: [
+              { text: `${system}\n\n${user}`.trim() },
+              ...images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.data } })),
+            ],
+          },
+        ],
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         },

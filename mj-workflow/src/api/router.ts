@@ -142,6 +142,26 @@ function tailLines(text: string, maxChars = 1600): string {
   return raw.slice(-maxChars);
 }
 
+function parseNumberLike(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function parseNullableNumberLike(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  return parseNumberLike(value);
+}
+
+function clampNumber(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
 async function ffmpegHasFilter(name: string): Promise<boolean> {
   const key = String(name || '').trim().toLowerCase();
   if (!key) return false;
@@ -207,34 +227,103 @@ async function sampleRateFromFile(inputPath: string): Promise<number> {
   return 48000;
 }
 
-async function buildAudioFiltergraph(params: { sampleRate: number; includeLoudnorm: string }): Promise<string> {
-  const tempo = 1.0003;
+async function buildAudioFiltergraph(params: {
+  sampleRate: number;
+  includeLoudnorm: string;
+  tempo: number;
+  stereoDelayMs: number;
+  noiseDbfs: number | null;
+}): Promise<string> {
+  const tempo = params.tempo;
   const rubberband = await ffmpegHasFilter('rubberband');
   const firequalizer = await ffmpegHasFilter('firequalizer');
   const vibrato = await ffmpegHasFilter('vibrato');
+  const stereotools = await ffmpegHasFilter('stereotools');
+  const anoisesrc = await ffmpegHasFilter('anoisesrc');
 
   const tempoFilter = Math.abs(tempo - 1.0) < 1e-9 ? '' : rubberband ? `rubberband=tempo=${tempo.toFixed(7)},` : `atempo=${tempo.toFixed(7)},`;
   const eq = firequalizer ? "firequalizer=gain='if(gt(f,16000),-0.8,0)'," : '';
   const vib = vibrato ? 'vibrato=f=0.3:d=0.00002,' : '';
 
-  return (
+  // Redundancy-sim defaults are conservative and effectively "off" unless tuned.
+  const timeFluctEnabled = false;
+  const timeFluctFreqHz = 0.25;
+  const timeFluctDepth = 0.00001;
+  const msSideGain = 0.95;
+  const stereoDelayMs = params.stereoDelayMs;
+  const stereoPhaseDeg = 0.0;
+  const noiseDbfs: number | null = params.noiseDbfs; // e.g. -84
+  const noiseColor = 'pink';
+  const noiseHighpassHz = 12000.0;
+  const noiseLowpassHz = 19000.0;
+
+  const vibratoFilter = (freqHz: number, depth: number) => {
+    if (!vibrato) return '';
+    if (!Number.isFinite(freqHz) || !Number.isFinite(depth)) return '';
+    if (depth <= 0) return '';
+    const f = Math.max(0.1, Math.min(20000, freqHz));
+    const d = Math.max(0, Math.min(1, depth));
+    return `vibrato=f=${f.toFixed(6)}:d=${d.toFixed(8)},`;
+  };
+
+  const stereoPhaseFilter = (delayMs: number, phaseDeg: number) => {
+    if (!stereotools) return '';
+    const d = Number.isFinite(delayMs) ? delayMs : 0;
+    const p = Number.isFinite(phaseDeg) ? phaseDeg : 0;
+    if (Math.abs(d) < 1e-12 && Math.abs(p) < 1e-12) return '';
+    const parts: string[] = [];
+    if (Math.abs(d) >= 1e-12) parts.push(`delay=${Math.max(-20, Math.min(20, d)).toFixed(9)}`);
+    if (Math.abs(p) >= 1e-12) parts.push(`phase=${Math.max(0, Math.min(360, p)).toFixed(9)}`);
+    return parts.length ? `stereotools=${parts.join(':')},` : '';
+  };
+
+  const noiseMixGraph = () => {
+    if (!anoisesrc) return '';
+    if (typeof noiseDbfs !== 'number' || !Number.isFinite(noiseDbfs)) return '';
+    const amp = Math.max(0, Math.min(1, Math.pow(10, noiseDbfs / 20)));
+    if (amp <= 0) return '';
+    const sr = params.sampleRate;
+    const hp = Math.max(0, Math.min(sr / 2, noiseHighpassHz));
+    let lp = Math.max(0, Math.min(sr / 2, noiseLowpassHz));
+    if (lp && hp && lp <= hp) lp = Math.max(0, Math.min(sr / 2, hp + 10));
+    const nHp = hp > 1e-9 ? `highpass=f=${hp.toFixed(3)},` : '';
+    const nLp = lp > 1e-9 ? `lowpass=f=${lp.toFixed(3)},` : '';
+    const color = ['white', 'pink', 'brown', 'blue', 'violet', 'velvet'].includes(noiseColor) ? noiseColor : 'pink';
+    return (
+      `[a]anull[a0];` +
+      `anoisesrc=r=${sr}:a=${amp.toFixed(10)}:c=${color}[n0];` +
+      `[n0]${nHp}${nLp}pan=stereo|c0=c0|c1=c0[n];` +
+      `[a0][n]amix=inputs=2:duration=first:normalize=0,`
+    );
+  };
+
+  const noiseGraph = noiseMixGraph();
+  const useNoise = Boolean(noiseGraph);
+
+  const base =
     '[0:a]' +
     tempoFilter +
     'aformat=channel_layouts=stereo,' +
     'highpass=f=20,' +
     'lowpass=f=19500,' +
     eq +
+    vibratoFilter(timeFluctFreqHz, timeFluctEnabled ? timeFluctDepth : 0) +
     'acompressor=threshold=0.1:ratio=1.15:attack=25:release=250:knee=2,' +
     'asplit[m1][m2];' +
     '[m1]pan=1c|c0=0.5*c0+0.5*c1[mid];' +
     '[m2]pan=1c|c0=0.5*c0-0.5*c1,' +
     'highpass=f=5000,' +
     vib +
-    'volume=0.95[side];' +
+    `volume=${msSideGain.toFixed(6)}[side];` +
     '[mid][side]join=inputs=2:channel_layout=stereo[ms];' +
-    `[ms]pan=stereo|c0=c0+c1|c1=c0-c1,aresample=${params.sampleRate},` +
-    params.includeLoudnorm
-  );
+    `[ms]pan=stereo|c0=c0+c1|c1=c0-c1,` +
+    stereoPhaseFilter(stereoDelayMs, stereoPhaseDeg) +
+    `aresample=${params.sampleRate}` +
+    (useNoise ? '[a];' : ',') +
+    (useNoise ? noiseGraph : '') +
+    params.includeLoudnorm;
+
+  return base;
 }
 
 function isPrivateIpv4(host: string): boolean {
@@ -1074,9 +1163,48 @@ export function createApiRouter(deps: {
 
     if (pathname === '/api/audio/process' && req.method === 'POST') {
       try {
-        const body = await readJson<{ src?: string }>(req);
+        const body = await readJson<{
+          src?: string;
+          tempo?: unknown;
+          stereo_delay_ms?: unknown;
+          stereoDelayMs?: unknown;
+          noise_dbfs?: unknown;
+          noiseDbfs?: unknown;
+          redundancy_preset?: unknown;
+          redundancyPreset?: unknown;
+          audio?: Record<string, unknown> | null;
+          redundancy?: Record<string, unknown> | null;
+        }>(req);
         const src = String(body.src || '').trim();
         if (!src) return jsonError({ status: 400, description: 'src 不能为空' });
+
+        const presetRaw = String(body.redundancy_preset ?? body.redundancyPreset ?? process.env.AUDIO_REDUNDANCY_PRESET ?? '')
+          .trim()
+          .toLowerCase();
+        const preset = presetRaw === 'distribution' || presetRaw === 'conservative' || presetRaw === 'off' ? presetRaw : '';
+        const presetStereoDelayMs = preset === 'distribution' ? 0.01 : 0.0;
+        const presetNoiseDbfs: number | null = preset === 'distribution' ? -84.0 : null;
+
+        const tune =
+          (body.redundancy && typeof body.redundancy === 'object' ? body.redundancy : null) ||
+          (body.audio && typeof body.audio === 'object' ? body.audio : null) ||
+          (body as unknown as Record<string, unknown>);
+
+        const envTempo = parseNumberLike(process.env.AUDIO_TEMPO);
+        const envStereoDelayMs = parseNumberLike(process.env.AUDIO_STEREO_DELAY_MS);
+        const envNoiseDbfs = parseNullableNumberLike(process.env.AUDIO_NOISE_DBFS);
+
+        const tempo = clampNumber(parseNumberLike(tune.tempo) ?? envTempo ?? 1.0003, 0.5, 2.0);
+        const stereoDelayMs = clampNumber(
+          parseNumberLike(tune.stereo_delay_ms ?? tune.stereoDelayMs) ?? envStereoDelayMs ?? presetStereoDelayMs ?? 0.0,
+          -20,
+          20
+        );
+
+        const noiseCandidate = parseNullableNumberLike(tune.noise_dbfs ?? tune.noiseDbfs);
+        const rawNoiseDbfs =
+          noiseCandidate !== undefined ? noiseCandidate : envNoiseDbfs !== undefined ? envNoiseDbfs : presetNoiseDbfs;
+        const noiseDbfs = typeof rawNoiseDbfs === 'number' ? clampNumber(rawNoiseDbfs, -120, -60) : null;
 
         const localPath = resolveUploadsLocalPath(deps.uploads.dir, src);
         if (!localPath) return jsonError({ status: 400, description: '仅支持 /uploads/<key> 作为音频输入' });
@@ -1098,6 +1226,9 @@ export function createApiRouter(deps: {
           const analysisGraph = await buildAudioFiltergraph({
             sampleRate,
             includeLoudnorm: 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json',
+            tempo,
+            stereoDelayMs,
+            noiseDbfs,
           });
           const analysis = await runCommand([
             'ffmpeg',
@@ -1117,7 +1248,13 @@ export function createApiRouter(deps: {
 
           const measure = parseLoudnormJson(analysis.stderr || '');
           const loudnormSecondPass = formatLoudnormSecondPass(measure);
-          const filterGraph = await buildAudioFiltergraph({ sampleRate, includeLoudnorm: loudnormSecondPass });
+          const filterGraph = await buildAudioFiltergraph({
+            sampleRate,
+            includeLoudnorm: loudnormSecondPass,
+            tempo,
+            stereoDelayMs,
+            noiseDbfs,
+          });
 
           const proc = await runCommand([
             'ffmpeg',
@@ -1554,6 +1691,45 @@ export function createApiRouter(deps: {
       } catch (error) {
         console.error('Gemini chat error:', error);
         return jsonError({ status: 500, description: 'Gemini 对话失败', error });
+      }
+    }
+
+    if (pathname === '/api/gemini/suno' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+        const body = await readJson<{ requirement?: string; imageUrls?: string[] }>(req);
+        const requirement = String(body.requirement || '').trim();
+        if (!requirement) return jsonError({ status: 400, description: 'requirement 不能为空' });
+
+        const imageUrls = Array.isArray(body.imageUrls)
+          ? body.imageUrls.map((u) => normalizeInputImageUrl(req, String(u || ''))).filter(Boolean).slice(0, 8)
+          : [];
+
+        // Basic SSRF guard: reject localhost/private IPs for absolute urls. (Relative /uploads/ is OK.)
+        for (const u of imageUrls) {
+          if (u.startsWith('data:')) continue;
+          if (u.startsWith('/uploads/')) continue;
+          let absolute: URL;
+          try {
+            absolute = new URL(u);
+          } catch {
+            absolute = new URL(u, req.url);
+          }
+          if (!['http:', 'https:'].includes(absolute.protocol)) {
+            return jsonError({ status: 400, description: '仅支持 http/https 图片或 data:image/* 或 /uploads/*' });
+          }
+          if (isUnsafeHost(absolute.hostname)) {
+            return jsonError({ status: 400, description: '禁止访问内网地址' });
+          }
+        }
+
+        const text = await deps.gemini.sunoPrompt({ requirement, imageUrls });
+        return json({ code: 0, description: '成功', result: { text } });
+      } catch (error) {
+        console.error('Gemini suno error:', error);
+        return jsonError({ status: 500, description: 'Suno 提示词生成失败', error });
       }
     }
 

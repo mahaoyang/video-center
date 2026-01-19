@@ -75,14 +75,18 @@ export function createActiveImagePicker(params: { store: Store<WorkflowState>; a
     params.store.update((s) => {
       const nextRefs = s.referenceImages.filter((r) => r.id !== ref.id);
       const nextSelected = s.selectedReferenceIds.filter((id) => id !== ref.id);
+      const nextPostSelected = Array.isArray((s as any).postSelectedReferenceIds)
+        ? (s as any).postSelectedReferenceIds.filter((id: any) => id !== ref.id)
+        : [];
       const nextActiveId = s.activeImageId === ref.id ? (nextRefs.at(-1)?.id || NONE) : s.activeImageId;
-      const nextPad = s.mjPadRefId === ref.id ? undefined : s.mjPadRefId;
+      const nextPadIds = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.filter((id) => id !== ref.id) : [];
       return {
         ...s,
         referenceImages: nextRefs,
         selectedReferenceIds: nextSelected,
+        postSelectedReferenceIds: nextPostSelected,
         activeImageId: nextActiveId,
-        mjPadRefId: nextPad,
+        mjPadRefIds: nextPadIds,
         mjSrefRefId: s.mjSrefRefId === ref.id ? undefined : s.mjSrefRefId,
         mjCrefRefId: s.mjCrefRefId === ref.id ? undefined : s.mjCrefRefId,
       };
@@ -107,8 +111,9 @@ export function createActiveImagePicker(params: { store: Store<WorkflowState>; a
       ...s,
       referenceImages: [],
       selectedReferenceIds: [],
+      postSelectedReferenceIds: [],
       activeImageId: NONE,
-      mjPadRefId: undefined,
+      mjPadRefIds: [],
       mjSrefImageUrl: undefined,
       mjCrefImageUrl: undefined,
       mjSrefRefId: undefined,

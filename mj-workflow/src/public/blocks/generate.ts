@@ -65,10 +65,12 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
     const s = params.store.get();
     const extraArgs: string[] = [];
 
-    let padUrl: string | undefined;
-    if (s.mjPadRefId) {
-      padUrl = await ensurePublicUrlForRefId(s.mjPadRefId, '垫图（PAD）');
+    const padUrls: string[] = [];
+    const padRefIds = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 12) : [];
+    for (const [idx, refId] of padRefIds.entries()) {
+      const padUrl = await ensurePublicUrlForRefId(refId, `垫图（PAD ${idx + 1}/${padRefIds.length}）`);
       if (!padUrl) return;
+      padUrls.push(padUrl);
     }
 
     const srefUrl = s.mjSrefRefId
@@ -95,7 +97,7 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
 
     const finalPrompt = buildMjPrompt({
       basePrompt: translatedPrompt,
-      padImages: padUrl ? [padUrl] : [],
+      padImages: padUrls,
       srefImageUrl: srefUrl,
       crefImageUrl: crefUrl,
       extraArgs,
@@ -110,7 +112,7 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
       kind: 'generate',
       text: finalPrompt,
       userPrompt: prompt,
-      mjPadRefId: s.mjPadRefId,
+      mjPadRefIds: padRefIds,
       mjSrefRefId: s.mjSrefRefId,
       mjCrefRefId: s.mjCrefRefId,
       mjSrefImageUrl: s.mjSrefRefId ? undefined : srefUrl || undefined,
@@ -161,19 +163,17 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
         }));
 
         const stateAfter = params.store.get();
-        const padRef = stateAfter.mjPadRefId ? stateAfter.referenceImages.find((r) => r.id === stateAfter.mjPadRefId) : undefined;
-        const selectedRefs = padRef
-          ? [
-              {
-                id: padRef.id,
-                name: padRef.name,
-                createdAt: padRef.createdAt,
-                url: padRef.url,
-                cdnUrl: padRef.cdnUrl,
-                localUrl: padRef.localUrl,
-              },
-            ]
-          : [];
+        const selectedRefs = (Array.isArray(stateAfter.mjPadRefIds) ? stateAfter.mjPadRefIds : [])
+          .map((id) => stateAfter.referenceImages.find((r) => r.id === id))
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+          .map((padRef) => ({
+            id: padRef.id,
+            name: padRef.name,
+            createdAt: padRef.createdAt,
+            url: padRef.url,
+            cdnUrl: padRef.cdnUrl,
+            localUrl: padRef.localUrl,
+          }));
 
         params.store.update((prev) => ({
           ...prev,

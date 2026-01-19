@@ -8,6 +8,7 @@ import type { ApiClient } from '../adapters/api';
 import { randomId } from '../atoms/id';
 import { sha256HexFromBlob } from '../atoms/blob-hash';
 import { toAppImageSrc } from '../atoms/image-src';
+import { isHttpUrl } from '../atoms/url';
 
 export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   const uploadInput = document.getElementById('imageUpload') as HTMLInputElement | null;
@@ -65,26 +66,25 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     return cleaned || 'image';
   }
 
-  function toAbsoluteUrlMaybe(src: string): string {
-    const raw = String(src || '').trim();
-    if (!raw) return '';
-    if (raw.startsWith('/')) return new URL(raw, window.location.origin).toString();
-    return raw;
-  }
-
-  function pickCopyUrlForRef(ref: {
+  function pickPublicCopyUrlForRef(ref: {
     cdnUrl?: string;
     url?: string;
     localUrl?: string;
     localKey?: string;
   }): string {
-    const candidates = [ref.cdnUrl, ref.url, ref.localUrl].map((x) => String(x || '').trim()).filter(Boolean);
-    for (const u of candidates) {
-      if (!u.startsWith('data:')) return toAbsoluteUrlMaybe(u);
-    }
-    const localKey = String(ref.localKey || '').trim();
-    if (localKey) return toAbsoluteUrlMaybe(`/uploads/${localKey}`);
+    if (isHttpUrl(ref.cdnUrl)) return ref.cdnUrl;
+    if (isHttpUrl(ref.url)) return ref.url;
     return '';
+  }
+
+  function getLocalKeyForRef(ref: { localKey?: string; localUrl?: string; url?: string }): string | undefined {
+    if (ref.localKey) return ref.localKey;
+    const urls = [ref.localUrl, ref.url].map((x) => String(x || '').trim()).filter(Boolean);
+    for (const u of urls) {
+      const m = u.match(/^\/uploads\/([^/?#]+)$/);
+      if (m?.[1]) return m[1];
+    }
+    return undefined;
   }
 
   async function fileFromRef(ref: { name?: string; dataUrl?: string; base64?: string }): Promise<File> {
@@ -104,33 +104,59 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     return new File([blob], fileName, { type: mime || 'image/png' });
   }
 
-  async function ensureRefUploadedForCopy(refId: string): Promise<string> {
+  async function ensureRefCdnUrlForCopy(refId: string): Promise<string> {
     const ref = store.get().referenceImages.find((r) => r.id === refId);
     if (!ref) throw new Error('素材不存在');
-    const existing = pickCopyUrlForRef(ref);
+    const existing = pickPublicCopyUrlForRef(ref);
     if (existing) return existing;
 
-    const file = await fileFromRef(ref);
-    const uploaded = await api.upload(file);
-    const result = uploaded?.result;
-    if (uploaded?.code !== 0) throw new Error(String(uploaded?.description || '上传失败'));
+    let localKey = getLocalKeyForRef(ref);
+    if (!localKey) {
+      const file = await fileFromRef(ref);
+      const uploaded = await api.upload(file);
+      const result = uploaded?.result;
+      if (uploaded?.code !== 0) throw new Error(String(uploaded?.description || '上传失败'));
 
-    const url = typeof result?.url === 'string' ? result.url : undefined;
-    const cdnUrl = typeof result?.cdnUrl === 'string' ? result.cdnUrl : undefined;
-    const localUrl = typeof result?.localUrl === 'string' ? result.localUrl : undefined;
-    const localPath = typeof result?.localPath === 'string' ? result.localPath : undefined;
-    const localKey = typeof result?.localKey === 'string' ? result.localKey : undefined;
+      const url = typeof result?.url === 'string' ? result.url : undefined;
+      const cdnUrl = typeof result?.cdnUrl === 'string' ? result.cdnUrl : undefined;
+      const localUrl = typeof result?.localUrl === 'string' ? result.localUrl : undefined;
+      const localPath = typeof result?.localPath === 'string' ? result.localPath : undefined;
+      const nextLocalKey = typeof result?.localKey === 'string' ? result.localKey : undefined;
+
+      store.update((s) => ({
+        ...s,
+        referenceImages: s.referenceImages.map((r) =>
+          r.id === refId
+            ? {
+                ...r,
+                url: url || r.url,
+                cdnUrl: cdnUrl || r.cdnUrl,
+                localUrl: localUrl || r.localUrl,
+                localPath: localPath || r.localPath,
+                localKey: nextLocalKey || r.localKey,
+              }
+            : r
+        ),
+      }));
+
+      localKey = nextLocalKey || getLocalKeyForRef({ url, localUrl, localKey: nextLocalKey });
+    }
+
+    if (!localKey) throw new Error('素材缺少本地缓存，无法上传到图床（请重新上传）');
+
+    const promoted = await api.promoteUpload({ localKey });
+    if (promoted?.code !== 0) {
+      throw new Error(String(promoted?.description || '上传到图床失败（promote）'));
+    }
+    const cdnUrl = String(promoted?.result?.cdnUrl || promoted?.result?.url || '').trim();
+    if (!isHttpUrl(cdnUrl)) throw new Error('上传到图床失败：未返回可用 URL');
 
     store.update((s) => ({
       ...s,
-      referenceImages: s.referenceImages.map((r) =>
-        r.id === refId ? { ...r, url: url || r.url, cdnUrl: cdnUrl || r.cdnUrl, localUrl: localUrl || r.localUrl, localPath: localPath || r.localPath, localKey: localKey || r.localKey } : r
-      ),
+      referenceImages: s.referenceImages.map((r) => (r.id === refId ? { ...r, cdnUrl, url: cdnUrl } : r)),
     }));
 
-    const picked = pickCopyUrlForRef({ url, cdnUrl, localUrl, localKey });
-    if (picked) return picked;
-    throw new Error('上传成功但未返回可用链接');
+    return cdnUrl;
   }
 
   function extractDroppedFiles(dt: DataTransfer | null): File[] {
@@ -159,7 +185,16 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     const s = store.get();
     tray.innerHTML = '';
 
-    if (padCount) padCount.textContent = s.mjPadRefId ? '1' : '0';
+    if (padCount) padCount.textContent = String(Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.length : 0);
+    const mjPadOrder = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds : [];
+    const isPost = String(s.commandMode || '').trim() === 'post';
+    const selectedImageIds = isPost
+      ? Array.isArray((s as any).postSelectedReferenceIds)
+        ? ((s as any).postSelectedReferenceIds as string[])
+        : []
+      : Array.isArray(s.selectedReferenceIds)
+        ? s.selectedReferenceIds
+        : [];
 
     const mvOrder = new Map<string, number>();
     if (String(s.commandMode || '').startsWith('mv')) {
@@ -170,9 +205,10 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     }
 
     s.referenceImages.forEach((img) => {
-      const isSelected = s.selectedReferenceIds.includes(img.id);
-      const isPad = s.mjPadRefId === img.id;
+      const isSelected = selectedImageIds.includes(img.id);
+      const isPad = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.includes(img.id) : false;
       const mvIndex = mvOrder.get(img.id);
+      const padIndex = isPad ? mjPadOrder.indexOf(img.id) : -1;
 
       const item = document.createElement('div');
       item.className =
@@ -194,6 +230,30 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       thumb.className = 'w-full h-full object-cover';
       thumb.referrerPolicy = 'no-referrer';
       frame.appendChild(thumb);
+
+      if (typeof padIndex === 'number' && padIndex >= 0) {
+        const badge = document.createElement('div');
+        badge.className =
+          'absolute left-1 bottom-1 min-w-6 h-6 px-2 rounded-full bg-black/60 border border-white/10 text-[10px] font-black text-studio-accent flex items-center justify-center z-20';
+        badge.textContent = `P${padIndex + 1}`;
+        frame.appendChild(badge);
+      }
+
+      if (isSelected) {
+        const sel = document.createElement('div');
+        sel.className =
+          'absolute right-1 top-1 w-5 h-5 rounded-full bg-black/60 border border-white/10 text-[9px] font-black text-white/80 flex items-center justify-center z-20';
+        sel.innerHTML = '<i class="fas fa-check"></i>';
+        frame.appendChild(sel);
+      }
+
+      if (isPad) {
+        const check = document.createElement('div');
+        check.className =
+          'absolute right-1 bottom-1 w-5 h-5 rounded-full bg-studio-accent text-black flex items-center justify-center text-[9px] shadow-xl z-20';
+        check.innerHTML = '<i class="fas fa-check"></i>';
+        frame.appendChild(check);
+      }
 
       if (typeof mvIndex === 'number' && Number.isFinite(mvIndex)) {
         const badge = document.createElement('div');
@@ -251,7 +311,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
         copyOk.delete(img.id);
         renderTray();
         try {
-          const url = await ensureRefUploadedForCopy(img.id);
+          const url = await ensureRefCdnUrlForCopy(img.id);
           const ok = await copyToClipboard(url);
           if (!ok) throw new Error(`复制失败，请手动复制：\n${url}`);
           copyOk.add(img.id);
@@ -299,8 +359,10 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       padBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         store.update((state) => {
-          const next = state.mjPadRefId === img.id ? undefined : img.id;
-          return { ...state, mjPadRefId: next };
+          const ids = Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds.slice() : [];
+          const has = ids.includes(img.id);
+          const next = has ? ids.filter((x) => x !== img.id) : [...ids, img.id];
+          return { ...state, mjPadRefIds: next.slice(0, 12) };
         });
       });
 
@@ -315,6 +377,13 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
 
       item.addEventListener('click', () => {
         store.update((state) => {
+          const mode = String(state.commandMode || '').trim();
+          if (mode === 'post') {
+            const selected = new Set(Array.isArray((state as any).postSelectedReferenceIds) ? (state as any).postSelectedReferenceIds : []);
+            if (selected.has(img.id)) selected.delete(img.id);
+            else selected.add(img.id);
+            return { ...state, postSelectedReferenceIds: Array.from(selected).slice(0, 24) };
+          }
           const selected = new Set(state.selectedReferenceIds);
           if (selected.has(img.id)) selected.delete(img.id);
           else selected.add(img.id);
@@ -330,10 +399,13 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     for (const a of media.slice().reverse().slice(0, 36)) {
       const kind = a.kind;
       if (kind !== 'video' && kind !== 'audio' && kind !== 'subtitle') continue;
-      const selected =
+      const isPost = String(s.commandMode || '').trim() === 'post';
+      const selectedPost = isPost && Array.isArray((s as any).selectedMediaAssetIds) ? (s as any).selectedMediaAssetIds.includes(a.id) : false;
+      const selectedMv =
         (kind === 'video' && s.mvVideoAssetId === a.id) ||
         (kind === 'audio' && s.mvAudioAssetId === a.id) ||
         (kind === 'subtitle' && s.mvSubtitleAssetId === a.id);
+      const selected = isPost ? selectedPost : selectedMv;
 
       const item = document.createElement('div');
       item.className =
@@ -386,13 +458,22 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       selectBtn.innerHTML = selected ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
       selectBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        store.update((st) => ({
-          ...st,
-          mvVideoAssetId: kind === 'video' ? (st.mvVideoAssetId === a.id ? undefined : a.id) : st.mvVideoAssetId,
-          mvAudioAssetId: kind === 'audio' ? (st.mvAudioAssetId === a.id ? undefined : a.id) : st.mvAudioAssetId,
-          mvSubtitleAssetId: kind === 'subtitle' ? (st.mvSubtitleAssetId === a.id ? undefined : a.id) : st.mvSubtitleAssetId,
-        }));
-        showMessage(`${selected ? '已取消选择' : '已选择'}${kindLabel}素材（用于 MV）`);
+        store.update((st) => {
+          const mode = String(st.commandMode || '').trim();
+          if (mode === 'post') {
+            const ids = Array.isArray((st as any).selectedMediaAssetIds) ? (st as any).selectedMediaAssetIds.slice() : [];
+            const has = ids.includes(a.id);
+            const next = has ? ids.filter((x: any) => x !== a.id) : [...ids, a.id];
+            return { ...st, selectedMediaAssetIds: next.slice(0, 36) };
+          }
+          return {
+            ...st,
+            mvVideoAssetId: kind === 'video' ? (st.mvVideoAssetId === a.id ? undefined : a.id) : st.mvVideoAssetId,
+            mvAudioAssetId: kind === 'audio' ? (st.mvAudioAssetId === a.id ? undefined : a.id) : st.mvAudioAssetId,
+            mvSubtitleAssetId: kind === 'subtitle' ? (st.mvSubtitleAssetId === a.id ? undefined : a.id) : st.mvSubtitleAssetId,
+          };
+        });
+        showMessage(`${selected ? '已取消选择' : '已选择'}${kindLabel}素材（用于 ${isPost ? '后处理' : 'MV'}）`);
         renderTray();
       });
 
@@ -421,13 +502,22 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
           if (url) window.open(url, '_blank', 'noreferrer');
           return;
         }
-        store.update((st) => ({
-          ...st,
-          mvVideoAssetId: kind === 'video' ? (st.mvVideoAssetId === a.id ? undefined : a.id) : st.mvVideoAssetId,
-          mvAudioAssetId: kind === 'audio' ? (st.mvAudioAssetId === a.id ? undefined : a.id) : st.mvAudioAssetId,
-          mvSubtitleAssetId: kind === 'subtitle' ? (st.mvSubtitleAssetId === a.id ? undefined : a.id) : st.mvSubtitleAssetId,
-        }));
-        showMessage(`${selected ? '已取消选择' : '已选择'} ${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材（用于 MV）`);
+        store.update((st) => {
+          const mode = String(st.commandMode || '').trim();
+          if (mode === 'post') {
+            const ids = Array.isArray((st as any).selectedMediaAssetIds) ? (st as any).selectedMediaAssetIds.slice() : [];
+            const has = ids.includes(a.id);
+            const next = has ? ids.filter((x: any) => x !== a.id) : [...ids, a.id];
+            return { ...st, selectedMediaAssetIds: next.slice(0, 36) };
+          }
+          return {
+            ...st,
+            mvVideoAssetId: kind === 'video' ? (st.mvVideoAssetId === a.id ? undefined : a.id) : st.mvVideoAssetId,
+            mvAudioAssetId: kind === 'audio' ? (st.mvAudioAssetId === a.id ? undefined : a.id) : st.mvAudioAssetId,
+            mvSubtitleAssetId: kind === 'subtitle' ? (st.mvSubtitleAssetId === a.id ? undefined : a.id) : st.mvSubtitleAssetId,
+          };
+        });
+        showMessage(`${selected ? '已取消选择' : '已选择'} ${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材（用于 ${isPost ? '后处理' : 'MV'}）`);
         renderTray();
       });
 
@@ -442,8 +532,11 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       ...s,
       referenceImages: s.referenceImages.filter((r) => r.id !== id),
       selectedReferenceIds: s.selectedReferenceIds.filter((rid) => rid !== id),
+      postSelectedReferenceIds: Array.isArray((s as any).postSelectedReferenceIds)
+        ? (s as any).postSelectedReferenceIds.filter((rid: any) => rid !== id)
+        : [],
       activeImageId: s.activeImageId === id ? undefined : s.activeImageId,
-      mjPadRefId: s.mjPadRefId === id ? undefined : s.mjPadRefId,
+      mjPadRefIds: Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.filter((rid) => rid !== id) : [],
       mvSequence: Array.isArray((s as any).mvSequence) ? (s as any).mvSequence.filter((x: any) => x?.refId !== id) : (s as any).mvSequence,
       mjSrefImageUrl: s.mjSrefImageUrl && refPublicUrls.includes(s.mjSrefImageUrl) ? undefined : s.mjSrefImageUrl,
       mjCrefImageUrl: s.mjCrefImageUrl && refPublicUrls.includes(s.mjCrefImageUrl) ? undefined : s.mjCrefImageUrl,
@@ -469,6 +562,9 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       mvVideoAssetId: s.mvVideoAssetId === id ? undefined : s.mvVideoAssetId,
       mvAudioAssetId: s.mvAudioAssetId === id ? undefined : s.mvAudioAssetId,
       mvSubtitleAssetId: s.mvSubtitleAssetId === id ? undefined : s.mvSubtitleAssetId,
+      selectedMediaAssetIds: Array.isArray((s as any).selectedMediaAssetIds)
+        ? (s as any).selectedMediaAssetIds.filter((x: any) => x !== id)
+        : [],
     }));
     renderTray();
     const deleteKey = asset ? (asset.localKey || (typeof asset.localUrl === 'string' ? asset.localUrl.split('/').pop() : undefined)) : undefined;
@@ -557,11 +653,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       .get()
       .referenceImages.find((r) => r.originKey === originKey || (typeof r.base64 === 'string' && r.base64 === base64));
     if (existing) {
-      store.update((s) => {
-        const selected = new Set(s.selectedReferenceIds);
-        selected.add(existing.id);
-        return { ...s, selectedReferenceIds: Array.from(selected), mjPadRefId: existing.id };
-      });
+      // Do not auto-select or auto-PAD; respect user's explicit selection.
       renderTray();
       return;
     }
@@ -582,8 +674,10 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
           base64,
         },
       ],
-      selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
-      mjPadRefId: referenceId,
+      // Do not auto-select; keep selection explicit for downstream actions (e.g. postprocess).
+      selectedReferenceIds: Array.isArray(s.selectedReferenceIds) ? s.selectedReferenceIds.slice(0, 24) : [],
+      // UX: if PAD is empty, default the first upload as PAD for MJ; otherwise don't auto-add.
+      mjPadRefIds: Array.isArray(s.mjPadRefIds) && s.mjPadRefIds.length ? s.mjPadRefIds.slice(0, 12) : [referenceId],
     }));
 
     renderTray();

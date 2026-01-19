@@ -26,6 +26,7 @@ function kindLabel(kind: StreamMessage['kind']): string {
   if (kind === 'pedit') return 'GEMINI / IMAGE';
   if (kind === 'video') return 'VIDEO';
   if (kind === 'deconstruct') return 'DESCRIBE';
+  if (kind === 'suno') return 'SUNO';
   return String(kind || '').toUpperCase();
 }
 
@@ -323,8 +324,17 @@ function renderNode(state: WorkflowState, node: TraceNode, currentTarget: TraceT
     : '';
 
   const inputRefs = (() => {
-    if (msg.kind === 'generate') return [msg.mjPadRefId, msg.mjSrefRefId, msg.mjCrefRefId].filter((x): x is string => typeof x === 'string' && x.trim());
+    if (msg.kind === 'generate') {
+      const padIds = (Array.isArray(msg.mjPadRefIds) ? msg.mjPadRefIds : typeof msg.mjPadRefId === 'string' ? [msg.mjPadRefId] : [])
+        .map((x) => String(x || '').trim())
+        .filter(Boolean)
+        .slice(0, 12);
+      return [...padIds, msg.mjSrefRefId, msg.mjCrefRefId].filter(
+        (x): x is string => typeof x === 'string' && x.trim()
+      );
+    }
     if (msg.kind === 'pedit') return (Array.isArray(msg.refIds) ? msg.refIds : msg.refId ? [msg.refId] : []).filter(Boolean);
+    if (msg.kind === 'suno') return (Array.isArray(msg.refIds) ? msg.refIds : []).filter(Boolean);
     if (msg.kind === 'video') {
       const provider = String(msg.provider || '').trim();
       const mvSeqRaw = Array.isArray((msg as any).mvSequence) ? (msg as any).mvSequence : [];
@@ -474,13 +484,18 @@ export function createTraceBlock(params: {
         if (!prompt) return showError('提示词为空');
         applyPromptToMainInput(prompt);
         params.store.update((st) => {
-          const ids = [msg.mjPadRefId, msg.mjSrefRefId, msg.mjCrefRefId]
-            .filter((x): x is string => typeof x === 'string' && x.trim());
+          const padRefIds = (Array.isArray(msg.mjPadRefIds) ? msg.mjPadRefIds : typeof msg.mjPadRefId === 'string' ? [msg.mjPadRefId] : [])
+            .map((x) => String(x || '').trim())
+            .filter(Boolean)
+            .slice(0, 12);
+          const ids = [...padRefIds, msg.mjSrefRefId, msg.mjCrefRefId].filter(
+            (x): x is string => typeof x === 'string' && x.trim()
+          );
           return {
             ...st,
             traceHeadMessageId: msg.id,
             commandMode: 'mj',
-            mjPadRefId: typeof msg.mjPadRefId === 'string' ? msg.mjPadRefId : st.mjPadRefId,
+            mjPadRefIds: padRefIds.length ? padRefIds : st.mjPadRefIds,
             mjSrefRefId: typeof msg.mjSrefRefId === 'string' ? msg.mjSrefRefId : st.mjSrefRefId,
             mjCrefRefId: typeof msg.mjCrefRefId === 'string' ? msg.mjCrefRefId : st.mjCrefRefId,
             mjSrefImageUrl: typeof msg.mjSrefImageUrl === 'string' ? msg.mjSrefImageUrl : st.mjSrefImageUrl,
@@ -702,12 +717,16 @@ export function createTraceBlock(params: {
       if (kind === 'set-pad') {
         const refId = action.dataset.refId || '';
         if (!refId) return;
-        params.store.update((s) => ({
-          ...s,
-          mjPadRefId: refId,
-          selectedReferenceIds: Array.from(new Set([...(s.selectedReferenceIds || []), refId])),
-        }));
-        showMessage('已设为 PAD');
+        params.store.update((s) => {
+          const padIds = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.slice() : [];
+          if (!padIds.includes(refId)) padIds.push(refId);
+          return {
+            ...s,
+            mjPadRefIds: padIds.slice(0, 12),
+            selectedReferenceIds: Array.from(new Set([...(s.selectedReferenceIds || []), refId])),
+          };
+        });
+        showMessage('已加入 PAD');
         return;
       }
       if (kind === 'set-start') {

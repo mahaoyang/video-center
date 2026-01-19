@@ -48,7 +48,7 @@ function pickBestUrl(ref: Pick<ReferenceImage, 'cdnUrl' | 'url' | 'localUrl' | '
   return '';
 }
 
-function pickAudioUrl(asset: Pick<MediaAsset, 'url' | 'localUrl' | 'localKey'>): string {
+function pickMediaUrl(asset: Pick<MediaAsset, 'url' | 'localUrl' | 'localKey'>): string {
   const candidates = [asset.url, asset.localUrl].map((x) => String(x || '').trim()).filter(Boolean);
   for (const u of candidates) {
     if (!u.startsWith('data:')) return u;
@@ -132,37 +132,37 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
     }
   }
 
-  function selectedAudioAsset(state: WorkflowState): MediaAsset | undefined {
-    const id = typeof state.mvAudioAssetId === 'string' ? state.mvAudioAssetId : '';
-    if (!id) return undefined;
+function selectedPostAssets(state: WorkflowState): { audios: MediaAsset[]; videos: MediaAsset[] } {
+  const ids = Array.isArray((state as any).selectedMediaAssetIds)
+    ? (state as any).selectedMediaAssetIds.map((x: any) => String(x || '').trim()).filter(Boolean).slice(0, 36)
+    : [];
+  const audios: MediaAsset[] = [];
+  const videos: MediaAsset[] = [];
+  for (const id of ids) {
     const asset = state.mediaAssets.find((a) => a.id === id);
-    if (!asset || asset.kind !== 'audio') return undefined;
-    return asset;
+    if (!asset) continue;
+    if (asset.kind === 'audio') audios.push(asset);
+    if (asset.kind === 'video') videos.push(asset);
   }
-
-  function selectedVideoAsset(state: WorkflowState): MediaAsset | undefined {
-    const id = typeof state.mvVideoAssetId === 'string' ? state.mvVideoAssetId : '';
-    if (!id) return undefined;
-    const asset = state.mediaAssets.find((a) => a.id === id);
-    if (!asset || asset.kind !== 'video') return undefined;
-    return asset;
-  }
+  return { audios, videos };
+}
 
   async function run() {
     const s0 = params.store.get();
-    const refIds = Array.isArray(s0.selectedReferenceIds)
-      ? s0.selectedReferenceIds.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 24)
+    const refIds = Array.isArray((s0 as any).postSelectedReferenceIds)
+      ? (s0 as any).postSelectedReferenceIds.map((x: any) => String(x || '').trim()).filter(Boolean).slice(0, 24)
       : [];
-    const audio = selectedAudioAsset(s0);
-    const video = selectedVideoAsset(s0);
+    const selected = selectedPostAssets(s0);
+    const audios = selected.audios;
+    const videos = selected.videos;
 
-    if (!refIds.length && !audio && !video) {
-      showError('请先在素材区选中需要后处理的图片/音频/视频（图片点击高亮；音频/视频点击选中）');
+    if (!refIds.length && !audios.length && !videos.length) {
+      showError('请先在素材区选中需要后处理的图片/音频/视频（均支持多选）');
       return;
     }
 
     const msgId = randomId('msg');
-    const totalSteps = refIds.length + (audio ? 1 : 0) + (video ? 1 : 0);
+    const totalSteps = refIds.length + audios.length + videos.length;
     let doneSteps = 0;
 
     function progressPercent(): number {
@@ -184,7 +184,7 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
       createdAt: Date.now(),
       role: 'ai',
       kind: 'postprocess',
-      text: normalizeMultiline(`后处理中…\n图片: ${refIds.length}${audio ? `\n音频: 1` : ''}${video ? `\n视频: 1` : ''}`),
+      text: normalizeMultiline(`后处理中…\n图片: ${refIds.length}\n音频: ${audios.length}\n视频: ${videos.length}`),
       progress: 0,
     };
     params.store.update((st) => ({
@@ -205,9 +205,10 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
         updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n图片 ${i + 1}/${refIds.length}：完成（${r.name}）`);
       }
 
-      if (audio) {
-        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n音频：响度归一化处理中…`);
-        const src = pickAudioUrl(audio);
+      for (let i = 0; i < audios.length; i++) {
+        const audio = audios[i]!;
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n音频 ${i + 1}/${audios.length}：响度归一化处理中…`);
+        const src = pickMediaUrl(audio);
         if (!src) throw new Error('音频缺少可用 URL，请重新上传');
         const resp = await params.api.audioProcess({ src });
         const result = resp?.result;
@@ -216,14 +217,15 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
         if (!url) throw new Error('音频后处理失败：缺少 outputUrl');
         outputs.push({ kind: 'audio', url, name: String(audio.name || 'audio_pro') });
         doneSteps += 1;
-        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n音频：完成（${String(audio.name || 'audio')}）`);
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n音频 ${i + 1}/${audios.length}：完成（${String(audio.name || 'audio')}）`);
       }
 
-      if (video) {
+      for (let i = 0; i < videos.length; i++) {
+        const video = videos[i]!;
         const preset = typeof s0.postVideoPreset === 'string' ? String(s0.postVideoPreset || '').trim() : '';
         const crf = typeof s0.postVideoCrf === 'number' && Number.isFinite(s0.postVideoCrf) ? s0.postVideoCrf : undefined;
-        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n视频：${preset ? `应用 ${preset}…` : '处理中…'}`);
-        const src = pickAudioUrl(video);
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n视频 ${i + 1}/${videos.length}：${preset ? `应用 ${preset}…` : '处理中…'}`);
+        const src = pickMediaUrl(video);
         if (!src) throw new Error('视频缺少可用 URL，请重新上传');
         const resp = await params.api.videoProcess({ src, preset: preset || undefined, crf: crf || undefined });
         const result = resp?.result;
@@ -232,7 +234,7 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
         if (!url) throw new Error('视频后处理失败：缺少 outputUrl');
         outputs.push({ kind: 'video', url, name: `${safeFileName(String(video.name || 'video'))}_post.mp4` });
         doneSteps += 1;
-        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n视频：完成（${String(video.name || 'video')}）`);
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n视频 ${i + 1}/${videos.length}：完成（${String(video.name || 'video')}）`);
       }
 
       params.store.update((st) => ({
