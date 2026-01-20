@@ -180,9 +180,9 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
 		          <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
 		            <img data-preview-src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" src="/api/slice?src=${encodeURIComponent(src)}&index=${i}" referrerpolicy="no-referrer" class="w-full h-auto block" />
 		            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/tile:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
-		              <button data-stream-action="pad" data-index="${i}"
-                    title="加入素材区并设为 PAD"
-                    aria-label="加入素材区并设为 PAD"
+		              <button data-stream-action="select" data-index="${i}"
+                    title="加入素材区并勾选"
+                    aria-label="加入素材区并勾选"
 		                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center pointer-events-auto">
 		                <i class="fas fa-plus text-xs"></i>
 		              </button>
@@ -263,8 +263,8 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
             </a>
             <button data-stream-action="selectUrl"
               class="w-12 h-12 rounded-2xl bg-studio-accent text-studio-bg hover:scale-105 transition-all flex items-center justify-center"
-              title="加入素材区"
-              aria-label="加入素材区">
+              title="加入素材区并勾选"
+              aria-label="加入素材区并勾选">
               <i class="fas fa-plus text-xs"></i>
             </button>
           </div>
@@ -458,14 +458,17 @@ function renderVideoMessage(m: StreamMessage): HTMLElement {
 function parseSunoBlocks(text: string): { control: string; style: string } | null {
   const raw = String(text || '').trim();
   if (!raw) return null;
-  const m1 = raw.match(/CONTROL_PROMPT\s*:\s*/i);
-  const m2 = raw.match(/STYLE_PROMPT\s*:\s*/i);
-  if (!m1 || !m2) return null;
-  const i1 = m1.index ?? -1;
-  const i2 = m2.index ?? -1;
+  const controlMatch =
+    raw.match(/CONTROL_PROMPT\s*:\s*/i) ||
+    raw.match(/LYRICS_PROMPT\s*:\s*/i) ||
+    raw.match(/LYRICS\s*:\s*/i);
+  const styleMatch = raw.match(/STYLE_PROMPT\s*:\s*/i);
+  if (!controlMatch || !styleMatch) return null;
+  const i1 = controlMatch.index ?? -1;
+  const i2 = styleMatch.index ?? -1;
   if (i1 < 0 || i2 < 0 || i2 <= i1) return null;
-  const control = raw.slice(i1 + m1[0].length, i2).trim();
-  const style = raw.slice(i2 + m2[0].length).trim();
+  const control = raw.slice(i1 + controlMatch[0].length, i2).trim();
+  const style = raw.slice(i2 + styleMatch[0].length).trim();
   if (!control || !style) return null;
   return { control, style };
 }
@@ -498,7 +501,9 @@ function renderSunoMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
   msg.dataset.streamMessage = '1';
   const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
-  const pending = !m.error && (p < 100 || !m.text || !m.text.trim() || (!m.text.includes('CONTROL_PROMPT:') && !m.text.includes('STYLE_PROMPT:')));
+  const pending = !m.error && (typeof m.progress !== 'number' || p < 100);
+  const requirement = typeof (m as any).userPrompt === 'string' ? String((m as any).userPrompt || '').trim() : '';
+  const thumbs = Array.isArray(m.inputImageUrls) ? m.inputImageUrls.map((u) => String(u || '').trim()).filter(Boolean).slice(0, 8) : [];
 
   msg.className = 'group animate-fade-in-up';
   if (pending) {
@@ -521,8 +526,7 @@ function renderSunoMessage(m: StreamMessage): HTMLElement {
     `;
     const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
     if (panel) {
-      const thumbs = Array.isArray(m.inputImageUrls) && m.inputImageUrls.length ? m.inputImageUrls : [];
-      const showThumbs = thumbs.slice(0, 3);
+      const showThumbs = thumbs.slice(0, 4);
       for (let i = 0; i < showThumbs.length; i++) {
         const u = showThumbs[i]!;
         const thumb = document.createElement('img');
@@ -532,7 +536,16 @@ function renderSunoMessage(m: StreamMessage): HTMLElement {
           'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
         if (i === 1) thumb.style.left = '2.75rem';
         if (i === 2) thumb.style.left = '5.5rem';
+        if (i === 3) thumb.style.left = '8.25rem';
         panel.appendChild(thumb);
+      }
+      const extra = thumbs.length - showThumbs.length;
+      if (extra > 0) {
+        const badge = document.createElement('div');
+        badge.className =
+          'absolute -top-2 left-[10.9rem] px-2 py-1 rounded-xl bg-black/70 border border-white/10 text-[9px] font-black text-white/80 shadow-2xl';
+        badge.textContent = `+${extra}`;
+        panel.appendChild(badge);
       }
     }
     return msg;
@@ -561,6 +574,13 @@ function renderSunoMessage(m: StreamMessage): HTMLElement {
         </div>
       </div>
 
+      ${requirement ? `
+        <div class="rounded-2xl border border-white/10 bg-black/20 p-5">
+          <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Requirement（你的需求）</div>
+          <div class="text-[11px] font-mono opacity-80 leading-relaxed whitespace-pre-wrap break-words select-text">${escapeHtml(requirement)}</div>
+        </div>
+      ` : ''}
+
       <div class="rounded-2xl border border-white/10 bg-black/20 p-5">
         <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Control Prompt（粘贴到 Suno Lyrics）</div>
         <div data-suno-control="1" class="text-[11px] font-mono opacity-80 leading-relaxed whitespace-pre-wrap break-words select-text">${escapeHtml(control)}</div>
@@ -576,6 +596,31 @@ function renderSunoMessage(m: StreamMessage): HTMLElement {
       <div data-error-text="1" class="text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
     </div>
   `;
+
+  const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
+  if (panel && thumbs.length) {
+    const showThumbs = thumbs.slice(0, 4);
+    for (let i = 0; i < showThumbs.length; i++) {
+      const u = showThumbs[i]!;
+      const thumb = document.createElement('img');
+      thumb.src = toAppImageSrc(u);
+      thumb.referrerPolicy = 'no-referrer';
+      thumb.className =
+        'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
+      if (i === 1) thumb.style.left = '2.75rem';
+      if (i === 2) thumb.style.left = '5.5rem';
+      if (i === 3) thumb.style.left = '8.25rem';
+      panel.appendChild(thumb);
+    }
+    const extra = thumbs.length - showThumbs.length;
+    if (extra > 0) {
+      const badge = document.createElement('div');
+      badge.className =
+        'absolute -top-2 left-[10.9rem] px-2 py-1 rounded-xl bg-black/70 border border-white/10 text-[9px] font-black text-white/80 shadow-2xl';
+      badge.textContent = `+${extra}`;
+      panel.appendChild(badge);
+    }
+  }
 
   const copyBtns = Array.from(msg.querySelectorAll<HTMLButtonElement>('button[data-suno-copy]'));
   for (const btn of copyBtns) {
@@ -747,23 +792,15 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
           .map((x) => String(x || '').trim())
           .filter(Boolean)
           .slice(0, 12);
-        const ids = Array.from(
-          new Set(
-            [...padRefIds, msg.mjSrefRefId, msg.mjCrefRefId]
-              .map((x) => (typeof x === 'string' ? x.trim() : ''))
-              .filter(Boolean)
-          )
-        );
         params.store.update((st) => ({
           ...st,
           traceHeadMessageId: msg.id,
           commandMode: 'mj',
-          mjPadRefIds: padRefIds,
           mjSrefRefId: typeof msg.mjSrefRefId === 'string' ? msg.mjSrefRefId : undefined,
           mjCrefRefId: typeof msg.mjCrefRefId === 'string' ? msg.mjCrefRefId : undefined,
           mjSrefImageUrl: typeof msg.mjSrefImageUrl === 'string' ? msg.mjSrefImageUrl : undefined,
           mjCrefImageUrl: typeof msg.mjCrefImageUrl === 'string' ? msg.mjCrefImageUrl : undefined,
-          selectedReferenceIds: ids,
+          selectedReferenceIds: padRefIds,
         }));
         setPromptInput(prompt);
         showMessage('已回填 MJ 入参（新分支）：编辑后点击发送（小飞机）执行');
@@ -787,7 +824,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
           ...st,
           traceHeadMessageId: msg.id,
           commandMode: 'deconstruct',
-          selectedReferenceIds: [refId],
+          selectedReferenceIds: [refId].map((x) => String(x || '').trim()).filter(Boolean).slice(0, 24),
           activeImageId: refId,
         }));
         showMessage('已回填 DESCRIBE 入参（新分支）：编辑后点击发送（小飞机）执行');
@@ -797,7 +834,10 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
       if (msg.kind === 'pedit') {
         const prompt = (msg.text || '').trim();
         if (!prompt) return showError('提示词为空');
-        const refIds = (Array.isArray(msg.refIds) ? msg.refIds : msg.refId ? [msg.refId] : []).filter(Boolean);
+        const refIds = (Array.isArray(msg.refIds) ? msg.refIds : msg.refId ? [msg.refId] : [])
+          .map((x) => String(x || '').trim())
+          .filter(Boolean)
+          .slice(0, 24);
         params.store.update((st) => ({
           ...st,
           traceHeadMessageId: msg.id,
@@ -876,9 +916,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
               mvSubtitleMode: msg.mvSubtitleMode === 'burn' ? 'burn' : 'soft',
               mvAction: mvAction,
               selectedReferenceIds: selectedRefIds,
-              mvVideoAssetId: videoAssetId,
-              mvAudioAssetId: audioAssetId,
-              mvSubtitleAssetId: subtitleAssetId,
+              selectedMediaAssetIds: [videoAssetId, audioAssetId, subtitleAssetId].filter(Boolean) as string[],
             };
           });
 
@@ -935,8 +973,8 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     hideBtn.dataset.streamHide = '1';
     hideBtn.title = '从对话界面移除（不删除历史/本地数据）';
     hideBtn.className =
-      'absolute top-4 right-[5.5rem] w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-red-400/30 hover:text-red-200 transition-all flex items-center justify-center ' +
-      'opacity-0 group-hover:opacity-100';
+      'absolute -top-4 right-[5.5rem] w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-red-400/30 hover:text-red-200 transition-all flex items-center justify-center z-30 ' +
+      'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto';
     hideBtn.innerHTML = '<i class="fas fa-trash text-[11px]"></i>';
     panel.appendChild(hideBtn);
 
@@ -945,8 +983,8 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     edit.dataset.streamEdit = '1';
     edit.title = '回填编辑（分叉重生）';
     edit.className =
-      'absolute top-4 right-[3.25rem] w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-studio-accent/30 hover:text-white transition-all flex items-center justify-center ' +
-      'opacity-0 group-hover:opacity-100';
+      'absolute -top-4 right-[3.25rem] w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-studio-accent/30 hover:text-white transition-all flex items-center justify-center z-30 ' +
+      'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto';
     edit.innerHTML = '<i class="fas fa-pen text-[11px]"></i>';
     panel.appendChild(edit);
 
@@ -955,10 +993,32 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     btn.dataset.streamTrace = '1';
     btn.title = '链路追踪';
     btn.className =
-      'absolute top-4 right-4 w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-studio-accent/30 hover:text-white transition-all flex items-center justify-center ' +
-      'opacity-0 group-hover:opacity-100';
+      'absolute -top-4 right-4 w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:border-studio-accent/30 hover:text-white transition-all flex items-center justify-center z-30 ' +
+      'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto';
     btn.innerHTML = '<i class="fas fa-sitemap text-[11px]"></i>';
     panel.appendChild(btn);
+
+    if (resolved.kind === 'postprocess') {
+      const outputs = Array.isArray((resolved as any).postOutputs) ? ((resolved as any).postOutputs as any[]).slice(0, 24) : [];
+      const firstImageOutput = outputs.find((o) => (o?.kind === 'image' || o?.kind === undefined) && String(o?.url || '').trim());
+      const raw = String(firstImageOutput?.url || '').trim();
+      if (raw) {
+        const base = safeDownloadName(String(firstImageOutput?.name || 'postprocess'), 'postprocess');
+        const downloadName =
+          base.toLowerCase().endsWith('.jpg') || base.toLowerCase().endsWith('.jpeg') ? base : `${base}.jpg`;
+        const href = `/api/image?src=${encodeURIComponent(raw)}&format=jpeg&download=1&name=${encodeURIComponent(base)}`;
+
+        const jpeg = document.createElement('a');
+        jpeg.href = href;
+        jpeg.download = downloadName;
+        jpeg.title = '下载 JPEG';
+        jpeg.setAttribute('aria-label', '下载 JPEG');
+        jpeg.className =
+          'absolute -top-4 right-[7.75rem] w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all flex items-center justify-center z-30';
+        jpeg.innerHTML = '<i class="fas fa-file-arrow-down text-[11px]"></i>';
+        panel.appendChild(jpeg);
+      }
+    }
 
     return el;
   }
@@ -983,6 +1043,11 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     if (m.kind !== 'postprocess') return false;
     const outputs = Array.isArray((m as any).postOutputs) ? ((m as any).postOutputs as any[]) : [];
     return !outputs.length && !m.error && (typeof m.progress !== 'number' || m.progress < 100);
+  }
+
+  function isSunoPending(m: StreamMessage): boolean {
+    if (m.kind !== 'suno') return false;
+    return !m.error && (typeof m.progress !== 'number' || m.progress < 100);
   }
 
   function reconcile(messages: StreamMessage[]) {
@@ -1055,6 +1120,14 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
             JSON.stringify((((resolved as any).postOutputs || []) as any[]).slice(0, 24)) ||
           (prev.text || '') !== (resolved.text || '') ||
           (prev.error || '') !== (resolved.error || ''));
+      const sunoTransition =
+        prev.kind === 'suno' &&
+        prev.role === 'ai' &&
+        (isSunoPending(prev) !== isSunoPending(resolved) ||
+          (prev.text || '') !== (resolved.text || '') ||
+          (prev.error || '') !== (resolved.error || '') ||
+          (prev.progress || 0) !== (resolved.progress || 0) ||
+          JSON.stringify((prev.inputImageUrls || []).slice(0, 8)) !== JSON.stringify((resolved.inputImageUrls || []).slice(0, 8)));
       const kindChanged = prev.kind !== resolved.kind || prev.role !== resolved.role;
       const needsReplace =
         kindChanged ||
@@ -1063,6 +1136,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
         peditTransition ||
         videoTransition ||
         postprocessTransition ||
+        sunoTransition ||
         (prev.kind === 'deconstruct' && (prev.text !== resolved.text || prev.imageUrl !== resolved.imageUrl)) ||
         (prev.kind === 'generate' && prev.role === 'user' && prev.text !== resolved.text) ||
         (prev.kind === 'upscale' && prev.role === 'user' && prev.text !== resolved.text) ||

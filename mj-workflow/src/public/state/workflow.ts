@@ -170,8 +170,8 @@ export interface WorkflowState {
   uploadedImageUrl?: string;
 
   referenceImages: ReferenceImage[];
-  selectedReferenceIds: string[]; // multi-select buffer (used by Deconstruct)
-  postSelectedReferenceIds: string[]; // Postprocess: explicit selection buffer
+  // Material selection: multi-select buffer for reference images (used by postprocess/deconstruct/mv, etc.)
+  selectedReferenceIds: string[];
 
   // MJ prompt "PAD" (垫图) - multi image reference
   mjPadRefIds: string[];
@@ -216,6 +216,13 @@ export interface WorkflowState {
 
   // Command hub mode + video settings
   commandMode?: CommandMode;
+  // SUNO prompt settings (for "Suno prompts" generator)
+  // mode: auto -> inferred from text, but defaults to English + allow lyrics;
+  // instrumental -> force instrumental-only control prompt;
+  // lyrics -> force lyrics-capable prompt.
+  sunoMode?: 'auto' | 'instrumental' | 'lyrics';
+  // language: auto -> default English unless user explicitly requests; otherwise force output language.
+  sunoLanguage?: 'auto' | 'en' | 'zh-cn' | 'zh-tw' | 'ja' | 'ko';
   // Prompt Beautify parameters (used by Command Mode: beautify)
   beautifyHint?: string;
   // Gemini Pro Image (text-to-image / edit / compose)
@@ -232,12 +239,9 @@ export interface WorkflowState {
 
   // MV compose (FFmpeg)
   mediaAssets: MediaAsset[];
-  // Postprocess: multi-select buffer for audio/video assets
+  // Material selection: multi-select buffer for audio/video/subtitle assets
   selectedMediaAssetIds: string[];
   mvSequence: MvSequenceItem[];
-  mvVideoAssetId?: string;
-  mvAudioAssetId?: string;
-  mvSubtitleAssetId?: string;
   mvSubtitleText?: string;
   mvText?: string;
   mvResolution?: string; // e.g. "source" | "1280x720" | "1920x1080"
@@ -258,7 +262,6 @@ export function createInitialWorkflowState(): WorkflowState {
     upscaledImages: [],
     referenceImages: [],
     selectedReferenceIds: [],
-    postSelectedReferenceIds: [],
     mjPadRefIds: [],
     history: [],
     streamMessages: [],
@@ -266,6 +269,8 @@ export function createInitialWorkflowState(): WorkflowState {
     plannerMessages: [],
     desktopHiddenPlannerMessageIds: [],
     commandMode: 'mj',
+    sunoMode: 'auto',
+    sunoLanguage: 'auto',
     beautifyHint: '',
     gimageAspect: '16:9',
     gimageSize: '2K',

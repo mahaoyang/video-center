@@ -4,6 +4,7 @@ import { byId } from '../atoms/ui';
 import type { ApiClient } from '../adapters/api';
 import { showError } from '../atoms/notify';
 import { isHttpUrl } from '../atoms/url';
+import { readSelectedReferenceIds, toggleId } from '../state/material';
 
 function getMjLink(ref: ReferenceImage): string | undefined {
   if (isHttpUrl(ref.cdnUrl)) return ref.cdnUrl;
@@ -21,21 +22,22 @@ function getDeleteKey(ref: ReferenceImage): string | undefined {
 function renderReferenceItem(params: {
   reference: ReferenceImage;
   state: WorkflowState;
-  selectedAsPad: boolean;
-  padIndex: number;
-  onTogglePad: () => void;
+  selected: boolean;
+  selectedIndex: number;
+  onToggleSelected: () => void;
   onSetSref: () => void;
   onSetCref: () => void;
   onDelete: () => void;
 }): HTMLElement {
   const wrapper = document.createElement('div');
-  wrapper.className = 'group relative aspect-square rounded-xl overflow-hidden border border-studio-border hover:border-studio-accent transition-all duration-300 ' +
-    (params.selectedAsPad ? 'ring-2 ring-studio-accent' : '');
+  wrapper.className =
+    'group relative aspect-square rounded-xl overflow-hidden border border-studio-border hover:border-studio-accent transition-all duration-300 ' +
+    (params.selected ? 'ring-2 ring-studio-accent' : '');
 
   const img = document.createElement('img');
   img.className = 'w-full h-full object-cover cursor-pointer opacity-50 group-hover:opacity-100 transition-opacity';
   img.src = params.reference.dataUrl || params.reference.url || params.reference.cdnUrl || params.reference.localUrl || '';
-  img.onclick = () => params.onTogglePad();
+  img.onclick = () => params.onToggleSelected();
 
   // Hover Overlay with Actions
   const overlay = document.createElement('div');
@@ -93,15 +95,15 @@ function renderReferenceItem(params: {
   wrapper.appendChild(overlay);
   wrapper.appendChild(delBtn);
 
-  if (typeof params.padIndex === 'number' && params.padIndex >= 0) {
+  if (typeof params.selectedIndex === 'number' && params.selectedIndex >= 0) {
     const badge = document.createElement('div');
     badge.className =
       'absolute left-1 bottom-1 min-w-6 h-6 px-2 rounded-full bg-black/60 border border-white/10 text-[9px] font-black text-studio-accent flex items-center justify-center z-20';
-    badge.textContent = `P${params.padIndex + 1}`;
+    badge.textContent = String(params.selectedIndex + 1);
     wrapper.appendChild(badge);
   }
 
-  if (params.selectedAsPad) {
+  if (params.selected) {
     const check = document.createElement('div');
     check.className = 'absolute bottom-1 right-1 w-4 h-4 rounded-full bg-studio-accent text-black flex items-center justify-center text-[8px] shadow-xl z-20';
     check.innerHTML = '<i class="fas fa-check"></i>';
@@ -115,13 +117,8 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
   const container = byId<HTMLElement>('referenceList');
   const clearBtn = document.getElementById('clearRefsBtn') as HTMLButtonElement | null;
 
-  function togglePad(id: string) {
-    params.store.update((s) => {
-      const ids = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.slice() : [];
-      const has = ids.includes(id);
-      const next = has ? ids.filter((x) => x !== id) : [...ids, id];
-      return { ...s, mjPadRefIds: next.slice(0, 12) };
-    });
+  function toggleSelected(id: string) {
+    params.store.update((s) => ({ ...s, selectedReferenceIds: toggleId(readSelectedReferenceIds(s, 24), id, 24) }));
   }
 
   function setSlot(kind: 'sref' | 'cref', ref: ReferenceImage) {
@@ -160,10 +157,6 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
     params.store.update((s) => {
       const nextRefs = s.referenceImages.filter((r) => r.id !== ref.id);
       const nextSelected = s.selectedReferenceIds.filter((id) => id !== ref.id);
-      const nextPadIds = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.filter((id) => id !== ref.id) : [];
-      const nextPostSelected = Array.isArray((s as any).postSelectedReferenceIds)
-        ? (s as any).postSelectedReferenceIds.filter((id: any) => id !== ref.id)
-        : [];
 
       const publicUrls = [ref.cdnUrl, ref.url].filter(Boolean) as string[];
       const mjSrefImageUrl = s.mjSrefImageUrl && publicUrls.includes(s.mjSrefImageUrl) ? undefined : s.mjSrefImageUrl;
@@ -173,8 +166,6 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
         ...s,
         referenceImages: nextRefs,
         selectedReferenceIds: nextSelected,
-        mjPadRefIds: nextPadIds,
-        postSelectedReferenceIds: nextPostSelected,
         mjSrefImageUrl,
         mjCrefImageUrl,
         mjSrefRefId: s.mjSrefRefId === ref.id ? undefined : s.mjSrefRefId,
@@ -186,16 +177,16 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
   function render(state: WorkflowState) {
     container.innerHTML = '';
     const refs = state.referenceImages.slice().reverse();
-    const padOrder = Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds : [];
+    const selectedOrder = readSelectedReferenceIds(state, 24);
 
     for (const r of refs) {
       container.appendChild(
         renderReferenceItem({
           reference: r,
           state,
-          selectedAsPad: Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds.includes(r.id) : false,
-          padIndex: padOrder.indexOf(r.id),
-          onTogglePad: () => togglePad(r.id),
+          selected: selectedOrder.includes(r.id),
+          selectedIndex: selectedOrder.indexOf(r.id),
+          onToggleSelected: () => toggleSelected(r.id),
           onSetSref: () => setSlot('sref', r),
           onSetCref: () => setSlot('cref', r),
           onDelete: () => void deleteReference(r),
@@ -212,11 +203,11 @@ export function createReferencePicker(params: { store: Store<WorkflowState>; api
   }
 
   clearBtn?.addEventListener('click', () => {
-    params.store.update((s) => ({ ...s, mjPadRefIds: [] }));
+    params.store.update((s) => ({ ...s, selectedReferenceIds: [] }));
   });
 
   render(params.store.get());
   params.store.subscribe(render);
 
-  return { togglePad };
+  return { toggleSelected };
 }

@@ -38,7 +38,7 @@ export interface ApiClient {
   visionDescribe(params: { imageUrl: string; question?: string; model?: string }): Promise<any>;
   geminiDescribe(params: { imageUrl: string }): Promise<any>;
   geminiChat(params: { messages: Array<{ role: string; content: string }> }): Promise<any>;
-  geminiSuno(params: { requirement: string; imageUrls?: string[] }): Promise<any>;
+  geminiSuno(params: { requirement: string; imageUrls?: string[]; mode?: string; language?: string }): Promise<any>;
   geminiTranslate(params: { text: string }): Promise<any>;
   geminiBeautify(params: { text: string; hint?: string }): Promise<any>;
   geminiProImage(params: { prompt: string; imageUrls?: string[]; aspectRatio?: string; imageSize?: string }): Promise<any>;

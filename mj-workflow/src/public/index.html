@@ -417,7 +417,7 @@
               multiple accept="image/*,video/*,audio/*,.srt,text/plain" />
             <button type="button" id="padMatrixBtn"
               class="absolute -bottom-1 -right-1 z-20 px-2 py-1 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest text-white/70 hover:text-studio-accent hover:border-studio-accent/30 transition-all">
-              Pad <span id="padCount" class="ml-1 text-studio-accent">0</span>
+              素材 <span id="padCount" class="ml-1 text-studio-accent">0</span>
             </button>
           </div>
           <div class="relative flex-1">
@@ -766,16 +766,16 @@
             class="w-full min-h-[140px] max-h-[40vh] overflow-auto bg-white/[0.02] border border-white/10 rounded-2xl p-5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words select-none"></div>
           <div id="mjWrapperStats" class="text-[9px] font-mono opacity-40 leading-relaxed"></div>
           <div class="text-[9px] opacity-30 leading-relaxed">
-            说明：PAD 图、SREF/CREF 在“生成”时会按需补全公网 URL（惰性上传到 CDN）；平时预览优先走本地 <code>/uploads</code>。
+            说明：参考图与 SREF/CREF 在“生成”时会按需补全公网 URL（惰性上传到 CDN）；平时预览优先走本地 <code>/uploads</code>。
           </div>
         </div>
 
         <div class="space-y-4 pt-10 border-t border-white/5">
           <div class="flex items-center justify-between gap-4">
-            <label class="text-[9px] font-black uppercase tracking-widest opacity-30">参考图选择（PAD / SREF / CREF）</label>
+            <label class="text-[9px] font-black uppercase tracking-widest opacity-30">参考图选择（勾选素材 / SREF / CREF）</label>
             <button id="clearRefsBtn" type="button"
               class="btn-studio btn-studio-outline !px-4 !py-2 !text-[8px] !rounded-xl hover:text-white">
-              Clear Pad
+              清空勾选
             </button>
           </div>
           <div id="referenceList" class="grid grid-cols-4 gap-3"></div>

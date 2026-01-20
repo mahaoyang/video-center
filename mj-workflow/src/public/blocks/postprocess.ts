@@ -3,6 +3,7 @@ import { showError, showMessage } from '../atoms/notify';
 import { randomId } from '../atoms/id';
 import type { Store } from '../state/store';
 import type { MediaAsset, PostprocessOutput, ReferenceImage, StreamMessage, WorkflowState } from '../state/workflow';
+import { readSelectedMediaAssetIds, readSelectedReferenceIds } from '../state/material';
 
 function normalizeMultiline(text: string): string {
   return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
@@ -39,7 +40,7 @@ async function fileFromRef(ref: Pick<ReferenceImage, 'name' | 'dataUrl' | 'base6
 }
 
 function pickBestUrl(ref: Pick<ReferenceImage, 'cdnUrl' | 'url' | 'localUrl' | 'localKey'>): string {
-  const candidates = [ref.cdnUrl, ref.url, ref.localUrl].map((x) => String(x || '').trim()).filter(Boolean);
+  const candidates = [ref.localUrl, ref.url, ref.cdnUrl].map((x) => String(x || '').trim()).filter(Boolean);
   for (const u of candidates) {
     if (!u.startsWith('data:')) return u;
   }
@@ -49,7 +50,7 @@ function pickBestUrl(ref: Pick<ReferenceImage, 'cdnUrl' | 'url' | 'localUrl' | '
 }
 
 function pickMediaUrl(asset: Pick<MediaAsset, 'url' | 'localUrl' | 'localKey'>): string {
-  const candidates = [asset.url, asset.localUrl].map((x) => String(x || '').trim()).filter(Boolean);
+  const candidates = [asset.localUrl, asset.url].map((x) => String(x || '').trim()).filter(Boolean);
   for (const u of candidates) {
     if (!u.startsWith('data:')) return u;
   }
@@ -98,44 +99,25 @@ export function createPostprocessBlock(params: { api: ApiClient; store: Store<Wo
     return params.store.get().referenceImages.find((r) => r.id === refId)!;
   }
 
-  async function promoteImage(refId: string): Promise<{ url: string; name: string }> {
-    const uploaded = await ensureImageUploaded(refId);
-    const name = String(uploaded.name || 'image');
-    if (typeof uploaded.cdnUrl === 'string' && uploaded.cdnUrl.trim()) {
-      return { url: uploaded.cdnUrl, name };
-    }
-    const localKey = String(uploaded.localKey || '').trim() || localKeyFromUploadsUrl(pickBestUrl(uploaded)) || '';
-    if (!localKey) {
-      const fallback = pickBestUrl(uploaded);
-      if (!fallback) throw new Error('图片缺少可用 URL');
-      return { url: fallback, name };
-    }
+  async function getImageOutputUrl(refId: string): Promise<{ url: string; name: string }> {
+    const current = params.store.get().referenceImages.find((r) => r.id === refId);
+    if (!current) throw new Error('素材不存在');
 
-    try {
-      const resp = await params.api.promoteUpload({ localKey });
-      const result = resp?.result;
-      if (resp?.code !== 0) throw new Error(String(resp?.description || '图床上传失败'));
-      const cdnUrl = typeof result?.cdnUrl === 'string' ? result.cdnUrl : undefined;
-      const url = typeof result?.url === 'string' ? result.url : cdnUrl;
-      if (url) {
-        params.store.update((s) => ({
-          ...s,
-          referenceImages: s.referenceImages.map((r) => (r.id === refId ? { ...r, url, cdnUrl: cdnUrl || r.cdnUrl } : r)),
-        }));
-        return { url, name };
-      }
-      throw new Error('图床上传失败：缺少 url');
-    } catch (e) {
-      const fallback = pickBestUrl(uploaded);
-      if (!fallback) throw e;
-      return { url: fallback, name };
-    }
+    const name = String(current.name || 'image');
+
+    // Short-circuit: if we already have a usable URL (local or remote), don't upload/promote.
+    const direct = pickBestUrl(current);
+    if (direct && !direct.startsWith('data:')) return { url: direct, name };
+
+    // If the image only exists in-memory (dataUrl/base64), cache it to local /uploads once.
+    const uploaded = await ensureImageUploaded(refId);
+    const local = pickBestUrl(uploaded);
+    if (!local) throw new Error('图片缺少可用 URL');
+    return { url: local, name };
   }
 
 function selectedPostAssets(state: WorkflowState): { audios: MediaAsset[]; videos: MediaAsset[] } {
-  const ids = Array.isArray((state as any).selectedMediaAssetIds)
-    ? (state as any).selectedMediaAssetIds.map((x: any) => String(x || '').trim()).filter(Boolean).slice(0, 36)
-    : [];
+  const ids = readSelectedMediaAssetIds(state, 36);
   const audios: MediaAsset[] = [];
   const videos: MediaAsset[] = [];
   for (const id of ids) {
@@ -149,9 +131,7 @@ function selectedPostAssets(state: WorkflowState): { audios: MediaAsset[]; video
 
   async function run() {
     const s0 = params.store.get();
-    const refIds = Array.isArray((s0 as any).postSelectedReferenceIds)
-      ? (s0 as any).postSelectedReferenceIds.map((x: any) => String(x || '').trim()).filter(Boolean).slice(0, 24)
-      : [];
+    const refIds = readSelectedReferenceIds(s0, 24);
     const selected = selectedPostAssets(s0);
     const audios = selected.audios;
     const videos = selected.videos;
@@ -198,8 +178,8 @@ function selectedPostAssets(state: WorkflowState): { audios: MediaAsset[]; video
 
       for (let i = 0; i < refIds.length; i++) {
         const refId = refIds[i]!;
-        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n图片 ${i + 1}/${refIds.length}：上传到图床…`);
-        const r = await promoteImage(refId);
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n图片 ${i + 1}/${refIds.length}：准备素材…`);
+        const r = await getImageOutputUrl(refId);
         outputs.push({ kind: 'image', url: r.url, name: r.name });
         doneSteps += 1;
         updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n图片 ${i + 1}/${refIds.length}：完成（${r.name}）`);

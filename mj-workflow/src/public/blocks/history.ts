@@ -235,7 +235,7 @@ export function createHistoryView(store: Store<WorkflowState>) {
         ...s,
         prompt,
         referenceImages: nextLibrary,
-        mjPadRefIds: padIds,
+        selectedReferenceIds: padIds,
         step: 4,
       };
     });

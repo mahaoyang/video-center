@@ -6,6 +6,7 @@ import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { onStreamTileEvent } from '../atoms/stream-events';
 import type { Store } from '../state/store';
 import type { StreamMessage, WorkflowState } from '../state/workflow';
+import { readSelectedReferenceIds } from '../state/material';
 
 function canonicalMediaUrl(raw: string): string {
   const u = String(raw || '').trim();
@@ -48,13 +49,14 @@ function updateMessageById(store: Store<WorkflowState>, id: string, patch: Parti
   }));
 }
 
-function selectExistingReference(store: Store<WorkflowState>, id: string) {
+function addSelectedReference(store: Store<WorkflowState>, id: string) {
   store.update((s) => {
-    const selected = new Set(s.selectedReferenceIds);
-    selected.add(id);
-    const padIds = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.slice() : [];
-    if (!padIds.includes(id)) padIds.push(id);
-    return { ...s, selectedReferenceIds: Array.from(selected), mjPadRefIds: padIds.slice(0, 12) };
+    const cleaned = String(id || '').trim();
+    if (!cleaned) return s;
+    const current = readSelectedReferenceIds(s, 24);
+    if (current.includes(cleaned)) return s;
+    const next = [...current, cleaned];
+    return { ...s, selectedReferenceIds: next.slice(next.length - 24) };
   });
 }
 
@@ -81,7 +83,8 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       const originKey = `slice:${src}#${index}`;
       const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
       if (existing) {
-        selectExistingReference(params.store, existing.id);
+        addSelectedReference(params.store, existing.id);
+        showMessage('已加入素材区并勾选');
         return;
       }
 
@@ -114,12 +117,12 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
           },
         ],
-        selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
-        mjPadRefIds: Array.from(new Set([...(Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds : []), referenceId])).slice(0, 12),
+        selectedReferenceIds: [...readSelectedReferenceIds(s, 24), referenceId].slice(-24),
       }));
+      showMessage('已加入素材区并勾选');
     } catch (e) {
       console.error('streamAddPadFromSlice failed:', e);
-      showError((e as Error)?.message || '加入垫图失败');
+      showError((e as Error)?.message || '加入素材区失败');
     }
   }
 
@@ -177,7 +180,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       const originKey = `slice:${src}#${index}`;
       const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
       if (existing) {
-        selectExistingReference(params.store, existing.id);
+        addSelectedReference(params.store, existing.id);
         return;
       }
 
@@ -211,11 +214,10 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
           },
         ],
-        selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
-        mjPadRefIds: Array.from(new Set([...(Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds : []), referenceId])).slice(0, 12),
+        selectedReferenceIds: [...readSelectedReferenceIds(s, 24), referenceId].slice(-24),
       }));
 
-      showMessage('已选中该图，并加入垫图（PAD）');
+      showMessage('已加入素材区并勾选');
     } catch (e) {
       console.error('streamSelectFromSlice failed:', e);
       showError((e as Error)?.message || '选图失败');
@@ -227,7 +229,8 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       const originKey = `url:${src}`;
       const existing = params.store.get().referenceImages.find((r) => r.originKey === originKey);
       if (existing) {
-        selectExistingReference(params.store, existing.id);
+        addSelectedReference(params.store, existing.id);
+        showMessage('已加入素材区并勾选');
         return;
       }
 
@@ -261,11 +264,10 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
             localKey: typeof result.localKey === 'string' ? result.localKey : undefined,
           },
         ],
-        selectedReferenceIds: Array.from(new Set([...s.selectedReferenceIds, referenceId])),
-        mjPadRefIds: Array.from(new Set([...(Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds : []), referenceId])).slice(0, 12),
+        selectedReferenceIds: [...readSelectedReferenceIds(s, 24), referenceId].slice(-24),
       }));
 
-      showMessage('已加入图片栏并设为 PAD');
+      showMessage('已加入素材区并勾选');
     } catch (e) {
       console.error('selectFromUrl failed:', e);
       showError((e as Error)?.message || '加入失败');

@@ -9,6 +9,7 @@ import { urlToBase64 } from '../atoms/file';
 import { randomId } from '../atoms/id';
 import { normalizeMjPromptForGeminiDescribe } from '../atoms/mj-normalize';
 import { isHttpUrl } from '../atoms/url';
+import { readSelectedReferenceIds } from '../state/material';
 
 function getActiveImage(state: WorkflowState) {
   const id = state.activeImageId;
@@ -52,8 +53,9 @@ export function createDescribeBlock(params: { api: ApiClient; store: Store<Workf
     try {
       const s = params.store.get();
       const baseHead = s.traceHeadMessageId;
-      const selected = s.selectedReferenceIds.length
-        ? s.referenceImages.filter((r) => s.selectedReferenceIds.includes(r.id))
+      const selectedIds = readSelectedReferenceIds(s, 24);
+      const selected = selectedIds.length
+        ? s.referenceImages.filter((r) => selectedIds.includes(r.id))
         : (() => {
             const one = getActiveImage(s);
             return one ? [one] : [];

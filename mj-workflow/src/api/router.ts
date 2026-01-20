@@ -36,6 +36,47 @@ function normalizeInputImageUrl(req: Request, value: string): string {
   return new URL(raw, req.url).toString();
 }
 
+function normalizeGeminiImageInput(req: Request, rawValue: string): string {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('data:')) return raw;
+
+  const serverOrigin = new URL(req.url).origin;
+
+  // Only allow local uploads explicitly, but fetch them via our own /api/image to avoid exposing filesystem paths.
+  if (raw.startsWith('/uploads/')) {
+    return new URL(`/api/image?src=${encodeURIComponent(raw)}`, req.url).toString();
+  }
+
+  // Allow explicitly using our image proxy endpoint (same-origin only).
+  if (raw.startsWith('/api/image?')) {
+    return new URL(raw, req.url).toString();
+  }
+
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    let absolute: URL;
+    try {
+      absolute = new URL(raw);
+    } catch {
+      return '';
+    }
+    // Allow same-origin URLs only when they point to our own safe endpoints.
+    if (absolute.origin === serverOrigin) {
+      if (absolute.pathname.startsWith('/uploads/')) {
+        return new URL(`/api/image?src=${encodeURIComponent(absolute.pathname)}`, req.url).toString();
+      }
+      if (absolute.pathname.startsWith('/api/image')) {
+        return absolute.toString();
+      }
+    }
+    if (isUnsafeHost(absolute.hostname)) return '';
+    return absolute.toString();
+  }
+
+  // Reject other relative paths to avoid SSRF to internal endpoints.
+  return '';
+}
+
 function sniffImageExt(bytes: Uint8Array): string | null {
   if (bytes.length >= 8) {
     // PNG
@@ -801,6 +842,9 @@ export function createApiRouter(deps: {
 	      try {
 	        const src = String(url.searchParams.get('src') || '').trim();
 	        if (!src) return jsonError({ status: 400, description: '缺少 src' });
+          const format = String(url.searchParams.get('format') || '').trim().toLowerCase();
+          const download = String(url.searchParams.get('download') || '').trim();
+          const nameHint = String(url.searchParams.get('name') || '').trim();
 
 	        let bytes: Uint8Array;
 	        let contentType: string | null = null;
@@ -875,11 +919,32 @@ export function createApiRouter(deps: {
 	          contentType = sniffedMime;
 	        }
 
+          if (format === 'jpeg' || format === 'jpg') {
+            const qRaw = Number(url.searchParams.get('quality') || '');
+            const quality = Number.isFinite(qRaw) ? Math.max(40, Math.min(95, Math.round(qRaw))) : 88;
+            try {
+              const out = await sharp(bytes).flatten({ background: '#ffffff' }).jpeg({ quality }).toBuffer();
+              bytes = new Uint8Array(out);
+              contentType = 'image/jpeg';
+            } catch (error) {
+              console.error('Image convert error:', error);
+              return jsonError({ status: 500, description: '图片转换失败（jpeg）', error });
+            }
+          }
+
+          const headers: Record<string, string> = {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=604800',
+          };
+          if (download === '1' || download.toLowerCase() === 'true') {
+            const safe = (v: string) => String(v || '').trim().replace(/[^\w.-]+/g, '_') || 'image';
+            const base = safe(nameHint || 'image');
+            const filename = format === 'jpeg' || format === 'jpg' ? `${base}.jpg` : base;
+            headers['Content-Disposition'] = `attachment; filename="${filename}"`;
+          }
+
 	        return new Response(bytes, {
-	          headers: {
-	            'Content-Type': contentType,
-	            'Cache-Control': 'public, max-age=604800',
-	          },
+	          headers,
 	        });
 	      } catch (error) {
 	        console.error('Image proxy error:', error);
@@ -1740,7 +1805,9 @@ export function createApiRouter(deps: {
         const imageUrl = body.imageUrl;
         if (!imageUrl) return jsonError({ status: 400, description: 'imageUrl 不能为空' });
 
-        const prompt = await deps.gemini.imageToPrompt(normalizeInputImageUrl(req, imageUrl));
+        const normalized = normalizeGeminiImageInput(req, String(imageUrl || ''));
+        if (!normalized) return jsonError({ status: 400, description: 'imageUrl 不合法（仅支持 data:image/* /uploads/* 或安全的 http(s)）' });
+        const prompt = await deps.gemini.imageToPrompt(normalized);
         return json({ code: 0, description: '成功', result: { prompt } });
       } catch (error) {
         console.error('Gemini describe error:', error);
@@ -1771,33 +1838,25 @@ export function createApiRouter(deps: {
         if (!deps.auth.geminiConfigured) {
           return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
         }
-        const body = await readJson<{ requirement?: string; imageUrls?: string[] }>(req);
+        const body = await readJson<{ requirement?: string; imageUrls?: string[]; mode?: string; language?: string }>(req);
         const requirement = String(body.requirement || '').trim();
         if (!requirement) return jsonError({ status: 400, description: 'requirement 不能为空' });
 
-        const imageUrls = Array.isArray(body.imageUrls)
-          ? body.imageUrls.map((u) => normalizeInputImageUrl(req, String(u || ''))).filter(Boolean).slice(0, 8)
-          : [];
-
-        // Basic SSRF guard: reject localhost/private IPs for absolute urls. (Relative /uploads/ is OK.)
-        for (const u of imageUrls) {
-          if (u.startsWith('data:')) continue;
-          if (u.startsWith('/uploads/')) continue;
-          let absolute: URL;
-          try {
-            absolute = new URL(u);
-          } catch {
-            absolute = new URL(u, req.url);
-          }
-          if (!['http:', 'https:'].includes(absolute.protocol)) {
-            return jsonError({ status: 400, description: '仅支持 http/https 图片或 data:image/* 或 /uploads/*' });
-          }
-          if (isUnsafeHost(absolute.hostname)) {
-            return jsonError({ status: 400, description: '禁止访问内网地址' });
-          }
+        const rawUrls = Array.isArray(body.imageUrls) ? body.imageUrls.map((u) => String(u || '').trim()).filter(Boolean) : [];
+        const imageUrls = rawUrls.map((u) => normalizeGeminiImageInput(req, u)).filter(Boolean).slice(0, 8);
+        if (rawUrls.length && !imageUrls.length) {
+          return jsonError({ status: 400, description: '图片 URL 不合法（仅支持 data:image/* /uploads/* 或安全的 http(s)）' });
         }
 
-        const text = await deps.gemini.sunoPrompt({ requirement, imageUrls });
+        const modeRaw = String((body as any).mode || '').trim().toLowerCase();
+        const languageRaw = String((body as any).language || '').trim().toLowerCase();
+        const mode = modeRaw === 'instrumental' || modeRaw === 'lyrics' || modeRaw === 'auto' ? modeRaw : undefined;
+        const language =
+          languageRaw === 'auto' || languageRaw === 'en' || languageRaw === 'zh-cn' || languageRaw === 'zh-tw' || languageRaw === 'ja' || languageRaw === 'ko'
+            ? languageRaw
+            : undefined;
+
+        const text = await deps.gemini.sunoPrompt({ requirement, imageUrls, mode, language });
         return json({ code: 0, description: '成功', result: { text } });
       } catch (error) {
         console.error('Gemini suno error:', error);
@@ -1880,10 +1939,14 @@ export function createApiRouter(deps: {
         const imageUrls = Array.isArray(body.imageUrls)
           ? body.imageUrls.map((u) => String(u || '').trim()).filter(Boolean)
           : [];
+        const normalizedImageUrls = imageUrls.map((u) => normalizeGeminiImageInput(req, u)).filter(Boolean);
+        if (imageUrls.length && !normalizedImageUrls.length) {
+          return jsonError({ status: 400, description: 'imageUrls 不合法（仅支持 data:image/* /uploads/* 或安全的 http(s)）' });
+        }
 
         const outputs = await deps.gemini.generateOrEditImages({
           prompt,
-          imageUrls: imageUrls.map((u) => normalizeInputImageUrl(req, u)),
+          imageUrls: normalizedImageUrls,
           aspectRatio: typeof body.aspectRatio === 'string' ? body.aspectRatio : undefined,
           imageSize: typeof body.imageSize === 'string' ? body.imageSize : undefined,
           responseModalities: ['IMAGE'],
@@ -1931,7 +1994,9 @@ export function createApiRouter(deps: {
         const { imageUrl, editPrompt } = body;
         if (!imageUrl || !editPrompt) return jsonError({ status: 400, description: 'imageUrl 和 editPrompt 不能为空' });
 
-        const result = await deps.gemini.editImage(normalizeInputImageUrl(req, imageUrl), editPrompt);
+        const normalized = normalizeGeminiImageInput(req, String(imageUrl || ''));
+        if (!normalized) return jsonError({ status: 400, description: 'imageUrl 不合法（仅支持 data:image/* /uploads/* 或安全的 http(s)）' });
+        const result = await deps.gemini.editImage(normalized, editPrompt);
         if (!result) return jsonError({ status: 500, description: '图片编辑失败，未返回图片' });
 
         return json({ code: 0, description: '成功', result: { imageDataUrl: result } });

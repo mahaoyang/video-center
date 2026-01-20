@@ -1,6 +1,7 @@
 import type { Store } from '../state/store';
 import type { MediaAsset, PlannerMessage, ReferenceImage, StreamMessage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { randomId } from '../atoms/id';
+import { readSelectedMediaAssetIds, readSelectedReferenceIds } from '../state/material';
 
 const STORAGE_KEY = 'mj-workflow:persist:v1';
 
@@ -28,6 +29,7 @@ type Persisted = {
     localKey?: string;
   }>;
   selectedReferenceIds: string[];
+  // Legacy (deprecated): previous postprocess-only selection buffer for images.
   postSelectedReferenceIds?: string[];
   mjPadRefIds?: string[];
   mjPadRefId?: string;
@@ -115,6 +117,8 @@ type Persisted = {
   mvVisualRefIds?: string[];
 
   commandMode?: string;
+  sunoMode?: string;
+  sunoLanguage?: string;
   beautifyHint?: string;
   postVideoPreset?: string;
   postVideoCrf?: number;
@@ -129,6 +133,7 @@ type Persisted = {
   videoStartRefId?: string;
   videoEndRefId?: string;
 
+  // Legacy (deprecated): MV-only single selection fields.
   mvVideoAssetId?: string;
   mvAudioAssetId?: string;
   mvSubtitleAssetId?: string;
@@ -191,10 +196,7 @@ function toPersisted(state: WorkflowState): Persisted {
       upscaledImages: h.upscaledImages.slice(-10),
     })),
     referenceLibrary: referenceLibrary.slice(-40),
-    selectedReferenceIds: state.selectedReferenceIds.slice(),
-    postSelectedReferenceIds: Array.isArray((state as any).postSelectedReferenceIds)
-      ? (state as any).postSelectedReferenceIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 24)
-      : [],
+    selectedReferenceIds: readSelectedReferenceIds(state, 24),
     mjPadRefIds: Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds.slice(0, 12) : [],
     // Back-compat: keep legacy single field as the first PAD ref (if any).
     mjPadRefId: Array.isArray(state.mjPadRefIds) && state.mjPadRefIds.length ? state.mjPadRefIds[0] : undefined,
@@ -297,9 +299,7 @@ function toPersisted(state: WorkflowState): Persisted {
       localKey: typeof a.localKey === 'string' ? a.localKey : undefined,
       text: typeof a.text === 'string' ? a.text : undefined,
     })),
-    selectedMediaAssetIds: Array.isArray((state as any).selectedMediaAssetIds)
-      ? (state as any).selectedMediaAssetIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 36)
-      : [],
+    selectedMediaAssetIds: readSelectedMediaAssetIds(state, 36),
     desktopHiddenStreamMessageIds: Array.isArray(state.desktopHiddenStreamMessageIds)
       ? state.desktopHiddenStreamMessageIds.map((id) => String(id || '').trim()).filter(Boolean).slice(-400)
       : [],
@@ -307,6 +307,8 @@ function toPersisted(state: WorkflowState): Persisted {
       ? (state as any).desktopHiddenPlannerMessageIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(-400)
       : [],
     commandMode: state.commandMode,
+    sunoMode: typeof (state as any).sunoMode === 'string' ? (state as any).sunoMode : undefined,
+    sunoLanguage: typeof (state as any).sunoLanguage === 'string' ? (state as any).sunoLanguage : undefined,
     beautifyHint: typeof state.beautifyHint === 'string' && state.beautifyHint.trim() ? state.beautifyHint.trim() : undefined,
     postVideoPreset: typeof state.postVideoPreset === 'string' && state.postVideoPreset.trim() ? state.postVideoPreset.trim() : undefined,
     postVideoCrf: typeof state.postVideoCrf === 'number' && Number.isFinite(state.postVideoCrf) ? state.postVideoCrf : undefined,
@@ -320,13 +322,6 @@ function toPersisted(state: WorkflowState): Persisted {
     videoSize: state.videoSize,
     videoStartRefId: state.videoStartRefId,
     videoEndRefId: state.videoEndRefId,
-
-    mvVisualRefIds: Array.isArray(state.mvVisualRefIds)
-      ? state.mvVisualRefIds.map((id) => String(id || '')).filter(Boolean).slice(0, 24)
-      : [],
-    mvVideoAssetId: typeof state.mvVideoAssetId === 'string' ? state.mvVideoAssetId : undefined,
-    mvAudioAssetId: typeof state.mvAudioAssetId === 'string' ? state.mvAudioAssetId : undefined,
-    mvSubtitleAssetId: typeof state.mvSubtitleAssetId === 'string' ? state.mvSubtitleAssetId : undefined,
     mvSubtitleText: typeof state.mvSubtitleText === 'string' ? state.mvSubtitleText : undefined,
     mvText: typeof state.mvText === 'string' ? state.mvText : undefined,
     mvResolution: typeof state.mvResolution === 'string' ? state.mvResolution : undefined,
@@ -351,7 +346,6 @@ export function loadPersistedState(): {
   history: WorkflowHistoryItem[];
   referenceImages: ReferenceImage[];
   selectedReferenceIds: string[];
-  postSelectedReferenceIds: string[];
   mjPadRefIds: string[];
   mjSrefImageUrl?: string;
   mjCrefImageUrl?: string;
@@ -365,6 +359,8 @@ export function loadPersistedState(): {
   desktopHiddenStreamMessageIds: string[];
   desktopHiddenPlannerMessageIds: string[];
   commandMode?: string;
+  sunoMode?: string;
+  sunoLanguage?: string;
   beautifyHint?: string;
   postVideoPreset?: string;
   postVideoCrf?: number;
@@ -379,9 +375,6 @@ export function loadPersistedState(): {
   videoStartRefId?: string;
   videoEndRefId?: string;
   mvSequence?: Array<{ refId: string; durationSeconds?: number }>;
-  mvVideoAssetId?: string;
-  mvAudioAssetId?: string;
-  mvSubtitleAssetId?: string;
   mvSubtitleText?: string;
   mvText?: string;
   mvResolution?: string;
@@ -397,13 +390,13 @@ export function loadPersistedState(): {
       history: [],
       referenceImages: [],
       selectedReferenceIds: [],
-      postSelectedReferenceIds: [],
       mjPadRefIds: [],
       streamMessages: [],
       plannerMessages: [],
       mediaAssets: [],
       selectedMediaAssetIds: [],
       desktopHiddenStreamMessageIds: [],
+      desktopHiddenPlannerMessageIds: [],
     };
 
   const referenceImages: ReferenceImage[] = parsed.referenceLibrary.map((r: any) => ({
@@ -546,9 +539,22 @@ export function loadPersistedState(): {
     ? (parsed as any).selectedMediaAssetIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 36)
     : [];
 
-  const postSelectedReferenceIds: string[] = Array.isArray((parsed as any).postSelectedReferenceIds)
+  const selectedReferenceIdsRaw: string[] = Array.isArray((parsed as any).selectedReferenceIds)
+    ? (parsed as any).selectedReferenceIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 24)
+    : [];
+  const legacyPostSelectedReferenceIds: string[] = Array.isArray((parsed as any).postSelectedReferenceIds)
     ? (parsed as any).postSelectedReferenceIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 24)
     : [];
+  const selectedReferenceIds = Array.from(new Set([...selectedReferenceIdsRaw, ...legacyPostSelectedReferenceIds])).slice(0, 24);
+
+  const legacyMvPickedIds = [
+    typeof (parsed as any).mvVideoAssetId === 'string' ? (parsed as any).mvVideoAssetId : '',
+    typeof (parsed as any).mvAudioAssetId === 'string' ? (parsed as any).mvAudioAssetId : '',
+    typeof (parsed as any).mvSubtitleAssetId === 'string' ? (parsed as any).mvSubtitleAssetId : '',
+  ]
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
+  const mergedSelectedMediaAssetIds = Array.from(new Set([...selectedMediaAssetIds, ...legacyMvPickedIds])).slice(0, 36);
 
   const mvSequence: Array<{ refId: string; durationSeconds?: number }> = Array.isArray((parsed as any).mvSequence)
     ? (parsed as any).mvSequence
@@ -597,8 +603,7 @@ export function loadPersistedState(): {
   return {
     history,
     referenceImages,
-    selectedReferenceIds: parsed.selectedReferenceIds || [],
-    postSelectedReferenceIds,
+    selectedReferenceIds,
     mjPadRefIds,
     mjSrefImageUrl: typeof (parsed as any).mjSrefImageUrl === 'string' ? (parsed as any).mjSrefImageUrl : undefined,
     mjCrefImageUrl: typeof (parsed as any).mjCrefImageUrl === 'string' ? (parsed as any).mjCrefImageUrl : undefined,
@@ -608,10 +613,12 @@ export function loadPersistedState(): {
     streamMessages,
     plannerMessages,
     mediaAssets,
-    selectedMediaAssetIds,
+    selectedMediaAssetIds: mergedSelectedMediaAssetIds,
     desktopHiddenStreamMessageIds,
     desktopHiddenPlannerMessageIds,
     commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,
+    sunoMode: typeof (parsed as any).sunoMode === 'string' ? (parsed as any).sunoMode : undefined,
+    sunoLanguage: typeof (parsed as any).sunoLanguage === 'string' ? (parsed as any).sunoLanguage : undefined,
     beautifyHint: typeof (parsed as any).beautifyHint === 'string' ? (parsed as any).beautifyHint : undefined,
     postVideoPreset: typeof (parsed as any).postVideoPreset === 'string' ? (parsed as any).postVideoPreset : undefined,
     postVideoCrf: typeof (parsed as any).postVideoCrf === 'number' ? (parsed as any).postVideoCrf : undefined,
@@ -626,9 +633,6 @@ export function loadPersistedState(): {
     videoStartRefId: typeof (parsed as any).videoStartRefId === 'string' ? (parsed as any).videoStartRefId : undefined,
     videoEndRefId: typeof (parsed as any).videoEndRefId === 'string' ? (parsed as any).videoEndRefId : undefined,
     mvSequence,
-    mvVideoAssetId: typeof (parsed as any).mvVideoAssetId === 'string' ? (parsed as any).mvVideoAssetId : undefined,
-    mvAudioAssetId: typeof (parsed as any).mvAudioAssetId === 'string' ? (parsed as any).mvAudioAssetId : undefined,
-    mvSubtitleAssetId: typeof (parsed as any).mvSubtitleAssetId === 'string' ? (parsed as any).mvSubtitleAssetId : undefined,
     mvSubtitleText: typeof (parsed as any).mvSubtitleText === 'string' ? (parsed as any).mvSubtitleText : undefined,
     mvText: typeof (parsed as any).mvText === 'string' ? (parsed as any).mvText : undefined,
     mvResolution: typeof (parsed as any).mvResolution === 'string' ? (parsed as any).mvResolution : undefined,

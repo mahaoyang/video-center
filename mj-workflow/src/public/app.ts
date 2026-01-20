@@ -33,7 +33,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.history = persisted.history;
   initial.referenceImages = persisted.referenceImages;
   initial.selectedReferenceIds = persisted.selectedReferenceIds || [];
-  initial.postSelectedReferenceIds = (persisted as any).postSelectedReferenceIds || [];
   initial.mjPadRefIds = Array.isArray(persisted.mjPadRefIds) ? persisted.mjPadRefIds : [];
   initial.mjSrefImageUrl = persisted.mjSrefImageUrl;
   initial.mjCrefImageUrl = persisted.mjCrefImageUrl;
@@ -51,6 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initial.traceHeadMessageId = initial.streamMessages.at(-1)!.id;
   }
   if (persisted.commandMode) initial.commandMode = persisted.commandMode as any;
+  if ((persisted as any).sunoMode) (initial as any).sunoMode = (persisted as any).sunoMode as any;
+  if ((persisted as any).sunoLanguage) (initial as any).sunoLanguage = (persisted as any).sunoLanguage as any;
   if (persisted.beautifyHint) initial.beautifyHint = persisted.beautifyHint as any;
   if (persisted.postVideoPreset) initial.postVideoPreset = persisted.postVideoPreset as any;
   if (typeof persisted.postVideoCrf === 'number') initial.postVideoCrf = persisted.postVideoCrf;
@@ -65,9 +66,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (persisted.videoStartRefId) initial.videoStartRefId = persisted.videoStartRefId as any;
   if (persisted.videoEndRefId) initial.videoEndRefId = persisted.videoEndRefId as any;
   if (Array.isArray(persisted.mvSequence)) initial.mvSequence = persisted.mvSequence as any;
-  if (persisted.mvVideoAssetId) initial.mvVideoAssetId = persisted.mvVideoAssetId as any;
-  if (persisted.mvAudioAssetId) initial.mvAudioAssetId = persisted.mvAudioAssetId as any;
-  if (persisted.mvSubtitleAssetId) initial.mvSubtitleAssetId = persisted.mvSubtitleAssetId as any;
   if (typeof persisted.mvSubtitleText === 'string') initial.mvSubtitleText = persisted.mvSubtitleText as any;
   if (typeof persisted.mvText === 'string') initial.mvText = persisted.mvText as any;
   if (persisted.mvResolution) initial.mvResolution = persisted.mvResolution as any;

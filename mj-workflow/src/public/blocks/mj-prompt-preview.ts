@@ -2,6 +2,7 @@ import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { buildMjPrompt } from '../atoms/mj-prompt';
 import { isHttpUrl } from '../atoms/url';
+import { readSelectedReferenceIds } from '../state/material';
 
 export function createMjPromptPreview(store: Store<WorkflowState>) {
   const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement | null;
@@ -13,7 +14,7 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
   function compute(state: WorkflowState): string {
     const basePrompt = (promptInput.value.trim() || (state.prompt || '').trim()).trim();
 
-    const padUrls = (Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds : [])
+    const padUrls = readSelectedReferenceIds(state, 12)
       .map((id) => state.referenceImages.find((r) => r.id === id))
       .filter((r): r is NonNullable<typeof r> => Boolean(r))
       .map((r) => (isHttpUrl(r.cdnUrl) ? r.cdnUrl : isHttpUrl(r.url) ? r.url : undefined))
@@ -41,7 +42,7 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
     if (preview) preview.textContent = text;
 
     if (stats) {
-      const padRefs = (Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds : [])
+      const padRefs = readSelectedReferenceIds(state, 12)
         .map((id) => state.referenceImages.find((r) => r.id === id))
         .filter((r): r is NonNullable<typeof r> => Boolean(r));
       const padUrlReady = padRefs.filter((r) => isHttpUrl(r.cdnUrl || r.url)).length;
@@ -52,7 +53,7 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
       const hasSrefSelected = Boolean(state.mjSrefRefId || isHttpUrl(state.mjSrefImageUrl));
       const hasCrefSelected = Boolean(state.mjCrefRefId || isHttpUrl(state.mjCrefImageUrl));
       stats.textContent =
-        `PAD(URL): ${padUrlReady}/${padRefs.length}  PAD(base64): -` +
+        `REF(URL): ${padUrlReady}/${padRefs.length}` +
         (hasSrefSelected ? `  SREF: ${hasSrefUrl ? '✓' : '…'}` : `  SREF: -`) +
         (hasCrefSelected ? `  CREF: ${hasCrefUrl ? '✓' : '…'}` : `  CREF: -`);
     }

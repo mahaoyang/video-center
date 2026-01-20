@@ -10,7 +10,7 @@ export interface GeminiVisionClient {
   imageToPrompt(imageUrl: string): Promise<string>;
   chat(messages: Array<{ role: string; content: string }>): Promise<string>;
   generateText(system: string, user: string): Promise<string>;
-  sunoPrompt(params: { requirement: string; imageUrls?: string[] }): Promise<string>;
+  sunoPrompt(params: { requirement: string; imageUrls?: string[]; mode?: string; language?: string }): Promise<string>;
   editImage(imageUrl: string, editPrompt: string): Promise<string | null>;
   generateOrEditImages(params: {
     prompt: string;
@@ -23,6 +23,53 @@ export interface GeminiVisionClient {
 
 function isImageContentType(contentType: string | null): boolean {
   return Boolean(contentType && contentType.toLowerCase().startsWith('image/'));
+}
+
+function inferSunoLanguagePreference(requirement: string): 'EN' | 'ZH-CN' | 'ZH-TW' | 'JA' | 'KO' {
+  const r = String(requirement || '').toLowerCase();
+  // Explicit user intent wins.
+  if (/(zh-cn|简体|简中|中文|汉语|普通话)/i.test(requirement)) return 'ZH-CN';
+  if (/(zh-tw|繁体|繁中|粵語|粤语)/i.test(requirement)) return 'ZH-TW';
+  if (/(ja|日本語|日文|日语)/i.test(requirement)) return 'JA';
+  if (/(ko|한국어|韩文|韩语)/i.test(requirement)) return 'KO';
+  if (/(en|english|英文)/i.test(requirement)) return 'EN';
+  // Default: English.
+  if (r.includes('lyrics') || r.includes('vocal')) return 'EN';
+  return 'EN';
+}
+
+function isInstrumentalOnly(requirement: string): boolean {
+  return /纯音乐|纯伴奏|仅伴奏|无歌词|不要歌词|instrumental|no lyrics|without lyrics/i.test(String(requirement || ''));
+}
+
+function rewriteSunoInstrumentalControl(output: string): string {
+  const raw = String(output || '').trim();
+  if (!raw) return raw;
+  const m1 = raw.match(/CONTROL_PROMPT\s*:\s*/i);
+  const m2 = raw.match(/STYLE_PROMPT\s*:\s*/i);
+  if (!m1 || !m2) return raw;
+  const i1 = m1.index ?? -1;
+  const i2 = m2.index ?? -1;
+  if (i1 < 0 || i2 < 0 || i2 <= i1) return raw;
+
+  let control = raw.slice(i1 + m1[0].length, i2).trim();
+  const style = raw.slice(i2 + m2[0].length).trim();
+
+  // Remove any lyrics section if the model still included it.
+  const cut = control.match(/\[?\s*Lyrics Version\s*\]?/i);
+  if (cut && typeof cut.index === 'number' && cut.index >= 0) {
+    control = control.slice(0, cut.index).trim();
+  }
+
+  const lines = control
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => (l.startsWith('[') && l.endsWith(']') ? l : `[${l}]`));
+
+  const fixedControl = lines.join('\n');
+  const fixedStyle = style.replace(/\s+/g, ' ').trim();
+  return `CONTROL_PROMPT:\n${fixedControl}\n\nSTYLE_PROMPT:\n${fixedStyle}`.trim();
 }
 
 async function fetchImageAsBase64(imageUrl: string) {
@@ -197,25 +244,54 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
       const urls = Array.isArray(params?.imageUrls) ? params.imageUrls.map((u) => String(u || '').trim()).filter(Boolean) : [];
       const images = await Promise.all(urls.slice(0, 8).map((u) => compressImage(u)));
 
+      const modeOpt = String((params as any)?.mode || '').trim().toLowerCase();
+      const langOpt = String((params as any)?.language || '').trim().toLowerCase();
+      const instrumentalOnly = modeOpt === 'instrumental' ? true : modeOpt === 'lyrics' ? false : isInstrumentalOnly(requirement);
+      const language =
+        langOpt === 'zh-cn'
+          ? 'ZH-CN'
+          : langOpt === 'zh-tw'
+            ? 'ZH-TW'
+            : langOpt === 'ja'
+              ? 'JA'
+              : langOpt === 'ko'
+                ? 'KO'
+                : langOpt === 'en'
+                  ? 'EN'
+                  : inferSunoLanguagePreference(requirement);
+
       const system = [
         'You are a Suno prompt designer.',
-        'Goal: create a complete song design using Suno metatags for the "Lyrics" field, plus a matching "Style of Music" prompt.',
+        'Goal: create a complete Suno prompt package: one CONTROL_PROMPT (for Suno Lyrics field) and one STYLE_PROMPT (for Suno Style of Music field).',
         '',
         'You MUST follow the metatags guide below.',
         '',
         SUNO_METATAGS_GUIDE,
         '',
         'Hard rules:',
-        '- Output MUST be in Simplified Chinese (简体中文), except tags can be English inside [ ... ].',
+        '- Default output language is English (EN). Only switch languages if the user explicitly requests it.',
         '- Do NOT include Markdown code fences.',
         '- Do NOT include explanations.',
-        '- The CONTROL_PROMPT must include BOTH variants: Instrumental and Lyrics.',
-        '- The STYLE_PROMPT must be ONE line, comma-separated descriptors.',
+        '- Output MUST be EXACTLY two blocks and nothing else, in this exact order:',
+        '  CONTROL_PROMPT:',
+        '  <text>',
+        '  STYLE_PROMPT:',
+        '  <one line>',
+        '- CONTROL_PROMPT is pasted into Suno Lyrics. Any line NOT wrapped in [ ... ] may be sung as lyrics.',
+        '- Therefore: every non-lyric instruction line MUST be wrapped in [ ... ]. Never put plain text stage directions outside [ ... ].',
+        '- If MODE is INSTRUMENTAL_ONLY: CONTROL_PROMPT must contain ONLY bracketed metatag lines. Do NOT include any lyrics text and do NOT include a Lyrics Version section.',
+        '- If MODE is WITH_LYRICS: you MAY include both [Instrumental Version] and [Lyrics Version]. Lyrics lines (the ones intended to be sung) should be plain text; all structure/directions must be in [ ... ].',
+        '- STYLE_PROMPT must be ONE line, concise, comma-separated descriptors.',
         '',
         'The user will provide requirements; images (if any) are visual references for mood/genre/instrumentation.',
       ].join('\n');
 
-      const user = `USER_REQUIREMENTS:\n${requirement}`.trim();
+      const user = [
+        `USER_REQUIREMENTS:\n${requirement}`.trim(),
+        '',
+        `MODE: ${instrumentalOnly ? 'INSTRUMENTAL_ONLY' : 'WITH_LYRICS'}`,
+        `LANGUAGE: ${language}`,
+      ].join('\n');
 
       const response = await getAi().models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -232,7 +308,8 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
         },
       });
 
-      return response.text?.trim() || '';
+      const out = response.text?.trim() || '';
+      return instrumentalOnly ? rewriteSunoInstrumentalControl(out) : out;
     },
 
     /** 使用 Gemini 3 Pro Image 编辑图片（可选） */

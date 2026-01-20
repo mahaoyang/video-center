@@ -8,6 +8,7 @@ import { stripMjParamsAndUrls } from '../atoms/mj-prompt-parts';
 import { toAppImageSrc } from '../atoms/image-src';
 import { createPopoverMenu } from '../atoms/popover-menu';
 import { setupScrollArea } from '../atoms/scroll-area';
+import { readSelectedReferenceIds } from '../state/material';
 
 function bestEditSourceUrl(r: ReferenceImage | undefined): string | undefined {
   return r?.cdnUrl || r?.url || r?.localUrl || r?.dataUrl;
@@ -49,7 +50,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
   }
 
   function getSelectedRefsOrdered(state: WorkflowState): ReferenceImage[] {
-    const selected = new Set(state.selectedReferenceIds || []);
+    const selected = new Set(readSelectedReferenceIds(state, 24));
     return (state.referenceImages || []).filter((r) => selected.has(r.id));
   }
 
@@ -186,13 +187,12 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
       params.store.update((st) => ({
         ...st,
         referenceImages: [...st.referenceImages, ...newRefs],
-        selectedReferenceIds: [...(st.selectedReferenceIds || []), ...newRefs.map((r) => r.id)],
         streamMessages: st.streamMessages.map((m) =>
           m.id === aiMsgId ? { ...m, peditImageUrls, peditImageUrl, outputRefIds: newRefs.map((r) => r.id), progress: 100 } : m
         ),
       }));
 
-      showMessage('Gemini 生图/编辑完成：已加入图片栏（可继续以图生图/合成）');
+      showMessage('Gemini 生图/编辑完成：已加入素材区（未自动勾选）');
     } catch (e) {
       console.error('Gemini edit failed:', e);
       const msg = (e as Error)?.message || 'Gemini 生图/编辑失败';

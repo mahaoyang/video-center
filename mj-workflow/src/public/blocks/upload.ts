@@ -9,6 +9,7 @@ import { randomId } from '../atoms/id';
 import { sha256HexFromBlob } from '../atoms/blob-hash';
 import { toAppImageSrc } from '../atoms/image-src';
 import { isHttpUrl } from '../atoms/url';
+import { readSelectedMediaAssetIds, readSelectedReferenceIds, removeId, toggleId } from '../state/material';
 
 export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   const uploadInput = document.getElementById('imageUpload') as HTMLInputElement | null;
@@ -185,30 +186,21 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     const s = store.get();
     tray.innerHTML = '';
 
-    if (padCount) padCount.textContent = String(Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.length : 0);
-    const mjPadOrder = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds : [];
-    const isPost = String(s.commandMode || '').trim() === 'post';
-    const selectedImageIds = isPost
-      ? Array.isArray((s as any).postSelectedReferenceIds)
-        ? ((s as any).postSelectedReferenceIds as string[])
-        : []
-      : Array.isArray(s.selectedReferenceIds)
-        ? s.selectedReferenceIds
-        : [];
+    const selectedImageIds = readSelectedReferenceIds(s, 24);
+    const selectedMediaIds = readSelectedMediaAssetIds(s, 36);
+    if (padCount) padCount.textContent = String(selectedImageIds.length);
 
     const mvOrder = new Map<string, number>();
     if (String(s.commandMode || '').startsWith('mv')) {
-      const ids = Array.isArray(s.selectedReferenceIds) ? s.selectedReferenceIds : [];
-      for (const [idx, id] of ids.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 24).entries()) {
+      const ids = readSelectedReferenceIds(s, 24);
+      for (const [idx, id] of ids.entries()) {
         if (!mvOrder.has(id)) mvOrder.set(id, idx + 1);
       }
     }
 
     s.referenceImages.forEach((img) => {
       const isSelected = selectedImageIds.includes(img.id);
-      const isPad = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.includes(img.id) : false;
       const mvIndex = mvOrder.get(img.id);
-      const padIndex = isPad ? mjPadOrder.indexOf(img.id) : -1;
 
       const item = document.createElement('div');
       item.className =
@@ -218,11 +210,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       const frame = document.createElement('div');
       frame.className =
         'relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 ' +
-        (isPad
-          ? 'ring-2 ring-studio-accent border-studio-accent/30'
-          : isSelected
-            ? 'ring-1 ring-white/20 border-white/20'
-            : '');
+        (isSelected ? 'ring-2 ring-studio-accent border-studio-accent/30' : '');
 
       const previewUrl = img.dataUrl || img.cdnUrl || img.url || img.localUrl || '';
       const thumb = document.createElement('img');
@@ -230,30 +218,6 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       thumb.className = 'w-full h-full object-cover';
       thumb.referrerPolicy = 'no-referrer';
       frame.appendChild(thumb);
-
-      if (typeof padIndex === 'number' && padIndex >= 0) {
-        const badge = document.createElement('div');
-        badge.className =
-          'absolute left-1 bottom-1 min-w-6 h-6 px-2 rounded-full bg-black/60 border border-white/10 text-[10px] font-black text-studio-accent flex items-center justify-center z-20';
-        badge.textContent = `P${padIndex + 1}`;
-        frame.appendChild(badge);
-      }
-
-      if (isSelected) {
-        const sel = document.createElement('div');
-        sel.className =
-          'absolute right-1 top-1 w-5 h-5 rounded-full bg-black/60 border border-white/10 text-[9px] font-black text-white/80 flex items-center justify-center z-20';
-        sel.innerHTML = '<i class="fas fa-check"></i>';
-        frame.appendChild(sel);
-      }
-
-      if (isPad) {
-        const check = document.createElement('div');
-        check.className =
-          'absolute right-1 bottom-1 w-5 h-5 rounded-full bg-studio-accent text-black flex items-center justify-center text-[9px] shadow-xl z-20';
-        check.innerHTML = '<i class="fas fa-check"></i>';
-        frame.appendChild(check);
-      }
 
       if (typeof mvIndex === 'number' && Number.isFinite(mvIndex)) {
         const badge = document.createElement('div');
@@ -342,53 +306,47 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
         setTraceOpen(true);
       });
 
-      const padOverlay = document.createElement('div');
-      padOverlay.className =
+      // Center button: material selection (single source of truth for downstream actions like postprocess/SUNO/MV).
+      const selectOverlay = document.createElement('div');
+      selectOverlay.className =
         'absolute inset-0 flex items-center justify-center opacity-0 group-hover/ref:opacity-100 transition-opacity z-20';
 
-      const padBtn = document.createElement('button');
-      padBtn.type = 'button';
-      padBtn.title = isPad ? '取消 PAD' : '设为 PAD';
-      padBtn.setAttribute('aria-label', isPad ? '取消 PAD' : '设为 PAD');
-      padBtn.className =
+      const selectBtn = document.createElement('button');
+      selectBtn.type = 'button';
+      selectBtn.title = isSelected ? '取消勾选' : '勾选';
+      selectBtn.setAttribute('aria-label', isSelected ? '取消勾选' : '勾选');
+      selectBtn.className =
         'w-10 h-10 rounded-2xl border border-white/10 bg-black/55 backdrop-blur flex items-center justify-center ' +
-        (isPad
-          ? 'text-studio-bg bg-studio-accent border-studio-accent shadow-[0_0_18px_rgba(197,243,65,0.25)]'
+        (isSelected
+          ? 'text-studio-accent bg-black border-studio-accent/40 shadow-[0_0_18px_rgba(197,243,65,0.18)]'
           : 'text-white/80 hover:border-studio-accent/40 hover:text-studio-accent');
-      padBtn.innerHTML = isPad ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
-      padBtn.addEventListener('click', (e) => {
+      selectBtn.innerHTML = isSelected ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
+      selectBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        store.update((state) => {
-          const ids = Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds.slice() : [];
-          const has = ids.includes(img.id);
-          const next = has ? ids.filter((x) => x !== img.id) : [...ids, img.id];
-          return { ...state, mjPadRefIds: next.slice(0, 12) };
-        });
+        store.update((state) => ({ ...state, selectedReferenceIds: toggleId(readSelectedReferenceIds(state, 24), img.id, 24) }));
+        showMessage(isSelected ? '已取消勾选图片素材' : '已勾选图片素材');
       });
 
-      padOverlay.appendChild(padBtn);
-
-      frame.appendChild(padOverlay);
+      selectOverlay.appendChild(selectBtn);
+      frame.appendChild(selectOverlay);
       item.appendChild(frame);
       item.appendChild(del);
       item.appendChild(dl);
       item.appendChild(copyBtn);
       item.appendChild(trace);
 
-      item.addEventListener('click', () => {
+      item.addEventListener('click', (e) => {
+        const me = e as MouseEvent;
+        if (me.metaKey || me.ctrlKey) {
+          const url = String(previewUrl || '').trim();
+          if (url) window.open(toAppImageSrc(url), '_blank', 'noreferrer');
+          return;
+        }
         store.update((state) => {
-          const mode = String(state.commandMode || '').trim();
-          if (mode === 'post') {
-            const selected = new Set(Array.isArray((state as any).postSelectedReferenceIds) ? (state as any).postSelectedReferenceIds : []);
-            if (selected.has(img.id)) selected.delete(img.id);
-            else selected.add(img.id);
-            return { ...state, postSelectedReferenceIds: Array.from(selected).slice(0, 24) };
-          }
-          const selected = new Set(state.selectedReferenceIds);
-          if (selected.has(img.id)) selected.delete(img.id);
-          else selected.add(img.id);
-          return { ...state, selectedReferenceIds: Array.from(selected).slice(0, 24) };
+          const next = toggleId(readSelectedReferenceIds(state, 24), img.id, 24);
+          return { ...state, selectedReferenceIds: next };
         });
+        showMessage(isSelected ? '已取消勾选图片素材' : '已勾选图片素材');
       });
 
       tray.appendChild(item);
@@ -399,13 +357,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     for (const a of media.slice().reverse().slice(0, 36)) {
       const kind = a.kind;
       if (kind !== 'video' && kind !== 'audio' && kind !== 'subtitle') continue;
-      const isPost = String(s.commandMode || '').trim() === 'post';
-      const selectedPost = isPost && Array.isArray((s as any).selectedMediaAssetIds) ? (s as any).selectedMediaAssetIds.includes(a.id) : false;
-      const selectedMv =
-        (kind === 'video' && s.mvVideoAssetId === a.id) ||
-        (kind === 'audio' && s.mvAudioAssetId === a.id) ||
-        (kind === 'subtitle' && s.mvSubtitleAssetId === a.id);
-      const selected = isPost ? selectedPost : selectedMv;
+      const selected = selectedMediaIds.includes(a.id);
 
       const item = document.createElement('div');
       item.className =
@@ -458,22 +410,11 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       selectBtn.innerHTML = selected ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
       selectBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        store.update((st) => {
-          const mode = String(st.commandMode || '').trim();
-          if (mode === 'post') {
-            const ids = Array.isArray((st as any).selectedMediaAssetIds) ? (st as any).selectedMediaAssetIds.slice() : [];
-            const has = ids.includes(a.id);
-            const next = has ? ids.filter((x: any) => x !== a.id) : [...ids, a.id];
-            return { ...st, selectedMediaAssetIds: next.slice(0, 36) };
-          }
-          return {
-            ...st,
-            mvVideoAssetId: kind === 'video' ? (st.mvVideoAssetId === a.id ? undefined : a.id) : st.mvVideoAssetId,
-            mvAudioAssetId: kind === 'audio' ? (st.mvAudioAssetId === a.id ? undefined : a.id) : st.mvAudioAssetId,
-            mvSubtitleAssetId: kind === 'subtitle' ? (st.mvSubtitleAssetId === a.id ? undefined : a.id) : st.mvSubtitleAssetId,
-          };
-        });
-        showMessage(`${selected ? '已取消选择' : '已选择'}${kindLabel}素材（用于 ${isPost ? '后处理' : 'MV'}）`);
+        store.update((st) => ({
+          ...st,
+          selectedMediaAssetIds: toggleId(readSelectedMediaAssetIds(st, 36), a.id, 36),
+        }));
+        showMessage(`${selected ? '已取消选择' : '已选择'}${kindLabel}素材`);
         renderTray();
       });
 
@@ -502,22 +443,11 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
           if (url) window.open(url, '_blank', 'noreferrer');
           return;
         }
-        store.update((st) => {
-          const mode = String(st.commandMode || '').trim();
-          if (mode === 'post') {
-            const ids = Array.isArray((st as any).selectedMediaAssetIds) ? (st as any).selectedMediaAssetIds.slice() : [];
-            const has = ids.includes(a.id);
-            const next = has ? ids.filter((x: any) => x !== a.id) : [...ids, a.id];
-            return { ...st, selectedMediaAssetIds: next.slice(0, 36) };
-          }
-          return {
-            ...st,
-            mvVideoAssetId: kind === 'video' ? (st.mvVideoAssetId === a.id ? undefined : a.id) : st.mvVideoAssetId,
-            mvAudioAssetId: kind === 'audio' ? (st.mvAudioAssetId === a.id ? undefined : a.id) : st.mvAudioAssetId,
-            mvSubtitleAssetId: kind === 'subtitle' ? (st.mvSubtitleAssetId === a.id ? undefined : a.id) : st.mvSubtitleAssetId,
-          };
-        });
-        showMessage(`${selected ? '已取消选择' : '已选择'} ${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材（用于 ${isPost ? '后处理' : 'MV'}）`);
+        store.update((st) => ({
+          ...st,
+          selectedMediaAssetIds: toggleId(readSelectedMediaAssetIds(st, 36), a.id, 36),
+        }));
+        showMessage(`${selected ? '已取消选择' : '已选择'} ${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材`);
         renderTray();
       });
 
@@ -532,11 +462,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       ...s,
       referenceImages: s.referenceImages.filter((r) => r.id !== id),
       selectedReferenceIds: s.selectedReferenceIds.filter((rid) => rid !== id),
-      postSelectedReferenceIds: Array.isArray((s as any).postSelectedReferenceIds)
-        ? (s as any).postSelectedReferenceIds.filter((rid: any) => rid !== id)
-        : [],
       activeImageId: s.activeImageId === id ? undefined : s.activeImageId,
-      mjPadRefIds: Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.filter((rid) => rid !== id) : [],
       mvSequence: Array.isArray((s as any).mvSequence) ? (s as any).mvSequence.filter((x: any) => x?.refId !== id) : (s as any).mvSequence,
       mjSrefImageUrl: s.mjSrefImageUrl && refPublicUrls.includes(s.mjSrefImageUrl) ? undefined : s.mjSrefImageUrl,
       mjCrefImageUrl: s.mjCrefImageUrl && refPublicUrls.includes(s.mjCrefImageUrl) ? undefined : s.mjCrefImageUrl,
@@ -559,12 +485,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     store.update((s) => ({
       ...s,
       mediaAssets: s.mediaAssets.filter((a) => a.id !== id),
-      mvVideoAssetId: s.mvVideoAssetId === id ? undefined : s.mvVideoAssetId,
-      mvAudioAssetId: s.mvAudioAssetId === id ? undefined : s.mvAudioAssetId,
-      mvSubtitleAssetId: s.mvSubtitleAssetId === id ? undefined : s.mvSubtitleAssetId,
-      selectedMediaAssetIds: Array.isArray((s as any).selectedMediaAssetIds)
-        ? (s as any).selectedMediaAssetIds.filter((x: any) => x !== id)
-        : [],
+      selectedMediaAssetIds: removeId(readSelectedMediaAssetIds(s, 36), id, 36),
     }));
     renderTray();
     const deleteKey = asset ? (asset.localKey || (typeof asset.localUrl === 'string' ? asset.localUrl.split('/').pop() : undefined)) : undefined;
@@ -613,9 +534,8 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     store.update((s) => ({
       ...s,
       mediaAssets: [...(Array.isArray(s.mediaAssets) ? s.mediaAssets : []), { id, kind, name, createdAt, text }].slice(-120),
-      mvVideoAssetId: kind === 'video' ? id : s.mvVideoAssetId,
-      mvAudioAssetId: kind === 'audio' ? id : s.mvAudioAssetId,
-      mvSubtitleAssetId: kind === 'subtitle' ? id : s.mvSubtitleAssetId,
+      // Do not auto-select; keep selection explicit for downstream actions (e.g. postprocess).
+      selectedMediaAssetIds: readSelectedMediaAssetIds(s, 36),
     }));
     renderTray();
 
@@ -638,7 +558,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       ),
     }));
     renderTray();
-    showMessage(`已添加素材：${kind === 'subtitle' ? '字幕' : kind === 'audio' ? '音频' : '视频'}（用于 MV）`);
+    showMessage(`已添加素材：${kind === 'subtitle' ? '字幕' : kind === 'audio' ? '音频' : '视频'}`);
   }
 
   async function handleImageFile(file: File) {
@@ -653,7 +573,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
       .get()
       .referenceImages.find((r) => r.originKey === originKey || (typeof r.base64 === 'string' && r.base64 === base64));
     if (existing) {
-      // Do not auto-select or auto-PAD; respect user's explicit selection.
+      // Do not auto-select; respect user's explicit selection.
       renderTray();
       return;
     }
@@ -675,9 +595,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
         },
       ],
       // Do not auto-select; keep selection explicit for downstream actions (e.g. postprocess).
-      selectedReferenceIds: Array.isArray(s.selectedReferenceIds) ? s.selectedReferenceIds.slice(0, 24) : [],
-      // UX: if PAD is empty, default the first upload as PAD for MJ; otherwise don't auto-add.
-      mjPadRefIds: Array.isArray(s.mjPadRefIds) && s.mjPadRefIds.length ? s.mjPadRefIds.slice(0, 12) : [referenceId],
+      selectedReferenceIds: readSelectedReferenceIds(s, 24),
     }));
 
     renderTray();

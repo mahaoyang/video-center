@@ -9,6 +9,7 @@ import { byId } from '../atoms/ui';
 import type { Store } from '../state/store';
 import type { StreamMessage, TraceTarget, WorkflowState } from '../state/workflow';
 import { deriveTraceNodes, type TraceNode } from '../state/trace';
+import { readSelectedReferenceIds, toggleId } from '../state/material';
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleString([], {
@@ -238,6 +239,9 @@ function renderNode(state: WorkflowState, node: TraceNode, currentTarget: TraceT
       ? `<span class="px-2 py-1 rounded-lg bg-studio-accent text-[8px] font-black uppercase tracking-widest text-studio-bg">CURRENT</span>`
       : '';
 
+    const isSelected = readSelectedReferenceIds(state, 24).includes(ref.id);
+    const selectLabel = isSelected ? '取消勾选' : '勾选';
+
     return `
       <div class="relative" data-trace-node="1" data-trace-node-key="${escapeHtml(nodeKey(node))}" ${isCurrent ? 'data-trace-current="1"' : ''}>
         <div class="absolute left-3 top-7 w-2.5 h-2.5 rounded-full bg-white/30"></div>
@@ -257,7 +261,7 @@ function renderNode(state: WorkflowState, node: TraceNode, currentTarget: TraceT
             <div class="flex items-center gap-2 flex-shrink-0">
               <button data-trace-action="set-pad" data-ref-id="${escapeHtml(ref.id)}" type="button"
                 class="px-3 py-2 rounded-2xl bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-white/70 hover:border-studio-accent/40 hover:text-white transition-all">
-                PAD
+                ${escapeHtml(selectLabel)}
               </button>
               <button data-trace-action="set-start" data-ref-id="${escapeHtml(ref.id)}" type="button"
                 class="px-3 py-2 rounded-2xl bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-white/70 hover:border-studio-accent/40 hover:text-white transition-all">
@@ -488,19 +492,15 @@ export function createTraceBlock(params: {
             .map((x) => String(x || '').trim())
             .filter(Boolean)
             .slice(0, 12);
-          const ids = [...padRefIds, msg.mjSrefRefId, msg.mjCrefRefId].filter(
-            (x): x is string => typeof x === 'string' && x.trim()
-          );
           return {
             ...st,
             traceHeadMessageId: msg.id,
             commandMode: 'mj',
-            mjPadRefIds: padRefIds.length ? padRefIds : st.mjPadRefIds,
+            selectedReferenceIds: padRefIds,
             mjSrefRefId: typeof msg.mjSrefRefId === 'string' ? msg.mjSrefRefId : st.mjSrefRefId,
             mjCrefRefId: typeof msg.mjCrefRefId === 'string' ? msg.mjCrefRefId : st.mjCrefRefId,
             mjSrefImageUrl: typeof msg.mjSrefImageUrl === 'string' ? msg.mjSrefImageUrl : st.mjSrefImageUrl,
             mjCrefImageUrl: typeof msg.mjCrefImageUrl === 'string' ? msg.mjCrefImageUrl : st.mjCrefImageUrl,
-            selectedReferenceIds: Array.from(new Set([...(st.selectedReferenceIds || []), ...ids])),
           };
         });
         closeToMainWorkspace();
@@ -528,7 +528,7 @@ export function createTraceBlock(params: {
           ...st,
           traceHeadMessageId: msg.id,
           commandMode: 'deconstruct',
-          selectedReferenceIds: [refId],
+          selectedReferenceIds: [refId].map((x) => String(x || '').trim()).filter(Boolean).slice(0, 24),
           activeImageId: refId,
         }));
         closeToMainWorkspace();
@@ -544,7 +544,7 @@ export function createTraceBlock(params: {
           ...st,
           traceHeadMessageId: msg.id,
           commandMode: 'pedit',
-          selectedReferenceIds: refIds.filter(Boolean),
+          selectedReferenceIds: refIds.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 24),
           gimageAspect: typeof msg.gimageAspect === 'string' ? msg.gimageAspect : st.gimageAspect,
           gimageSize: typeof msg.gimageSize === 'string' ? msg.gimageSize : st.gimageSize,
         }));
@@ -609,9 +609,7 @@ export function createTraceBlock(params: {
 	              mvDurationSeconds: typeof msg.mvDurationSeconds === 'number' ? msg.mvDurationSeconds : st.mvDurationSeconds,
 	              mvSubtitleMode: msg.mvSubtitleMode === 'burn' ? 'burn' : 'soft',
 	              selectedReferenceIds: selectedRefIds,
-	              mvVideoAssetId: videoAssetId || st.mvVideoAssetId,
-	              mvAudioAssetId: audioAssetId || st.mvAudioAssetId,
-	              mvSubtitleAssetId: subtitleAssetId || st.mvSubtitleAssetId,
+	              selectedMediaAssetIds: [videoAssetId, audioAssetId, subtitleAssetId].filter(Boolean) as string[],
 	            };
 	          });
 
@@ -717,16 +715,8 @@ export function createTraceBlock(params: {
       if (kind === 'set-pad') {
         const refId = action.dataset.refId || '';
         if (!refId) return;
-        params.store.update((s) => {
-          const padIds = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.slice() : [];
-          if (!padIds.includes(refId)) padIds.push(refId);
-          return {
-            ...s,
-            mjPadRefIds: padIds.slice(0, 12),
-            selectedReferenceIds: Array.from(new Set([...(s.selectedReferenceIds || []), refId])),
-          };
-        });
-        showMessage('已加入 PAD');
+        params.store.update((s) => ({ ...s, selectedReferenceIds: toggleId(readSelectedReferenceIds(s, 24), refId, 24) }));
+        showMessage('已更新勾选');
         return;
       }
       if (kind === 'set-start') {

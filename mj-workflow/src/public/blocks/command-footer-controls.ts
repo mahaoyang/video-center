@@ -7,11 +7,12 @@ import { getPreferredMjAspectRatio, setPreferredMjAspectRatio } from '../atoms/m
 import { scrollAreaViewport, setupScrollArea } from '../atoms/scroll-area';
 import { setTraceOpen } from '../atoms/overlays';
 import { showError } from '../atoms/notify';
+import { readSelectedReferenceIds } from '../state/material';
 
 function readMode(state: WorkflowState): CommandMode {
   const m = state.commandMode;
   if (typeof m === 'string' && m.startsWith('mv')) return 'mv';
-  return m === 'mj' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' || m === 'post' ? m : 'mj';
+  return m === 'mj' || m === 'suno' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' || m === 'post' ? m : 'mj';
 }
 
 function getPromptInput(): HTMLTextAreaElement | null {
@@ -177,6 +178,9 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   const mj = document.createElement('div');
   mj.className = 'flex items-center gap-2 flex-nowrap';
 
+  const suno = document.createElement('div');
+  suno.className = 'flex items-center gap-2 flex-nowrap hidden';
+
   const pedit = document.createElement('div');
   pedit.className = 'flex items-center gap-2 flex-nowrap hidden';
 
@@ -275,6 +279,26 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
 
   const beautify = document.createElement('div');
   beautify.className = 'flex items-center gap-2 flex-nowrap hidden';
+
+  // --- SUNO controls
+  const sunoModeWrap = document.createElement('div');
+  sunoModeWrap.className = 'relative';
+  const sunoModeBtn = mkBtn('Mode');
+  const sunoModeMenu = mkMenu();
+  sunoModeWrap.appendChild(sunoModeBtn);
+  sunoModeWrap.appendChild(sunoModeMenu);
+  const sunoModePopover = createFooterPopover({ button: sunoModeBtn, menu: sunoModeMenu });
+
+  const sunoLangWrap = document.createElement('div');
+  sunoLangWrap.className = 'relative';
+  const sunoLangBtn = mkBtn('Lang');
+  const sunoLangMenu = mkMenu();
+  sunoLangWrap.appendChild(sunoLangBtn);
+  sunoLangWrap.appendChild(sunoLangMenu);
+  const sunoLangPopover = createFooterPopover({ button: sunoLangBtn, menu: sunoLangMenu });
+
+  suno.appendChild(sunoModeWrap);
+  suno.appendChild(sunoLangWrap);
 
   const deconstruct = document.createElement('div');
   deconstruct.className = 'flex items-center gap-2 flex-nowrap hidden';
@@ -1225,7 +1249,7 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     const head = typeof state.traceHeadMessageId === 'string' ? state.traceHeadMessageId.trim() : '';
     mvHeadBtn.textContent = `HEAD ${shortId(head)}`;
 
-    const hasImages = Array.isArray(state.selectedReferenceIds) && state.selectedReferenceIds.length > 0;
+    const hasImages = readSelectedReferenceIds(state, 24).length > 0;
     const showFps = recipe === 'mv-images' || (recipe === 'mv-mix' && hasImages);
     const showDur = recipe === 'mv-clip' || recipe === 'mv-images' || (recipe === 'mv-mix' && hasImages);
     const showSub = recipe === 'mv-mix' || recipe === 'mv-subtitle';
@@ -1301,6 +1325,7 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   deconstruct.appendChild(clearSelected);
 
   chips.appendChild(mj);
+  chips.appendChild(suno);
   chips.appendChild(pedit);
   chips.appendChild(video);
   chips.appendChild(post);
@@ -1311,6 +1336,7 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   function applyModeVisibility(state: WorkflowState) {
     const mode = readMode(state);
     mj.classList.toggle('hidden', mode !== 'mj');
+    suno.classList.toggle('hidden', mode !== 'suno');
     pedit.classList.toggle('hidden', mode !== 'pedit');
     video.classList.toggle('hidden', mode !== 'video');
     post.classList.toggle('hidden', mode !== 'post');
@@ -1338,10 +1364,76 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     }
   }
 
+  function prettySunoMode(v: string): string {
+    const m = String(v || '').trim().toLowerCase();
+    if (m === 'instrumental') return 'Instrumental';
+    if (m === 'lyrics') return 'Lyrics';
+    return 'Auto';
+  }
+
+  function prettySunoLang(v: string): string {
+    const m = String(v || '').trim().toLowerCase();
+    if (m === 'zh-cn') return '简体';
+    if (m === 'zh-tw') return '繁体';
+    if (m === 'ja') return '日本語';
+    if (m === 'ko') return '한국어';
+    if (m === 'en') return 'EN';
+    return 'Auto';
+  }
+
+  function renderSuno(state: WorkflowState) {
+    const mode = typeof (state as any).sunoMode === 'string' ? String((state as any).sunoMode || '').trim() : 'auto';
+    const lang = typeof (state as any).sunoLanguage === 'string' ? String((state as any).sunoLanguage || '').trim() : 'auto';
+
+    sunoModeBtn.textContent = `Mode ${prettySunoMode(mode)}`;
+    buildSingleSelectMenu({
+      menu: sunoModeMenu,
+      current: prettySunoMode(mode),
+      options: ['Auto', 'Instrumental', 'Lyrics'],
+      onPick: (label) => {
+        const next = label === 'Instrumental' ? 'instrumental' : label === 'Lyrics' ? 'lyrics' : 'auto';
+        store.update((s) => ({ ...s, sunoMode: next as any }));
+        sunoModePopover.close();
+      },
+      onClear: () => {
+        store.update((s) => ({ ...s, sunoMode: 'auto' as any }));
+        sunoModePopover.close();
+      },
+    });
+
+    sunoLangBtn.textContent = `Lang ${prettySunoLang(lang)}`;
+    buildSingleSelectMenu({
+      menu: sunoLangMenu,
+      current: prettySunoLang(lang),
+      options: ['Auto', 'EN', '简体', '繁体', '日本語', '한국어'],
+      onPick: (label) => {
+        const next =
+          label === 'EN'
+            ? 'en'
+            : label === '简体'
+              ? 'zh-cn'
+              : label === '繁体'
+                ? 'zh-tw'
+                : label === '日本語'
+                  ? 'ja'
+                  : label === '한국어'
+                    ? 'ko'
+                    : 'auto';
+        store.update((s) => ({ ...s, sunoLanguage: next as any }));
+        sunoLangPopover.close();
+      },
+      onClear: () => {
+        store.update((s) => ({ ...s, sunoLanguage: 'auto' as any }));
+        sunoLangPopover.close();
+      },
+    });
+  }
+
   function render(state: WorkflowState) {
     applyModeVisibility(state);
     const mode = readMode(state);
     if (mode === 'mj') renderMj(state);
+    else if (mode === 'suno') renderSuno(state);
     else if (mode === 'pedit') renderPedit(state);
     else if (mode === 'video') renderVideo(state);
     else if (mode === 'post') renderPost(state);

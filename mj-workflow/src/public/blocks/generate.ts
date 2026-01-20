@@ -10,6 +10,7 @@ import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
 import { getSubmitTaskId, getUpstreamErrorMessage } from '../atoms/mj-upstream';
 import { isHttpUrl } from '../atoms/url';
 import { translatePromptBodyToEnglishForMj } from '../adapters/mj-prompt-ai';
+import { readSelectedReferenceIds } from '../state/material';
 
 export function createGenerateBlock(params: { api: ApiClient; store: Store<WorkflowState>; activateStep: (step: any) => void }) {
   function getLocalKey(ref: { localKey?: string; localUrl?: string }): string | undefined {
@@ -66,9 +67,9 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
     const extraArgs: string[] = [];
 
     const padUrls: string[] = [];
-    const padRefIds = Array.isArray(s.mjPadRefIds) ? s.mjPadRefIds.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 12) : [];
+    const padRefIds = readSelectedReferenceIds(s, 12);
     for (const [idx, refId] of padRefIds.entries()) {
-      const padUrl = await ensurePublicUrlForRefId(refId, `垫图（PAD ${idx + 1}/${padRefIds.length}）`);
+      const padUrl = await ensurePublicUrlForRefId(refId, `参考图（${idx + 1}/${padRefIds.length}）`);
       if (!padUrl) return;
       padUrls.push(padUrl);
     }
@@ -163,7 +164,7 @@ export function createGenerateBlock(params: { api: ApiClient; store: Store<Workf
         }));
 
         const stateAfter = params.store.get();
-        const selectedRefs = (Array.isArray(stateAfter.mjPadRefIds) ? stateAfter.mjPadRefIds : [])
+        const selectedRefs = padRefIds
           .map((id) => stateAfter.referenceImages.find((r) => r.id === id))
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
           .map((padRef) => ({
