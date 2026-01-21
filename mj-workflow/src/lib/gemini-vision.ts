@@ -11,6 +11,7 @@ export interface GeminiVisionClient {
   chat(messages: Array<{ role: string; content: string }>): Promise<string>;
   generateText(system: string, user: string): Promise<string>;
   sunoPrompt(params: { requirement: string; imageUrls?: string[]; mode?: string; language?: string }): Promise<string>;
+  youtubeMeta(params: { topic: string; extra?: string; imageUrls?: string[]; language?: string }): Promise<string>;
   editImage(imageUrl: string, editPrompt: string): Promise<string | null>;
   generateOrEditImages(params: {
     prompt: string;
@@ -35,6 +36,17 @@ function inferSunoLanguagePreference(requirement: string): 'EN' | 'ZH-CN' | 'ZH-
   if (/(en|english|英文)/i.test(requirement)) return 'EN';
   // Default: English.
   if (r.includes('lyrics') || r.includes('vocal')) return 'EN';
+  return 'EN';
+}
+
+function inferYoutubeLanguagePreference(text: string): 'EN' | 'ZH-CN' | 'ZH-TW' | 'JA' | 'KO' {
+  // IMPORTANT: default is EN unless the user explicitly requests otherwise.
+  const t = String(text || '');
+  if (/(zh-cn|简体|简中|中文|汉语|普通话)/i.test(t)) return 'ZH-CN';
+  if (/(zh-tw|繁体|繁中|粵語|粤语)/i.test(t)) return 'ZH-TW';
+  if (/(ja|日本語|日文|日语)/i.test(t)) return 'JA';
+  if (/(ko|한국어|韩文|韩语)/i.test(t)) return 'KO';
+  if (/(en|english|英文)/i.test(t)) return 'EN';
   return 'EN';
 }
 
@@ -310,6 +322,75 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
 
       const out = response.text?.trim() || '';
       return instrumentalOnly ? rewriteSunoInstrumentalControl(out) : out;
+    },
+
+    async youtubeMeta(params: { topic: string; extra?: string; imageUrls?: string[]; language?: string }): Promise<string> {
+      const topic = String(params?.topic || '').trim();
+      const extra = String(params?.extra || '').trim();
+      if (!topic) return '';
+
+      const langRaw = String(params?.language || '').trim().toLowerCase();
+      const explicitLanguage =
+        langRaw === 'zh-cn' || langRaw === 'zh' || langRaw.includes('简')
+          ? 'ZH-CN'
+          : langRaw === 'zh-tw' || langRaw.includes('繁')
+            ? 'ZH-TW'
+            : langRaw === 'ja'
+              ? 'JA'
+              : langRaw === 'ko'
+                ? 'KO'
+                : langRaw === 'en'
+                  ? 'EN'
+                  : '';
+      const language = explicitLanguage || inferYoutubeLanguagePreference(`${topic}\n${extra}`.trim());
+
+      const urls = Array.isArray(params?.imageUrls) ? params.imageUrls.map((u) => String(u || '').trim()).filter(Boolean) : [];
+      const images = await Promise.all(urls.slice(0, 8).map((u) => compressImage(u)));
+
+      const system = [
+        'You are a YouTube copywriter.',
+        'Task: write ONE natural, human-sounding YouTube title and description.',
+        '',
+        'Hard rules:',
+        '- Default output language is English (EN). Only switch languages if the user explicitly requests it.',
+        '- Output MUST be EXACTLY two blocks and nothing else, in this exact order:',
+        '  TITLE:',
+        '  <one line>',
+        '',
+        '  DESCRIPTION:',
+        '  <multi-line>',
+        '- No markdown code fences.',
+        '- No explanations.',
+        '- The title should feel human (人味), not clickbait, and stay concise.',
+        '- The description should be clear and useful: hook + summary + what viewers will learn + optional CTA.',
+        '- Use details from the topic text and the provided images (if any).',
+      ].join('\n');
+
+      const user = [
+        `OUTPUT_LANGUAGE: ${language}`,
+        '',
+        `VIDEO_TOPIC:\n${topic}`,
+        extra ? `\n\nEXTRA_REQUIREMENTS:\n${extra}` : '',
+      ]
+        .join('')
+        .trim();
+
+      const response = await getAi().models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [
+          {
+            parts: [
+              { text: `${system}\n\n${user}`.trim() },
+              ...images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.data } })),
+            ],
+          },
+        ],
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
+      });
+
+      return response.text?.trim() || '';
     },
 
     /** 使用 Gemini 3 Pro Image 编辑图片（可选） */

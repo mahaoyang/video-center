@@ -202,12 +202,10 @@ function selectedPostAssets(state: WorkflowState): { audios: MediaAsset[]; video
 
       for (let i = 0; i < videos.length; i++) {
         const video = videos[i]!;
-        const preset = typeof s0.postVideoPreset === 'string' ? String(s0.postVideoPreset || '').trim() : '';
-        const crf = typeof s0.postVideoCrf === 'number' && Number.isFinite(s0.postVideoCrf) ? s0.postVideoCrf : undefined;
-        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n视频 ${i + 1}/${videos.length}：${preset ? `应用 ${preset}…` : '处理中…'}`);
+        updateCard(`后处理中…（${doneSteps}/${totalSteps}）\n视频 ${i + 1}/${videos.length}：自动优化处理中…`);
         const src = pickMediaUrl(video);
         if (!src) throw new Error('视频缺少可用 URL，请重新上传');
-        const resp = await params.api.videoProcess({ src, preset: preset || undefined, crf: crf || undefined });
+        const resp = await params.api.videoProcess({ src });
         const result = resp?.result;
         if (resp?.code !== 0) throw new Error(String(resp?.description || '视频后处理失败'));
         const url = typeof result?.outputUrl === 'string' ? result.outputUrl : '';

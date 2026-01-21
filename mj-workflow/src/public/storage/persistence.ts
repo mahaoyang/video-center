@@ -435,7 +435,7 @@ export function loadPersistedState(): {
       createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
       role: m.role === 'ai' ? 'ai' : 'user',
       kind:
-        m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' || m.kind === 'video' || m.kind === 'postprocess' || m.kind === 'suno'
+        m.kind === 'generate' || m.kind === 'upscale' || m.kind === 'deconstruct' || m.kind === 'pedit' || m.kind === 'video' || m.kind === 'postprocess' || m.kind === 'suno' || m.kind === 'youtube'
           ? m.kind
           : 'generate',
       text: typeof m.text === 'string' ? m.text : undefined,

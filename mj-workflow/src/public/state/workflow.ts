@@ -26,7 +26,7 @@ export interface WorkflowHistoryItem {
 }
 
 export type StreamMessageRole = 'user' | 'ai';
-export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'postprocess' | 'suno';
+export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'postprocess' | 'suno' | 'youtube';
 
 export type PostprocessOutputKind = 'image' | 'audio' | 'video';
 export interface PostprocessOutput {
@@ -122,6 +122,7 @@ export interface StreamMessage {
 export type CommandMode =
   | 'mj'
   | 'suno'
+  | 'youtube'
   | 'video'
   | 'deconstruct'
   | 'pedit'

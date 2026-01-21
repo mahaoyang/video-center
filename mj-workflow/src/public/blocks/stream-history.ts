@@ -473,6 +473,22 @@ function parseSunoBlocks(text: string): { control: string; style: string } | nul
   return { control, style };
 }
 
+function parseYoutubeBlocks(text: string): { title: string; description: string } | null {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  const titleMatch = raw.match(/(?:^|\n)\s*TITLE\s*:\s*/i);
+  const descMatch = raw.match(/(?:^|\n)\s*DESCRIPTION\s*:\s*/i);
+  if (!titleMatch || !descMatch) return null;
+  const i1 = titleMatch.index ?? -1;
+  const i2 = descMatch.index ?? -1;
+  if (i1 < 0 || i2 < 0 || i2 <= i1) return null;
+  const titleBlock = raw.slice(i1 + titleMatch[0].length, i2).trim();
+  const title = titleBlock.split('\n').map((l) => l.trim()).filter(Boolean)[0] || '';
+  const description = raw.slice(i2 + descMatch[0].length).trim();
+  if (!title && !description) return null;
+  return { title, description };
+}
+
 async function copyToClipboard(text: string): Promise<boolean> {
   const value = String(text || '').trim();
   if (!value) return false;
@@ -495,6 +511,154 @@ async function copyToClipboard(text: string): Promise<boolean> {
       return false;
     }
   }
+}
+
+function renderYoutubeMessage(m: StreamMessage): HTMLElement {
+  const msg = document.createElement('div');
+  msg.dataset.streamMessage = '1';
+  const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
+  const pending = !m.error && (typeof m.progress !== 'number' || p < 100);
+  const requirement = typeof (m as any).userPrompt === 'string' ? String((m as any).userPrompt || '').trim() : '';
+  const thumbs = Array.isArray(m.inputImageUrls) ? m.inputImageUrls.map((u) => String(u || '').trim()).filter(Boolean).slice(0, 8) : [];
+
+  msg.className = 'group animate-fade-in-up';
+  if (pending) {
+    msg.innerHTML = `
+      <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60">
+        <div class="flex items-center justify-between gap-6">
+          <div class="flex items-center gap-4 opacity-60">
+            <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-[10px] font-black uppercase tracking-[0.3em]">YOUTUBE</span>
+              <span class="text-[9px] font-mono opacity-40">生成中…（${p}%）</span>
+            </div>
+          </div>
+        </div>
+        <div class="mt-6 text-[11px] font-mono opacity-70 whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
+        <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+      </div>
+    `;
+    const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
+    if (panel && thumbs.length) {
+      const showThumbs = thumbs.slice(0, 4);
+      for (let i = 0; i < showThumbs.length; i++) {
+        const u = showThumbs[i]!;
+        const thumb = document.createElement('img');
+        thumb.src = toAppImageSrc(u);
+        thumb.referrerPolicy = 'no-referrer';
+        thumb.className =
+          'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
+        if (i === 1) thumb.style.left = '2.75rem';
+        if (i === 2) thumb.style.left = '5.5rem';
+        if (i === 3) thumb.style.left = '8.25rem';
+        panel.appendChild(thumb);
+      }
+      const extra = thumbs.length - showThumbs.length;
+      if (extra > 0) {
+        const badge = document.createElement('div');
+        badge.className =
+          'absolute -top-2 left-[10.9rem] px-2 py-1 rounded-xl bg-black/70 border border-white/10 text-[9px] font-black text-white/80 shadow-2xl';
+        badge.textContent = `+${extra}`;
+        panel.appendChild(badge);
+      }
+    }
+    return msg;
+  }
+
+  const parsed = parseYoutubeBlocks(m.text || '');
+  const title = parsed ? parsed.title : '';
+  const description = parsed ? parsed.description : '';
+
+  msg.innerHTML = `
+    <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60 space-y-6">
+      <div class="flex items-center justify-between gap-6">
+        <div class="flex items-center gap-3 opacity-60">
+          <i class="fas fa-pen-nib text-studio-accent text-[12px]"></i>
+          <span class="text-[10px] font-black uppercase tracking-[0.3em]">YOUTUBE META</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button data-yt-copy="title" type="button" ${title ? '' : 'disabled'}
+            class="px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed">
+            Copy Title
+          </button>
+          <button data-yt-copy="description" type="button" ${description ? '' : 'disabled'}
+            class="px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-studio-accent/40 hover:text-studio-accent transition-all text-[9px] font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed">
+            Copy Desc
+          </button>
+        </div>
+      </div>
+
+      ${requirement ? `
+        <div class="rounded-2xl border border-white/10 bg-black/20 p-5">
+          <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Input（你的输入）</div>
+          <div class="text-[11px] font-mono opacity-80 leading-relaxed whitespace-pre-wrap break-words select-text">${escapeHtml(requirement)}</div>
+        </div>
+      ` : ''}
+
+      <div class="rounded-2xl border border-white/10 bg-black/20 p-5">
+        <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Title（粘贴到 YouTube）</div>
+        <div data-yt-title="1" class="text-[11px] font-mono opacity-80 leading-relaxed whitespace-pre-wrap break-words select-text">${escapeHtml(title || '')}</div>
+      </div>
+
+      <div class="rounded-2xl border border-white/10 bg-black/20 p-5">
+        <div class="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-2">Description（粘贴到 YouTube）</div>
+        <div data-yt-description="1" class="text-[11px] font-mono opacity-80 leading-relaxed whitespace-pre-wrap break-words select-text">${escapeHtml(description || '')}</div>
+      </div>
+
+      <div data-error-text="1" class="text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+    </div>
+  `;
+
+  const panel = msg.querySelector('.glass-panel') as HTMLElement | null;
+  if (panel && thumbs.length) {
+    const showThumbs = thumbs.slice(0, 4);
+    for (let i = 0; i < showThumbs.length; i++) {
+      const u = showThumbs[i]!;
+      const thumb = document.createElement('img');
+      thumb.src = toAppImageSrc(u);
+      thumb.referrerPolicy = 'no-referrer';
+      thumb.className =
+        'absolute -top-3 -left-3 w-12 h-12 rounded-2xl object-cover border border-white/10 shadow-2xl bg-black/30';
+      if (i === 1) thumb.style.left = '2.75rem';
+      if (i === 2) thumb.style.left = '5.5rem';
+      if (i === 3) thumb.style.left = '8.25rem';
+      panel.appendChild(thumb);
+    }
+    const extra = thumbs.length - showThumbs.length;
+    if (extra > 0) {
+      const badge = document.createElement('div');
+      badge.className =
+        'absolute -top-2 left-[10.9rem] px-2 py-1 rounded-xl bg-black/70 border border-white/10 text-[9px] font-black text-white/80 shadow-2xl';
+      badge.textContent = `+${extra}`;
+      panel.appendChild(badge);
+    }
+  }
+
+  const copyBtns = Array.from(msg.querySelectorAll<HTMLButtonElement>('button[data-yt-copy]'));
+  for (const btn of copyBtns) {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const kind = String(btn.dataset.ytCopy || '').trim();
+      const target =
+        kind === 'title'
+          ? msg.querySelector<HTMLElement>('[data-yt-title="1"]')?.textContent || ''
+          : msg.querySelector<HTMLElement>('[data-yt-description="1"]')?.textContent || '';
+      const ok = await copyToClipboard(target);
+      if (ok) {
+        const prev = btn.textContent || '';
+        btn.textContent = 'Copied';
+        setTimeout(() => (btn.textContent = prev), 1200);
+      } else {
+        showMessage(`复制失败，请手动复制：\n${target}`);
+      }
+    });
+  }
+
+  bindPreview(msg);
+  return msg;
 }
 
 function renderSunoMessage(m: StreamMessage): HTMLElement {
@@ -770,6 +934,7 @@ function renderMessage(m: StreamMessage): HTMLElement {
   if (m.kind === 'video') return renderVideoMessage(m);
   if (m.kind === 'postprocess') return renderPostprocessMessage(m);
   if (m.kind === 'suno') return renderSunoMessage(m);
+  if (m.kind === 'youtube') return renderYoutubeMessage(m);
   return renderGenerateMessage(m);
 }
 

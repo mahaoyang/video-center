@@ -428,6 +428,11 @@
               <div class="absolute inset-0 border-2 border-studio-accent/25 rounded-full"></div>
               <div class="absolute inset-0 border-2 border-studio-accent border-t-transparent rounded-full animate-spin"></div>
             </div>
+            <div id="youtubeExtraWrap" class="hidden px-4 pb-4 -mt-1">
+              <textarea id="youtubeExtraInput"
+                class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-[12px] font-medium focus:outline-none focus:border-studio-accent/50 focus:ring-2 focus:ring-studio-accent/25 focus:ring-inset transition-all resize-none min-h-[44px] max-h-32 leading-relaxed"
+                placeholder="剩余补充的要求（可选）：风格、受众、禁忌、口吻、是否要加 CTA、是否要分段…（默认英文输出；如需中文请写：输出中文/简体中文）"></textarea>
+            </div>
           </div>
           <div class="relative">
             <button id="commandModeBtn" type="button"
@@ -510,6 +515,11 @@
                     class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
                     <span class="font-medium">提示词美化（Gemini）</span>
                     <span class="text-[10px] font-mono opacity-40">Polish</span>
+                  </button>
+                  <button type="button" data-command-mode="youtube" data-command-mode-keywords="youtube 标题 简介 文案 人味 gemini flash3"
+                    class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">
+                    <span class="font-medium">YouTube 标题/简介（Gemini Flash3）</span>
+                    <span class="text-[10px] font-mono opacity-40">YT</span>
                   </button>
                   <button type="button" data-command-mode="post" data-command-mode-keywords="post 后处理 图片 图床 promote 音频 audio 视频 video ffmpeg loudnorm"
                     class="w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all flex items-center justify-between">

@@ -24,6 +24,7 @@ import { createMvComposeBlock } from './blocks/mv-compose';
 import { createPostprocessBlock } from './blocks/postprocess';
 import { keepStreamBottomPaddingClear } from './blocks/stream-bottom-padding';
 import { createSunoBlock } from './blocks/suno';
+import { createYoutubeMetaBlock } from './blocks/youtube';
 import { cleanupOrphanUploads } from './headless/uploads-gc';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -93,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const generate = createGenerateBlock({ api, store, activateStep: (s) => { } });
   const suno = createSunoBlock({ api, store });
+  const youtube = createYoutubeMetaBlock({ api, store });
   const describe = createDescribeBlock({ api, store });
   createExportBlock(store);
 
@@ -107,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     store,
     generate,
     suno,
+    youtube,
     describe,
     pedit,
     video,

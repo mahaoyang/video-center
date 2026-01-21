@@ -15,6 +15,7 @@ export function createCommandModeBlock(params: {
   store: Store<WorkflowState>;
   generate: { generateImage: () => void };
   suno: { run: () => void | Promise<void> };
+  youtube: { run: () => void | Promise<void> };
   describe: { deconstructAssets: () => void | Promise<void> };
   pedit: { applyEdit: () => void | Promise<void> };
   video: { setVisible: (visible: boolean) => void; generateVideoFromCurrentPrompt: () => void | Promise<void> };
@@ -92,6 +93,7 @@ export function createCommandModeBlock(params: {
     if (raw === 'mv-sub-soft' || raw === 'mv-sub-burn') return 'mv-subtitle';
     return raw === 'mj' ||
       raw === 'suno' ||
+      raw === 'youtube' ||
       raw === 'video' ||
       raw === 'deconstruct' ||
       raw === 'pedit' ||
@@ -117,6 +119,8 @@ export function createCommandModeBlock(params: {
         ? 'MJ'
         : mode === 'suno'
           ? 'SUNO'
+        : mode === 'youtube'
+          ? 'YT'
         : mode === 'video'
           ? 'VID'
           : isMv
@@ -144,6 +148,7 @@ export function createCommandModeBlock(params: {
       const next: CommandMode =
         v === 'mj' ||
         v === 'suno' ||
+        v === 'youtube' ||
         v === 'video' ||
         v === 'deconstruct' ||
         v === 'pedit' ||
@@ -196,6 +201,10 @@ export function createCommandModeBlock(params: {
       }
       if (modeNow === 'suno') {
         await params.suno.run();
+        return;
+      }
+      if (modeNow === 'youtube') {
+        await params.youtube.run();
         return;
       }
       if (modeNow === 'deconstruct') {

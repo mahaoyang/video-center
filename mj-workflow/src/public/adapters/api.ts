@@ -41,6 +41,7 @@ export interface ApiClient {
   geminiSuno(params: { requirement: string; imageUrls?: string[]; mode?: string; language?: string }): Promise<any>;
   geminiTranslate(params: { text: string }): Promise<any>;
   geminiBeautify(params: { text: string; hint?: string }): Promise<any>;
+  geminiYoutube(params: { topic: string; extra?: string; imageUrls?: string[]; language?: string }): Promise<any>;
   geminiProImage(params: { prompt: string; imageUrls?: string[]; aspectRatio?: string; imageSize?: string }): Promise<any>;
   videoCreate(params: {
     provider: string;
@@ -142,6 +143,7 @@ export function createApiClient(apiBase = '/api'): ApiClient {
     geminiSuno: async (params) => await requestJson('POST', `${apiBase}/gemini/suno`, params),
     geminiTranslate: async (params) => await requestJson('POST', `${apiBase}/gemini/translate`, params),
     geminiBeautify: async (params) => await requestJson('POST', `${apiBase}/gemini/beautify`, params),
+    geminiYoutube: async (params) => await requestJson('POST', `${apiBase}/gemini/youtube`, params),
     geminiProImage: async (params) => await requestJson('POST', `${apiBase}/gemini/pro-image`, params),
     videoCreate: async (params) => await requestJson('POST', `${apiBase}/video/create`, params),
     videoQuery: async (params) =>

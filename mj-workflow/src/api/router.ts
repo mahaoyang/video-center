@@ -183,6 +183,31 @@ function tailLines(text: string, maxChars = 1600): string {
   return raw.slice(-maxChars);
 }
 
+function parseYoutubeTitleDescription(text: string): { title: string; description: string } {
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!raw) return { title: '', description: '' };
+
+  const titleMatch = raw.match(/(?:^|\n)\s*TITLE\s*:\s*/i);
+  const descMatch = raw.match(/(?:^|\n)\s*DESCRIPTION\s*:\s*/i);
+
+  if (titleMatch && descMatch && typeof titleMatch.index === 'number' && typeof descMatch.index === 'number') {
+    const titleStart = (titleMatch.index ?? 0) + titleMatch[0].length;
+    const descStart = (descMatch.index ?? 0) + descMatch[0].length;
+    if (descStart > titleStart) {
+      const titleBlock = raw.slice(titleStart, descMatch.index).trim();
+      const titleLine = titleBlock.split('\n').map((l) => l.trim()).filter(Boolean)[0] || '';
+      const description = raw.slice(descStart).trim();
+      return { title: titleLine, description };
+    }
+  }
+
+  // Fallback: first non-empty line as title, rest as description.
+  const lines = raw.split('\n').map((l) => l.trim());
+  const first = lines.find((l) => Boolean(l)) || '';
+  const rest = lines.slice(lines.indexOf(first) + 1).join('\n').trim();
+  return { title: first, description: rest };
+}
+
 function parseNumberLike(value: unknown): number | undefined {
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
   if (typeof value === 'string') {
@@ -1460,7 +1485,9 @@ export function createApiRouter(deps: {
 
         const presetRaw = String(body.preset || '').trim().toLowerCase();
         const preset =
+          presetRaw === 'auto' ||
           presetRaw === 'pet' ||
+          presetRaw === 'enhance' ||
           presetRaw === 'bw' ||
           presetRaw === 'sepia' ||
           presetRaw === 'soft' ||
@@ -1468,19 +1495,20 @@ export function createApiRouter(deps: {
           presetRaw === 'denoise' ||
           presetRaw === 'none'
             ? presetRaw
-            : 'enhance';
+            : 'auto';
+        const chosenPreset = preset === 'auto' ? 'pet' : preset;
 
         const crf = typeof body.crf === 'number' && Number.isFinite(body.crf) ? Math.round(body.crf) : 23;
         if (crf < 10 || crf > 40) return jsonError({ status: 400, description: 'crf 不合法（建议 10~40）' });
 
         await mkdir(deps.uploads.dir, { recursive: true });
-        const outKey = `${randomUUID()}_post_${preset}.mp4`;
+        const outKey = `${randomUUID()}_post_${chosenPreset}.mp4`;
         const outPath = join(deps.uploads.dir, outKey);
 
         let vfGraph: string | undefined;
         const vf: string[] = [];
 
-        if (preset === 'pet') {
+        if (chosenPreset === 'pet') {
           const zscale = await ffmpegHasFilter('zscale');
           const sobel = await ffmpegHasFilter('sobel');
           const maskedmerge = await ffmpegHasFilter('maskedmerge');
@@ -1511,24 +1539,26 @@ export function createApiRouter(deps: {
             vf.push('eq=contrast=1.06:brightness=0.01:saturation=1.10');
             vf.push('unsharp=luma_msize_x=5:luma_msize_y=5:luma_amount=0.7:chroma_msize_x=5:chroma_msize_y=5:chroma_amount=0');
           }
-        } else if (preset === 'enhance') {
+        } else if (chosenPreset === 'enhance') {
           vf.push('eq=contrast=1.08:brightness=0.02:saturation=1.15');
           vf.push('unsharp=luma_msize_x=5:luma_msize_y=5:luma_amount=0.9:chroma_msize_x=5:chroma_msize_y=5:chroma_amount=0');
-        } else if (preset === 'bw') {
+        } else if (chosenPreset === 'bw') {
           vf.push('hue=s=0');
           vf.push('eq=contrast=1.08:brightness=0.02');
-        } else if (preset === 'sepia') {
+        } else if (chosenPreset === 'sepia') {
           vf.push('colorchannelmixer=0.393:0.769:0.189:0:0.349:0.686:0.168:0:0.272:0.534:0.131');
-        } else if (preset === 'soft') {
+        } else if (chosenPreset === 'soft') {
           vf.push('eq=contrast=0.98:saturation=1.05');
           vf.push('boxblur=1:1');
-        } else if (preset === 'sharpen') {
+        } else if (chosenPreset === 'sharpen') {
           vf.push('unsharp=luma_msize_x=7:luma_msize_y=7:luma_amount=1.2:chroma_msize_x=7:chroma_msize_y=7:chroma_amount=0');
-        } else if (preset === 'denoise') {
+        } else if (chosenPreset === 'denoise') {
           const hqdn3d = await ffmpegHasFilter('hqdn3d');
           if (hqdn3d) vf.push('hqdn3d=1.5:1.5:6:6');
           else vf.push('boxblur=1:1');
           vf.push('eq=contrast=1.04:saturation=1.05');
+        } else if (chosenPreset === 'none') {
+          // Keep as-is, but ensure compatibility for broad playback.
         }
         if (!vfGraph) {
           vf.push('format=yuv420p');
@@ -1567,7 +1597,7 @@ export function createApiRouter(deps: {
         }
 
         const outputUrl = `${deps.uploads.publicPath}/${outKey}`;
-        return json({ code: 0, description: '成功', result: { outputUrl, localKey: outKey, preset, crf } });
+        return json({ code: 0, description: '成功', result: { outputUrl, localKey: outKey, preset: chosenPreset, crf } });
       } catch (error) {
         console.error('Video process error:', error);
         return jsonError({ status: 500, description: '视频后处理失败', error });
@@ -1917,6 +1947,47 @@ export function createApiRouter(deps: {
       } catch (error) {
         console.error('Gemini beautify error:', error);
         return jsonError({ status: 500, description: 'Gemini 美化失败', error });
+      }
+    }
+
+    if (pathname === '/api/gemini/youtube' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+
+        const body = await readJson<{
+          topic?: string;
+          extra?: string;
+          imageUrls?: string[];
+          language?: string;
+        }>(req);
+
+        const topic = String(body.topic || '').trim();
+        const extra = String(body.extra || '').trim();
+        const language = typeof body.language === 'string' ? body.language : undefined;
+        if (!topic) return jsonError({ status: 400, description: 'topic 不能为空' });
+
+        const imageUrls = Array.isArray(body.imageUrls)
+          ? body.imageUrls.map((u) => String(u || '').trim()).filter(Boolean)
+          : [];
+        const normalizedImageUrls = imageUrls.map((u) => normalizeGeminiImageInput(req, u)).filter(Boolean);
+        if (imageUrls.length && !normalizedImageUrls.length) {
+          return jsonError({ status: 400, description: 'imageUrls 不合法（仅支持 data:image/* /uploads/* 或安全的 http(s)）' });
+        }
+
+        const text = await deps.gemini.youtubeMeta({
+          topic,
+          extra: extra || undefined,
+          imageUrls: normalizedImageUrls,
+          language,
+        });
+
+        const parsed = parseYoutubeTitleDescription(text);
+        return json({ code: 0, description: '成功', result: { title: parsed.title, description: parsed.description, text } });
+      } catch (error) {
+        console.error('Gemini youtube error:', error);
+        return jsonError({ status: 500, description: 'YouTube 标题/简介生成失败', error });
       }
     }
 

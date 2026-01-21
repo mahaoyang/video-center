@@ -12,7 +12,7 @@ import { readSelectedReferenceIds } from '../state/material';
 function readMode(state: WorkflowState): CommandMode {
   const m = state.commandMode;
   if (typeof m === 'string' && m.startsWith('mv')) return 'mv';
-  return m === 'mj' || m === 'suno' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' || m === 'post' ? m : 'mj';
+  return m === 'mj' || m === 'suno' || m === 'youtube' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' || m === 'post' ? m : 'mj';
 }
 
 function getPromptInput(): HTMLTextAreaElement | null {
@@ -1127,95 +1127,13 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   }
 
   // --- POST controls: video postprocess (ffmpeg)
-  const postPresetWrap = document.createElement('div');
-  postPresetWrap.className = 'relative';
-  const postPresetBtn = mkBtn('VFX');
-  const postPresetMenu = mkMenu();
-  postPresetWrap.appendChild(postPresetBtn);
-  postPresetWrap.appendChild(postPresetMenu);
-  const postPresetPopover = createFooterPopover({ button: postPresetBtn, menu: postPresetMenu });
+  const postAuto = mkBtn('AUTO');
+  postAuto.title = '后处理参数由程序自动选择';
+  post.appendChild(postAuto);
 
-  const postCrfWrap = document.createElement('div');
-  postCrfWrap.className = 'relative';
-  const postCrfBtn = mkBtn('Q');
-  const postCrfMenu = mkMenu();
-  postCrfWrap.appendChild(postCrfBtn);
-  postCrfWrap.appendChild(postCrfMenu);
-  const postCrfPopover = createFooterPopover({ button: postCrfBtn, menu: postCrfMenu });
-
-  post.appendChild(postPresetWrap);
-  post.appendChild(postCrfWrap);
-
-  function prettyPostPreset(preset: string): string {
-    const p = String(preset || '').trim().toLowerCase();
-    if (p === 'pet') return 'PET';
-    if (p === 'bw') return 'BW';
-    if (p === 'sepia') return 'Sepia';
-    if (p === 'soft') return 'Soft';
-    if (p === 'sharpen') return 'Sharpen';
-    if (p === 'denoise') return 'Denoise';
-    if (p === 'none') return 'None';
-    return 'Enhance';
-  }
-
-  function renderPost(state: WorkflowState) {
-    const preset = typeof state.postVideoPreset === 'string' && state.postVideoPreset.trim() ? state.postVideoPreset.trim() : 'enhance';
-    const presetLabel = prettyPostPreset(preset);
-    postPresetBtn.textContent = `VFX ${presetLabel}`;
-    buildSingleSelectMenu({
-      menu: postPresetMenu,
-      current: presetLabel,
-      options: ['PET', 'Enhance', 'BW', 'Sepia', 'Soft', 'Sharpen', 'Denoise', 'None'],
-      onPick: (v) => {
-        const next =
-          v === 'PET'
-            ? 'pet'
-            : v === 'BW'
-            ? 'bw'
-            : v === 'Sepia'
-              ? 'sepia'
-            : v === 'Soft'
-                ? 'soft'
-                : v === 'Sharpen'
-                  ? 'sharpen'
-                  : v === 'Denoise'
-                    ? 'denoise'
-                    : v === 'None'
-                      ? 'none'
-                      : 'enhance';
-        store.update((s) => ({ ...s, postVideoPreset: next }));
-        postPresetPopover.close();
-      },
-      onClear: () => {
-        store.update((s) => ({ ...s, postVideoPreset: undefined }));
-        postPresetPopover.close();
-      },
-    });
-
-    const crf = typeof state.postVideoCrf === 'number' && Number.isFinite(state.postVideoCrf) ? Math.round(state.postVideoCrf) : 23;
-    postCrfBtn.textContent = `Q ${crf}`;
-    const crfOptions = [
-      { label: '18 (High)', value: 18 },
-      { label: '20', value: 20 },
-      { label: '23 (Default)', value: 23 },
-      { label: '26', value: 26 },
-      { label: '30', value: 30 },
-      { label: '34 (Small)', value: 34 },
-    ];
-    buildSingleSelectMenu({
-      menu: postCrfMenu,
-      current: crfOptions.find((it) => it.value === crf)?.label || String(crf),
-      options: crfOptions.map((it) => it.label),
-      onPick: (label) => {
-        const next = crfOptions.find((it) => it.label === label)?.value ?? 23;
-        store.update((s) => ({ ...s, postVideoCrf: next }));
-        postCrfPopover.close();
-      },
-      onClear: () => {
-        store.update((s) => ({ ...s, postVideoCrf: undefined }));
-        postCrfPopover.close();
-      },
-    });
+  function renderPost(_state: WorkflowState) {
+    // Intentionally no user-facing knobs: backend auto-tunes.
+    postAuto.textContent = 'AUTO';
   }
 
   // --- BEAUTIFY controls: hint input (synced with settings overlay input)

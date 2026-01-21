@@ -28,6 +28,7 @@ function kindLabel(kind: StreamMessage['kind']): string {
   if (kind === 'video') return 'VIDEO';
   if (kind === 'deconstruct') return 'DESCRIBE';
   if (kind === 'suno') return 'SUNO';
+  if (kind === 'youtube') return 'YOUTUBE';
   return String(kind || '').toUpperCase();
 }
 
