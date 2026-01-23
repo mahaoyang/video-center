@@ -166,6 +166,7 @@ const allowedUploadExts = new Set([
 ]);
 
 const ffmpegFilterCache = new Map<string, boolean>();
+const ffmpegEncoderCache = new Map<string, boolean>();
 
 async function runCommand(args: string[], opts?: { cwd?: string }): Promise<{ stdout: string; stderr: string; code: number }> {
   const proc = Bun.spawn(args, { cwd: opts?.cwd, stdout: 'pipe', stderr: 'pipe' });
@@ -243,6 +244,37 @@ async function ffmpegHasFilter(name: string): Promise<boolean> {
     ffmpegFilterCache.set(key, false);
     return false;
   }
+}
+
+async function ffmpegHasEncoder(name: string): Promise<boolean> {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return false;
+  const cached = ffmpegEncoderCache.get(key);
+  if (typeof cached === 'boolean') return cached;
+  try {
+    const res = await runCommand(['ffmpeg', '-hide_banner', '-h', `encoder=${key}`]);
+    const out = `${res.stdout || ''}\n${res.stderr || ''}`;
+    const ok = !out.includes('Unknown encoder') && !out.includes('No such encoder');
+    ffmpegEncoderCache.set(key, ok);
+    return ok;
+  } catch {
+    ffmpegEncoderCache.set(key, false);
+    return false;
+  }
+}
+
+async function pickH264Encoder(): Promise<{ encoder: string; reason?: string }> {
+  if (await ffmpegHasEncoder('libx264')) return { encoder: 'libx264' };
+  if (await ffmpegHasEncoder('libopenh264')) return { encoder: 'libopenh264' };
+  return { encoder: '', reason: 'ffmpeg 缺少 H.264 编码器（libx264/libopenh264），无法输出 mp4(h264)。请安装带 x264 的 ffmpeg。' };
+}
+
+function normalizeVideoVfParts(): string[] {
+  // Normalize for broad compatibility:
+  // - enforce even dimensions (required by yuv420p)
+  // - force yuv420p pixel format (broadest playback)
+  // - reset sample aspect ratio
+  return ['scale=iw-mod(iw\\,2):ih-mod(ih\\,2)', 'format=yuv420p', 'setsar=1'];
 }
 
 function parseLoudnormJson(stderr: string): any {
@@ -699,7 +731,7 @@ function buildMvComposeVideoTranscodeArgs(ctx: {
 
   args.push('-map', '0:v:0');
   if (ctx.inputAudio) args.push('-map', `${audioIndex}:a:0`);
-  else if (ctx.inputVideo) args.push('-map', '0:a?:0');
+  else if (ctx.inputVideo) args.push('-map', '0:a:0?');
   if (subtitleIndex >= 0) args.push('-map', `${subtitleIndex}:s:0`);
 
   if (ctx.vf.length) args.push('-vf', ctx.vf.join(','));
@@ -743,7 +775,7 @@ function buildMvComposeCopyArgsIfPossible(ctx: {
 
   args.push('-map', '0:v:0');
   if (ctx.inputAudio) args.push('-map', `${audioIndex}:a:0`);
-  else args.push('-map', '0:a?:0');
+  else args.push('-map', '0:a:0?');
   if (subtitleIndex >= 0) args.push('-map', `${subtitleIndex}:s:0`);
 
   args.push('-c:v', 'copy');
@@ -1508,6 +1540,9 @@ export function createApiRouter(deps: {
         let vfGraph: string | undefined;
         const vf: string[] = [];
 
+        const picked = await pickH264Encoder();
+        if (!picked.encoder) return jsonError({ status: 500, description: '视频后处理失败', error: picked.reason || '缺少 H.264 编码器' });
+
         if (chosenPreset === 'pet') {
           const zscale = await ffmpegHasFilter('zscale');
           const sobel = await ffmpegHasFilter('sobel');
@@ -1519,7 +1554,8 @@ export function createApiRouter(deps: {
 
           if (zscale && sobel && maskedmerge && noise && tmix && tblend) {
             const linearize = `zscale=t=linear,format=gbrpf32le`;
-            const delinearize = `zscale=t=bt709:d=error_diffusion,format=yuv420p`;
+            const normalizeTail = normalizeVideoVfParts().join(',');
+            const delinearize = `zscale=t=bt709:d=error_diffusion,${normalizeTail}`;
             const maybeDeband = deband ? ',deband=1thr=0.015:2thr=0.012:3thr=0.012:range=18:blur=1:coupling=0' : '';
 
             // PET-ish pipeline (fast, single ffmpeg run):
@@ -1561,11 +1597,11 @@ export function createApiRouter(deps: {
           // Keep as-is, but ensure compatibility for broad playback.
         }
         if (!vfGraph) {
-          vf.push('format=yuv420p');
+          vf.push(...normalizeVideoVfParts());
           vfGraph = vf.join(',');
         }
 
-        const proc = await runCommand([
+        const primaryArgs = [
           'ffmpeg',
           '-y',
           '-hide_banner',
@@ -1575,25 +1611,72 @@ export function createApiRouter(deps: {
           '-map',
           '0:v:0',
           '-map',
-          '0:a?:0',
+          '0:a:0?',
           ...(vfGraph ? ['-vf', vfGraph] : []),
           '-c:v',
-          'libx264',
+          picked.encoder,
           '-preset',
           'veryfast',
           '-crf',
           String(crf),
+          '-pix_fmt',
+          'yuv420p',
           '-c:a',
           'aac',
           '-b:a',
           '192k',
+          '-max_muxing_queue_size',
+          '4096',
           '-movflags',
           '+faststart',
           outPath,
-        ]);
+        ];
+
+        let proc = await runCommand(primaryArgs);
         if (proc.code !== 0) {
-          const detail = tailLines(proc.stderr || proc.stdout || '', 2000);
-          return jsonError({ status: 500, description: '视频后处理失败', error: detail });
+          // Fallback: if the filter graph fails on edge-case inputs (pixel formats, odd dimensions, etc.),
+          // degrade to a minimal "normalize only" pipeline so the user still gets a playable output.
+          const fallbackVf = normalizeVideoVfParts().join(',');
+          const fallbackArgs = [
+            'ffmpeg',
+            '-y',
+            '-hide_banner',
+            '-nostdin',
+            '-i',
+            localPath,
+            '-map',
+            '0:v:0',
+            '-map',
+            '0:a:0?',
+            '-vf',
+            fallbackVf,
+            '-c:v',
+            picked.encoder,
+            '-preset',
+            'veryfast',
+            '-crf',
+            String(crf),
+            '-pix_fmt',
+            'yuv420p',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '192k',
+            '-max_muxing_queue_size',
+            '4096',
+            '-movflags',
+            '+faststart',
+            outPath,
+          ];
+          const fallback = await runCommand(fallbackArgs);
+          if (fallback.code !== 0) {
+            const detail = tailLines(
+              `PRIMARY:\n${proc.stderr || proc.stdout || ''}\n\nFALLBACK:\n${fallback.stderr || fallback.stdout || ''}`,
+              2000
+            );
+            return jsonError({ status: 500, description: '视频后处理失败', error: detail });
+          }
+          proc = fallback;
         }
 
         const outputUrl = `${deps.uploads.publicPath}/${outKey}`;

@@ -96,11 +96,18 @@ function isAddrInUse(err: unknown): boolean {
 const bindHostRaw = process.env.BIND_HOST?.trim();
 const bindHost = bindHostRaw ? bindHostRaw : undefined;
 
+const idleTimeoutSecondsRaw = process.env.HTTP_IDLE_TIMEOUT_SECONDS?.trim();
+const idleTimeoutSeconds = (() => {
+  const parsed = idleTimeoutSecondsRaw ? Number(idleTimeoutSecondsRaw) : NaN;
+  const v = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 255;
+  return Math.max(1, Math.min(255, v));
+})();
+
 let port = config.port;
 let server: ReturnType<typeof Bun.serve> | undefined;
 for (let attempt = 0; attempt < 20; attempt++) {
   try {
-    server = Bun.serve({ port, hostname: bindHost, ...serveOptions });
+    server = Bun.serve({ port, hostname: bindHost, idleTimeout: idleTimeoutSeconds, ...serveOptions });
     break;
   } catch (err) {
     if (isAddrInUse(err) && config.diagnostics.portSource === 'default') {

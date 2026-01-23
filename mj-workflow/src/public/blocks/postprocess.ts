@@ -59,6 +59,18 @@ function pickMediaUrl(asset: Pick<MediaAsset, 'url' | 'localUrl' | 'localKey'>):
   return '';
 }
 
+function formatApiFailure(resp: any, fallback: string): string {
+  const description = typeof resp?.description === 'string' && resp.description.trim() ? resp.description.trim() : fallback;
+  const err = resp?.error;
+  if (err === undefined || err === null) return description;
+  if (typeof err === 'string' && err.trim()) return `${description}\n${err.trim()}`;
+  try {
+    return `${description}\n${JSON.stringify(err)}`;
+  } catch {
+    return description;
+  }
+}
+
 export function createPostprocessBlock(params: { api: ApiClient; store: Store<WorkflowState> }) {
   async function ensureImageUploaded(refId: string): Promise<ReferenceImage> {
     const current = params.store.get().referenceImages.find((r) => r.id === refId);
@@ -192,7 +204,7 @@ function selectedPostAssets(state: WorkflowState): { audios: MediaAsset[]; video
         if (!src) throw new Error('音频缺少可用 URL，请重新上传');
         const resp = await params.api.audioProcess({ src });
         const result = resp?.result;
-        if (resp?.code !== 0) throw new Error(String(resp?.description || '音频后处理失败'));
+        if (resp?.code !== 0) throw new Error(formatApiFailure(resp, '音频后处理失败'));
         const url = typeof result?.outputUrl === 'string' ? result.outputUrl : '';
         if (!url) throw new Error('音频后处理失败：缺少 outputUrl');
         outputs.push({ kind: 'audio', url, name: String(audio.name || 'audio_pro') });
@@ -207,7 +219,7 @@ function selectedPostAssets(state: WorkflowState): { audios: MediaAsset[]; video
         if (!src) throw new Error('视频缺少可用 URL，请重新上传');
         const resp = await params.api.videoProcess({ src });
         const result = resp?.result;
-        if (resp?.code !== 0) throw new Error(String(resp?.description || '视频后处理失败'));
+        if (resp?.code !== 0) throw new Error(formatApiFailure(resp, '视频后处理失败'));
         const url = typeof result?.outputUrl === 'string' ? result.outputUrl : '';
         if (!url) throw new Error('视频后处理失败：缺少 outputUrl');
         outputs.push({ kind: 'video', url, name: `${safeFileName(String(video.name || 'video'))}_post.mp4` });
