@@ -5,6 +5,7 @@
 export interface MJConfig {
   apiUrl: string;
   token: string;
+  fallbackToken?: string;
 }
 
 // 图片上传响应

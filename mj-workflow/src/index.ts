@@ -22,7 +22,7 @@ const isDistRuntime = moduleDir.endsWith('/dist');
 const publicDir = isDistRuntime ? 'public' : 'src/public';
 const uploadsDir = join(projectDir, '.data', 'uploads');
 
-const mjApi = new MJApi({ apiUrl: config.mj.apiUrl, token: config.mj.token });
+const mjApi = new MJApi({ apiUrl: config.mj.apiUrl, token: config.mj.token, fallbackToken: config.llm.token });
 const chatApi = new YunwuChatApi({
   apiUrl: config.llm.apiUrl,
   token: config.llm.token,

@@ -85,6 +85,19 @@ export class MJApi {
     this.config = { ...config, apiUrl: config.apiUrl.replace(/\/$/, '') };
   }
 
+  private async fetchWithToken(url: string, init: RequestInit, token: string): Promise<any> {
+    const headers = new Headers(init.headers);
+    headers.set('Authorization', `Bearer ${token}`);
+    return await fetchUpstreamJson(url, { ...init, headers });
+  }
+
+  private shouldFallbackForAction(primaryPayload: any): boolean {
+    if (!primaryPayload || typeof primaryPayload !== 'object') return false;
+    const type = typeof (primaryPayload as any).type === 'string' ? String((primaryPayload as any).type) : '';
+    const desc = typeof (primaryPayload as any).description === 'string' ? String((primaryPayload as any).description).trim() : '';
+    return type === 'upstream_error' && !desc;
+  }
+
   /**
    * 反推提示词 (Describe)
    */
@@ -114,10 +127,7 @@ export class MJApi {
 
     return await fetchUpstreamJson(`${this.config.apiUrl}/mj/submit/imagine`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.config.token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
   }
@@ -131,14 +141,19 @@ export class MJApi {
       notifyHook: request.notifyHook ?? '',
       state: request.state ?? '',
     };
-    return await fetchUpstreamJson(`${this.config.apiUrl}/mj/submit/action`, {
+    const url = `${this.config.apiUrl}/mj/submit/action`;
+    const init: RequestInit = {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.config.token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    });
+    };
+
+    const primary = await fetchUpstreamJson(url, init);
+    const fallbackToken = (this.config as any).fallbackToken as string | undefined;
+    if (fallbackToken && fallbackToken !== this.config.token && this.shouldFallbackForAction(primary)) {
+      return await this.fetchWithToken(url, init, fallbackToken);
+    }
+    return primary;
   }
 
   /**
