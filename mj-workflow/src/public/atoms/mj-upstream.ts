@@ -47,7 +47,7 @@ export function getUpstreamErrorMessage(payload: any): string | null {
   const type = (p as any)?.type;
   if (typeof type === 'string' && /error/i.test(type)) {
     const desc = typeof (p as any)?.description === 'string' ? (p as any).description.trim() : '';
-    return desc || '上游接口返回错误';
+    return desc || `上游接口返回错误（${type}）`;
   }
 
   const code = (p as any)?.code;

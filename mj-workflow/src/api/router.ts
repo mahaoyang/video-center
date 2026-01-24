@@ -11,6 +11,10 @@ import { basename, extname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 
+async function sleep(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
 function pickNonEmptyId(value: unknown): string | undefined {
   if (typeof value === 'string') {
     const s = value.trim();
@@ -20,22 +24,24 @@ function pickNonEmptyId(value: unknown): string | undefined {
   return undefined;
 }
 
-function extractMjMessageIdFromTask(raw: any): string | undefined {
-  if (!raw) return undefined;
-  return (
-    pickNonEmptyId(raw?.messageId) ||
-    pickNonEmptyId(raw?.message_id) ||
-    pickNonEmptyId(raw?.properties?.messageId) ||
-    pickNonEmptyId(raw?.properties?.message_id) ||
-    pickNonEmptyId(raw?.result?.messageId) ||
-    pickNonEmptyId(raw?.result?.message_id) ||
-    pickNonEmptyId(raw?.result?.properties?.messageId) ||
-    pickNonEmptyId(raw?.result?.properties?.message_id) ||
-    pickNonEmptyId(raw?.data?.messageId) ||
-    pickNonEmptyId(raw?.data?.message_id) ||
-    pickNonEmptyId(raw?.result?.data?.messageId) ||
-    pickNonEmptyId(raw?.result?.data?.message_id)
-  );
+function extractUpscaleCustomIdFromTask(raw: any, index: number): string | undefined {
+  const buttons = raw?.buttons ?? raw?.result?.buttons ?? raw?.properties?.buttons ?? raw?.result?.properties?.buttons;
+  if (!Array.isArray(buttons) || !buttons.length) return undefined;
+
+  const labelTarget = `U${Number(index)}`;
+  for (const b of buttons) {
+    const cid = pickNonEmptyId(b?.customId ?? b?.custom_id);
+    const label = pickNonEmptyId(b?.label);
+    if (cid && label === labelTarget) return cid;
+  }
+
+  const prefix = `MJ::JOB::upsample::${Number(index)}::`;
+  for (const b of buttons) {
+    const cid = pickNonEmptyId(b?.customId ?? b?.custom_id);
+    if (cid && cid.startsWith(prefix)) return cid;
+  }
+
+  return undefined;
 }
 
 function extractAssistantText(raw: any): string {
@@ -1905,23 +1911,34 @@ export function createApiRouter(deps: {
         if (!taskId) return jsonError({ status: 400, description: 'taskId 不能为空' });
         if (![1, 2, 3, 4].includes(Number(index))) return jsonError({ status: 400, description: 'index 必须为 1-4' });
 
-        // yunwu.ai 的 action 接口 customId 末段需要 messageId（不是 taskId）
-        let messageId: string | undefined;
+        // yunwu.ai 的 action 接口需要使用 task.buttons 里提供的 customId（包含 messageId 等上下文）
+        let customId: string | undefined;
         try {
           const task = await deps.mjApi.queryTask(taskId);
-          messageId = extractMjMessageIdFromTask(task);
+          customId = extractUpscaleCustomIdFromTask(task, index);
         } catch (error) {
           console.warn('queryTask before upscale failed:', error);
         }
 
-        const customId = `MJ::JOB::upsample::${index}::${messageId || taskId}`;
-        const result = await deps.mjApi.upscale({
-          chooseSameChannel: true,
+        if (!customId) customId = `MJ::JOB::upsample::${index}::${taskId}`;
+
+        const payload = {
+          chooseSameChannel: false,
           customId,
           taskId,
           notifyHook: '',
           state: '',
-        });
+        };
+
+        // yunwu.ai occasionally returns blank upstream_error for action; retry a few times before giving up.
+        let result: any;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          result = await deps.mjApi.upscale(payload);
+          const type = typeof result?.type === 'string' ? result.type : '';
+          const desc = typeof result?.description === 'string' ? result.description.trim() : '';
+          if (!(type && /error/i.test(type) && !desc && attempt < 3)) break;
+          await sleep(500 * attempt);
+        }
 
         return json(result);
       } catch (error) {
