@@ -11,6 +11,33 @@ import { basename, extname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 
+function pickNonEmptyId(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const s = value.trim();
+    return s ? s : undefined;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function extractMjMessageIdFromTask(raw: any): string | undefined {
+  if (!raw) return undefined;
+  return (
+    pickNonEmptyId(raw?.messageId) ||
+    pickNonEmptyId(raw?.message_id) ||
+    pickNonEmptyId(raw?.properties?.messageId) ||
+    pickNonEmptyId(raw?.properties?.message_id) ||
+    pickNonEmptyId(raw?.result?.messageId) ||
+    pickNonEmptyId(raw?.result?.message_id) ||
+    pickNonEmptyId(raw?.result?.properties?.messageId) ||
+    pickNonEmptyId(raw?.result?.properties?.message_id) ||
+    pickNonEmptyId(raw?.data?.messageId) ||
+    pickNonEmptyId(raw?.data?.message_id) ||
+    pickNonEmptyId(raw?.result?.data?.messageId) ||
+    pickNonEmptyId(raw?.result?.data?.message_id)
+  );
+}
+
 function extractAssistantText(raw: any): string {
   try {
     const choice = raw?.choices?.[0];
@@ -1878,7 +1905,16 @@ export function createApiRouter(deps: {
         if (!taskId) return jsonError({ status: 400, description: 'taskId 不能为空' });
         if (![1, 2, 3, 4].includes(Number(index))) return jsonError({ status: 400, description: 'index 必须为 1-4' });
 
-        const customId = `MJ::JOB::upsample::${index}::${taskId}`;
+        // yunwu.ai 的 action 接口 customId 末段需要 messageId（不是 taskId）
+        let messageId: string | undefined;
+        try {
+          const task = await deps.mjApi.queryTask(taskId);
+          messageId = extractMjMessageIdFromTask(task);
+        } catch (error) {
+          console.warn('queryTask before upscale failed:', error);
+        }
+
+        const customId = `MJ::JOB::upsample::${index}::${messageId || taskId}`;
         const result = await deps.mjApi.upscale({
           chooseSameChannel: true,
           customId,

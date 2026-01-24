@@ -43,6 +43,13 @@ export function getUpstreamErrorMessage(payload: any): string | null {
   const p = unwrapJsonString(payload);
   const err = (p as any)?.error;
   if (err?.message_zh || err?.message) return String(err.message_zh || err.message);
+
+  const type = (p as any)?.type;
+  if (typeof type === 'string' && /error/i.test(type)) {
+    const desc = typeof (p as any)?.description === 'string' ? (p as any).description.trim() : '';
+    return desc || '上游接口返回错误';
+  }
+
   const code = (p as any)?.code;
   if (typeof code === 'number' && code !== 0 && code !== 1) {
     if (typeof (p as any)?.description === 'string' && (p as any).description) return (p as any).description;
