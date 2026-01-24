@@ -53,25 +53,53 @@ export function getUpstreamErrorMessage(payload: any): string | null {
 
 export function getSubmitTaskId(payload: any): string | null {
   const p = unwrapJsonString(payload);
+
+  const asId = (value: unknown): string | null => {
+    if (typeof value === 'string') {
+      const s = value.trim();
+      return s ? s : null;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    return null;
+  };
+
+  const pickIdFromObj = (obj: any): string | null => {
+    if (!obj || typeof obj !== 'object') return null;
+    return (
+      asId(obj.taskId) ||
+      asId(obj.task_id) ||
+      asId(obj.taskID) ||
+      asId(obj.id) ||
+      asId(obj.jobId) ||
+      asId(obj.job_id)
+    );
+  };
+
   if (typeof p === 'string') {
     const raw = p.replace(/\uFEFF/g, '').trim();
     const m =
       raw.match(/"result"\s*:\s*"([^"]+)"/) ||
       raw.match(/"taskId"\s*:\s*"([^"]+)"/) ||
+      raw.match(/"task_id"\s*:\s*"([^"]+)"/) ||
       raw.match(/"id"\s*:\s*"([^"]+)"/) ||
       raw.match(/"result"\s*:\s*(\d+)/) ||
       raw.match(/"taskId"\s*:\s*(\d+)/) ||
+      raw.match(/"task_id"\s*:\s*(\d+)/) ||
       raw.match(/"id"\s*:\s*(\d+)/);
     if (m?.[1]) return String(m[1]);
   }
   const result = (p as any)?.result;
-  if (typeof result === 'string' || typeof result === 'number') return String(result);
-  if (typeof result?.taskId === 'string' || typeof result?.taskId === 'number') return String(result.taskId);
-  if (typeof result?.id === 'string' || typeof result?.id === 'number') return String(result.id);
-  if (typeof (p as any)?.taskId === 'string' || typeof (p as any)?.taskId === 'number') return String((p as any).taskId);
-  if (typeof (p as any)?.id === 'string' || typeof (p as any)?.id === 'number') return String((p as any).id);
-  const props = (p as any)?.properties;
-  if (typeof props?.taskId === 'string' || typeof props?.taskId === 'number') return String(props.taskId);
-  if (typeof props?.id === 'string' || typeof props?.id === 'number') return String(props.id);
-  return null;
+  const scalar = asId(result);
+  if (scalar) return scalar;
+
+  return (
+    pickIdFromObj(result) ||
+    pickIdFromObj(result?.result) ||
+    pickIdFromObj(result?.data) ||
+    pickIdFromObj(result?.properties) ||
+    pickIdFromObj((p as any)?.data) ||
+    pickIdFromObj((p as any)?.properties) ||
+    pickIdFromObj(p) ||
+    null
+  );
 }

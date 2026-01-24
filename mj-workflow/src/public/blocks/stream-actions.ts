@@ -1,4 +1,5 @@
 import type { ApiClient } from '../adapters/api';
+import { pretty } from '../atoms/format';
 import { showError, showMessage } from '../atoms/notify';
 import { randomId } from '../atoms/id';
 import { pollTaskUntilImageUrl } from '../atoms/mj-tasks';
@@ -156,7 +157,7 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
       if (upstreamError) throw new Error(upstreamError);
 
       const upscaleTaskId = getSubmitTaskId(data);
-      if (!upscaleTaskId) throw new Error('扩图失败：未返回任务ID');
+      if (!upscaleTaskId) throw new Error(pretty(data) || '扩图失败：未返回任务ID');
 
       updateMessageById(params.store, msgId, { taskId: upscaleTaskId, progress: 1 });
 
