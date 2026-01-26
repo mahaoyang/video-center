@@ -489,6 +489,21 @@ function parseYoutubeBlocks(text: string): { title: string; description: string 
   return { title, description };
 }
 
+export function youtubeReconcileSignature(m: StreamMessage): string {
+  if (m.kind !== 'youtube' || m.role !== 'ai') return '';
+  const pending = !m.error && (typeof m.progress !== 'number' || m.progress < 100);
+  const prompt = typeof (m as any).userPrompt === 'string' ? String((m as any).userPrompt || '').trim() : '';
+  const thumbs = Array.isArray(m.inputImageUrls) ? m.inputImageUrls.map((u) => String(u || '').trim()).filter(Boolean).slice(0, 8) : [];
+  return [
+    pending ? 'pending' : 'done',
+    String(m.progress || 0),
+    String(m.error || ''),
+    String(m.text || ''),
+    prompt,
+    JSON.stringify(thumbs),
+  ].join('\n');
+}
+
 async function copyToClipboard(text: string): Promise<boolean> {
   const value = String(text || '').trim();
   if (!value) return false;
@@ -1293,6 +1308,10 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
           (prev.error || '') !== (resolved.error || '') ||
           (prev.progress || 0) !== (resolved.progress || 0) ||
           JSON.stringify((prev.inputImageUrls || []).slice(0, 8)) !== JSON.stringify((resolved.inputImageUrls || []).slice(0, 8)));
+      const youtubeTransition =
+        prev.kind === 'youtube' &&
+        prev.role === 'ai' &&
+        youtubeReconcileSignature(prev) !== youtubeReconcileSignature(resolved);
       const kindChanged = prev.kind !== resolved.kind || prev.role !== resolved.role;
       const needsReplace =
         kindChanged ||
@@ -1302,6 +1321,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
         videoTransition ||
         postprocessTransition ||
         sunoTransition ||
+        youtubeTransition ||
         (prev.kind === 'deconstruct' && (prev.text !== resolved.text || prev.imageUrl !== resolved.imageUrl)) ||
         (prev.kind === 'generate' && prev.role === 'user' && prev.text !== resolved.text) ||
         (prev.kind === 'upscale' && prev.role === 'user' && prev.text !== resolved.text) ||
