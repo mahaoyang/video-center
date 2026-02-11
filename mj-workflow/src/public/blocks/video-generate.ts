@@ -16,8 +16,8 @@ function normalizeSpaces(text: string): string {
 function prettyVideoModel(model: string): string {
   const m = String(model || '').trim();
   if (!m) return '默认';
-  if (m === 'jimeng-video-3.0') return 'Jimeng 3.0';
-  if (m === 'kling-v2-6') return 'Kling 2.6';
+  if (m === 'sora-2') return 'Sora 2';
+  if (m === 'sora-2-pro') return 'Sora 2 Pro';
   if (m === 'veo-3.0-fast-generate-001') return 'Veo 3 Fast';
   if (m === 'veo-3.0-generate-001') return 'Veo 3';
   if (m === 'veo-3.1-fast-generate-preview') return 'Veo 3.1 Fast';
@@ -121,9 +121,13 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   });
 
   function modelsForProvider(provider: VideoProvider): string[] {
-    if (provider === 'jimeng') return ['jimeng-video-3.0'];
-    if (provider === 'kling') return ['kling-v2-6'];
-    return ['veo-3.0-fast-generate-001', 'veo-3.0-generate-001', 'veo-3.1-fast-generate-preview', 'veo-3.1-generate-preview'];
+    if (provider === 'sora') return ['sora-2', 'sora-2-pro'];
+    return [
+      'veo-3.0-fast-generate-001',
+      'veo-3.0-generate-001',
+      'veo-3.1-fast-generate-preview',
+      'veo-3.1-generate-preview',
+    ];
   }
 
   function defaultModelForProvider(provider: VideoProvider): string {
@@ -135,22 +139,22 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       ...s,
       videoProvider: next,
       videoModel: defaultModelForProvider(next),
-      videoMode: next === 'kling' ? (typeof s.videoMode === 'string' && s.videoMode.trim() ? s.videoMode.trim() : 'std') : undefined,
-      videoSeconds: next === 'jimeng' ? undefined : s.videoSeconds,
-      videoAspect: next === 'kling' ? undefined : s.videoAspect,
-      videoSize: next === 'kling' ? undefined : s.videoSize,
+      videoMode: undefined,
+      videoSeconds: s.videoSeconds,
+      videoAspect: s.videoAspect,
+      videoSize: s.videoSize,
     }));
   }
 
   function readProvider(): VideoProvider {
     const fromStore = params.store.get().videoProvider;
-    if (fromStore === 'jimeng' || fromStore === 'kling' || fromStore === 'gemini') return fromStore;
-    return 'jimeng';
+    if (fromStore === 'gemini' || fromStore === 'sora') return fromStore;
+    return 'gemini';
   }
 
   function refreshProviderLabel(state: WorkflowState) {
     const provider = readProvider();
-    providerLabel.textContent = provider === 'jimeng' ? 'Jimeng' : provider === 'kling' ? 'Kling' : 'Gemini（自定义模型）';
+    providerLabel.textContent = provider === 'sora' ? 'Sora' : 'Gemini';
     providerMenu.querySelectorAll<HTMLElement>('[data-video-provider]').forEach((el) => {
       const v = String(el.dataset.videoProvider || '').trim();
       el.classList.toggle('bg-white/5', v === provider);
@@ -188,20 +192,10 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
 
     if (!model || !models.includes(model)) patch.videoModel = models[0]!;
 
-    if (provider === 'jimeng') {
-      if (state.videoSeconds !== undefined) patch.videoSeconds = undefined;
-      if (state.videoMode !== undefined) patch.videoMode = undefined;
-      if (!(typeof state.videoAspect === 'string' && state.videoAspect.trim())) patch.videoAspect = '16:9';
-      if (!(typeof state.videoSize === 'string' && state.videoSize.trim())) patch.videoSize = '1080P';
-    } else if (provider === 'kling') {
-      if (!(typeof state.videoMode === 'string' && (state.videoMode === 'std' || state.videoMode === 'pro'))) patch.videoMode = 'std';
-      if (!(typeof state.videoSeconds === 'number' && Number.isFinite(state.videoSeconds))) patch.videoSeconds = 5;
-      if (state.videoAspect !== undefined) patch.videoAspect = undefined;
-      if (state.videoSize !== undefined) patch.videoSize = undefined;
-    } else {
-      // gemini
-      if (state.videoMode !== undefined) patch.videoMode = undefined;
-    }
+    if (state.videoMode !== undefined) patch.videoMode = undefined;
+    if (!(typeof state.videoSeconds === 'number' && Number.isFinite(state.videoSeconds) && state.videoSeconds > 0)) patch.videoSeconds = 5;
+    if (!(typeof state.videoAspect === 'string' && state.videoAspect.trim())) patch.videoAspect = '16:9';
+    if (!(typeof state.videoSize === 'string' && state.videoSize.trim())) patch.videoSize = provider === 'sora' ? 'large' : '1080P';
 
     const keys = Object.keys(patch);
     if (!keys.length) return;
@@ -209,16 +203,13 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   }
 
   function renderSeconds(state: WorkflowState) {
-    const provider = readProvider();
-    const supports = provider !== 'jimeng';
-    secondsWrap.classList.toggle('hidden', !supports);
+    secondsWrap.classList.toggle('hidden', false);
     const secondsViewport = scrollAreaViewport(secondsMenu);
     secondsViewport.innerHTML = '';
-    if (!supports) return;
 
     const current = typeof state.videoSeconds === 'number' && Number.isFinite(state.videoSeconds) ? state.videoSeconds : undefined;
     secondsLabel.textContent = current ? `${current}s` : '默认';
-    const opts = provider === 'kling' ? [5, 10] : [5, 10, 15];
+    const opts = [5, 10, 15];
     for (const s of opts) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -246,42 +237,24 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
   }
 
   function renderMode(state: WorkflowState) {
-    const provider = readProvider();
-    const showMode = provider === 'kling';
-    modeWrap.classList.toggle('hidden', !showMode);
-    if (!showMode) return;
-    const mode = typeof state.videoMode === 'string' && (state.videoMode === 'std' || state.videoMode === 'pro') ? state.videoMode : 'std';
-    modeLabel.textContent = mode.toUpperCase();
+    void state;
+    modeWrap.classList.add('hidden');
+    modeLabel.textContent = '';
     const viewport = scrollAreaViewport(modeMenu);
     viewport.innerHTML = '';
-    for (const opt of ['std', 'pro'] as const) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = `w-full px-4 py-3 text-left text-[12px] hover:bg-white/5 transition-all ${opt === mode ? 'bg-white/5' : ''}`;
-      b.textContent = opt.toUpperCase();
-      b.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        params.store.update((s) => ({ ...s, videoMode: opt }));
-        modePopover.close();
-      });
-      viewport.appendChild(b);
-    }
   }
 
   function renderAspectSize(state: WorkflowState) {
     const provider = readProvider();
-    const supports = provider !== 'kling';
-    aspectWrap.classList.toggle('hidden', !supports);
-    sizeWrap.classList.toggle('hidden', !supports);
+    aspectWrap.classList.toggle('hidden', false);
+    sizeWrap.classList.toggle('hidden', false);
     const aspectViewport = scrollAreaViewport(aspectMenu);
     const sizeViewport = scrollAreaViewport(sizeMenu);
     aspectViewport.innerHTML = '';
     sizeViewport.innerHTML = '';
-    if (!supports) return;
 
     const aspect = typeof state.videoAspect === 'string' && state.videoAspect.trim() ? state.videoAspect.trim() : '';
-    aspectLabel.textContent = aspect || '默认';
+    aspectLabel.textContent = aspect || '16:9';
     for (const opt of ['16:9', '9:16', '1:1', '2:3', '3:2', '4:3', '3:4']) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -308,8 +281,8 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
     aspectViewport.appendChild(clearAspect);
 
     const size = typeof state.videoSize === 'string' && state.videoSize.trim() ? state.videoSize.trim() : '';
-    sizeLabel.textContent = size || '默认';
-    const sizeOptions = provider === 'jimeng' ? ['1080P', '720P'] : ['large', 'medium', 'small', '1080P', '720P'];
+    sizeLabel.textContent = size || (provider === 'sora' ? 'large' : '1080P');
+    const sizeOptions = provider === 'sora' ? ['large', 'medium', 'small'] : ['large', 'medium', 'small', '1080P', '720P'];
     for (const opt of sizeOptions) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -341,7 +314,7 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
       e.preventDefault();
       e.stopPropagation();
       const v = String(btn.dataset.videoProvider || '').trim();
-      if (v !== 'jimeng' && v !== 'kling' && v !== 'gemini') return;
+      if (v !== 'gemini' && v !== 'sora') return;
       setProvider(v);
       const next = params.store.get();
       ensureValidState(next);
@@ -459,11 +432,6 @@ export function createVideoGenerateBlock(params: { api: ApiClient; store: Store<
     if (endRefId) {
       endImageUrl = await ensurePublicUrlForRefId(endRefId, '结束帧（End）');
       if (!endImageUrl) return;
-    }
-
-    if (provider === 'kling' && !startImageUrl) {
-      showError('Kling 需要选择起始帧（Start Frame）');
-      return;
     }
 
     const aiMsgId = randomId('msg');

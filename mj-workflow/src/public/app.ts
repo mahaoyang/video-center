@@ -20,8 +20,6 @@ import { createVaultTimeline } from './blocks/vault-timeline';
 import { createCommandFooterControls } from './blocks/command-footer-controls';
 import { setupScrollAreas } from './atoms/scroll-area';
 import { createTraceBlock } from './blocks/trace';
-import { createMvComposeBlock } from './blocks/mv-compose';
-import { createPostprocessBlock } from './blocks/postprocess';
 import { keepStreamBottomPaddingClear } from './blocks/stream-bottom-padding';
 import { createSunoBlock } from './blocks/suno';
 import { createYoutubeMetaBlock } from './blocks/youtube';
@@ -44,8 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.desktopHiddenStreamMessageIds = persisted.desktopHiddenStreamMessageIds || [];
   initial.plannerMessages = persisted.plannerMessages || [];
   initial.desktopHiddenPlannerMessageIds = persisted.desktopHiddenPlannerMessageIds || [];
-  initial.mediaAssets = persisted.mediaAssets || [];
-  initial.selectedMediaAssetIds = persisted.selectedMediaAssetIds || [];
   initial.traceHeadMessageId = persisted.traceHeadMessageId;
   if (!initial.traceHeadMessageId && initial.streamMessages.length) {
     initial.traceHeadMessageId = initial.streamMessages.at(-1)!.id;
@@ -54,8 +50,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if ((persisted as any).sunoMode) (initial as any).sunoMode = (persisted as any).sunoMode as any;
   if ((persisted as any).sunoLanguage) (initial as any).sunoLanguage = (persisted as any).sunoLanguage as any;
   if (persisted.beautifyHint) initial.beautifyHint = persisted.beautifyHint as any;
-  if (persisted.postVideoPreset) initial.postVideoPreset = persisted.postVideoPreset as any;
-  if (typeof persisted.postVideoCrf === 'number') initial.postVideoCrf = persisted.postVideoCrf;
   if (persisted.gimageAspect) initial.gimageAspect = persisted.gimageAspect as any;
   if (persisted.gimageSize) initial.gimageSize = persisted.gimageSize as any;
   if (persisted.videoProvider) initial.videoProvider = persisted.videoProvider as any;
@@ -66,14 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (persisted.videoSize) initial.videoSize = persisted.videoSize as any;
   if (persisted.videoStartRefId) initial.videoStartRefId = persisted.videoStartRefId as any;
   if (persisted.videoEndRefId) initial.videoEndRefId = persisted.videoEndRefId as any;
-  if (Array.isArray(persisted.mvSequence)) initial.mvSequence = persisted.mvSequence as any;
-  if (typeof persisted.mvSubtitleText === 'string') initial.mvSubtitleText = persisted.mvSubtitleText as any;
-  if (typeof persisted.mvText === 'string') initial.mvText = persisted.mvText as any;
-  if (persisted.mvResolution) initial.mvResolution = persisted.mvResolution as any;
-  if (typeof persisted.mvFps === 'number') initial.mvFps = persisted.mvFps;
-  if (typeof persisted.mvDurationSeconds === 'number') initial.mvDurationSeconds = persisted.mvDurationSeconds;
-  if (persisted.mvSubtitleMode) initial.mvSubtitleMode = persisted.mvSubtitleMode as any;
-  if (persisted.mvAction) initial.mvAction = persisted.mvAction as any;
 
   // Set stage to active immediately for stream UI
   initial.step = 4;
@@ -102,8 +88,6 @@ document.addEventListener('DOMContentLoaded', () => {
   createStreamHistory({ store });
   createPlannerChat({ api, store });
   const video = createVideoGenerateBlock({ api, store });
-  const mv = createMvComposeBlock({ api, store });
-  const post = createPostprocessBlock({ api, store });
   const command = createCommandModeBlock({
     api,
     store,
@@ -113,8 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
     describe,
     pedit,
     video,
-    mv: { cook: mv.cook },
-    post: { run: post.run },
   });
   initOverlays();
   setupScrollAreas(document);

@@ -126,7 +126,7 @@ export function createGeminiEditBlock(params: { api: ApiClient; store: Store<Wor
     const refIds = selected.map((r) => r.id);
     const inputImageUrls = selected
       .map((r) => bestEditSourceUrl(r))
-      .filter((u): u is string => typeof u === 'string' && u.trim());
+      .filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
     if (selected.length && inputImageUrls.length !== selected.length) {
       showError('部分参考图缺少可用 URL（请等待上传完成或重新上传）');
       return;

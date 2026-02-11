@@ -129,8 +129,7 @@ export function createGeminiVideoClient(opts: { apiKey?: string | undefined }): 
     async downloadVideo(params) {
       const downloadPath = String(params.downloadPath || '').trim();
       if (!downloadPath) throw new Error('downloadPath 不能为空');
-      await getAi().files.downloadFile({ file: params.file as any, downloadPath } as any);
+      await getAi().files.download({ file: params.file as any, downloadPath } as any);
     },
   };
 }
-

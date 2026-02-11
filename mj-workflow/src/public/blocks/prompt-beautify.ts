@@ -12,32 +12,38 @@ export function createPromptBeautifyBlock(params: { api: ApiClient }) {
   const spinner = document.getElementById('promptBeautifySpinner') as HTMLDivElement | null;
 
   if (!btn || !popover || !hintInput || !cancel || !apply || !spinner) return;
+  const triggerBtn = btn;
+  const popoverEl = popover;
+  const hintEl = hintInput;
+  const cancelBtn = cancel;
+  const applyBtn = apply;
+  const spinnerEl = spinner;
 
   let open = false;
 
   function setOpen(next: boolean) {
     open = next;
     if (open) {
-      show(popover);
-      requestAnimationFrame(() => hintInput.focus());
+      show(popoverEl);
+      requestAnimationFrame(() => hintEl.focus());
     } else {
-      hide(popover);
-      hintInput.value = '';
+      hide(popoverEl);
+      hintEl.value = '';
     }
   }
 
   function setLoading(loading: boolean) {
-    if (loading) show(spinner);
-    else hide(spinner);
+    if (loading) show(spinnerEl);
+    else hide(spinnerEl);
   }
 
-  btn.addEventListener('click', (e) => {
+  triggerBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     setOpen(!open);
   });
 
-  cancel.addEventListener('click', (e) => {
+  cancelBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     setOpen(false);
@@ -51,13 +57,13 @@ export function createPromptBeautifyBlock(params: { api: ApiClient }) {
       return;
     }
 
-    const hint = hintInput.value.trim();
+    const hint = hintEl.value.trim();
     setOpen(false);
     setLoading(true);
-    setDisabled(btn, true);
-    setDisabled(apply, true);
-    setDisabled(cancel, true);
-    setDisabled(hintInput, true);
+    setDisabled(triggerBtn, true);
+    setDisabled(applyBtn, true);
+    setDisabled(cancelBtn, true);
+    setDisabled(hintEl, true);
     try {
       try {
         const next = await beautifyPromptBodyZh({ api: params.api, prompt, hint });
@@ -69,21 +75,21 @@ export function createPromptBeautifyBlock(params: { api: ApiClient }) {
         showError((error as Error)?.message || '提示词美化失败');
       }
     } finally {
-      setDisabled(btn, false);
-      setDisabled(apply, false);
-      setDisabled(cancel, false);
-      setDisabled(hintInput, false);
+      setDisabled(triggerBtn, false);
+      setDisabled(applyBtn, false);
+      setDisabled(cancelBtn, false);
+      setDisabled(hintEl, false);
       setLoading(false);
     }
   }
 
-  apply.addEventListener('click', (e) => {
+  applyBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     void doBeautify();
   });
 
-  hintInput.addEventListener('keydown', (e) => {
+  hintEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();
@@ -99,7 +105,7 @@ export function createPromptBeautifyBlock(params: { api: ApiClient }) {
     if (!open) return;
     const target = e.target as Node | null;
     if (!target) return;
-    if (popover.contains(target) || btn.contains(target)) return;
+    if (popoverEl.contains(target) || triggerBtn.contains(target)) return;
     setOpen(false);
   });
 

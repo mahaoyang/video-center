@@ -35,6 +35,7 @@ export function scanMjParamSpans(input: string): MjParamSpan[] {
 
   for (let i = 0; i < matches.length; i++) {
     const curr = matches[i];
+    if (!curr) continue;
     const next = matches[i + 1];
     const end = next ? next.matchStart : input.length;
     const rawValue = input.slice(curr.tokenEnd, end).trim();

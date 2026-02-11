@@ -21,7 +21,7 @@ function ensureZeroState(stream: HTMLElement, hasMessages: boolean) {
 
 function bindStreamTileActions(root: HTMLElement, ctx: { src?: string; taskId?: string }) {
   root.querySelectorAll<HTMLButtonElement>('button[data-stream-action]').forEach((btn) => {
-    const action = btn.dataset.streamAction as 'pad' | 'upscale' | 'select' | 'selectUrl' | undefined;
+    const action = btn.dataset.streamAction as 'pad' | 'upscale' | 'select' | 'selectUrl' | 'retryTask' | undefined;
     const index = Number(btn.dataset.index || '');
     if (!action) return;
 
@@ -43,6 +43,10 @@ function bindStreamTileActions(root: HTMLElement, ctx: { src?: string; taskId?: 
       } else if (action === 'selectUrl') {
         if (!ctx.src) return;
         dispatchStreamTileEvent({ action: 'selectUrl', src: ctx.src });
+      } else if (action === 'retryTask') {
+        const messageId = String(btn.dataset.messageId || '').trim();
+        if (!messageId) return;
+        dispatchStreamTileEvent({ action: 'retryTask', messageId });
       }
     });
   });
@@ -152,8 +156,18 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
           <div class="text-[11px] font-mono opacity-70 leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
         </div>
         <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+        <div data-retry-wrap="1" class="mt-4 ${m.error && taskId ? '' : 'hidden'}">
+          <button
+            data-stream-action="retryTask"
+            data-message-id="${escapeHtml(m.id)}"
+            type="button"
+            class="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/80 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-[0.18em]">
+            重新拉取结果
+          </button>
+        </div>
       </div>
     `;
+    bindStreamTileActions(msg, { taskId });
     return msg;
   }
 
@@ -236,8 +250,18 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
           <div class="text-[12px] font-black text-studio-accent"><span data-progress-text="1">${p}%</span></div>
         </div>
         <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+        <div data-retry-wrap="1" class="mt-4 ${m.error && taskId ? '' : 'hidden'}">
+          <button
+            data-stream-action="retryTask"
+            data-message-id="${escapeHtml(m.id)}"
+            type="button"
+            class="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/80 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-[0.18em]">
+            重新拉取结果
+          </button>
+        </div>
       </div>
     `;
+    bindStreamTileActions(msg, { taskId });
     return msg;
   }
 
@@ -826,128 +850,11 @@ function renderSunoMessage(m: StreamMessage): HTMLElement {
   return msg;
 }
 
-function safeDownloadName(name: string, fallback: string): string {
-  const raw = String(name || '').trim();
-  const cleaned = raw.replace(/[^\w.-]+/g, '_');
-  return cleaned || fallback;
-}
-
-function renderPostprocessMessage(m: StreamMessage): HTMLElement {
-  const msg = document.createElement('div');
-  msg.dataset.streamMessage = '1';
-
-  const outputs = Array.isArray((m as any).postOutputs) ? ((m as any).postOutputs as any[]).slice(0, 24) : [];
-  const pending = !outputs.length && !m.error && (typeof m.progress !== 'number' || m.progress < 100);
-  const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
-
-  msg.className = 'group animate-fade-in-up';
-  if (pending) {
-    msg.innerHTML = `
-      <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60">
-        <div class="flex items-center gap-4 opacity-60">
-          <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
-            <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
-          </div>
-          <div class="flex flex-col">
-            <span class="text-[10px] font-black uppercase tracking-[0.3em]">Post Processing</span>
-            <span class="text-[9px] font-mono opacity-40">处理中…（${p}%）</span>
-          </div>
-        </div>
-        <div class="mt-6 text-[11px] font-mono opacity-70 whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
-        <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
-      </div>
-    `;
-    return msg;
-  }
-
-  const rows = outputs
-    .map((o) => {
-      const kind = o?.kind === 'audio' ? 'audio' : o?.kind === 'video' ? 'video' : 'image';
-      const url = kind === 'image' ? toAppImageSrc(String(o?.url || '')) : toAppVideoSrc(String(o?.url || ''));
-      const downloadName = safeDownloadName(
-        String(o?.name || ''),
-        kind === 'audio' ? 'audio_pro.wav' : kind === 'video' ? 'video_post.mp4' : 'image'
-      );
-      if (!url) return '';
-
-      if (kind === 'audio') {
-        return `
-          <div class="rounded-2xl border border-white/10 bg-black/20 p-5 space-y-4">
-            <div class="flex items-center justify-between gap-3">
-              <div class="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Audio</div>
-              <a href="${escapeHtml(url)}" download="${escapeHtml(downloadName)}"
-                class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-widest">
-                Download
-              </a>
-            </div>
-            <audio src="${escapeHtml(url)}" controls class="w-full"></audio>
-            <div class="text-[10px] font-mono opacity-40 break-all">${escapeHtml(String(o?.url || ''))}</div>
-          </div>
-        `;
-      }
-
-      if (kind === 'video') {
-        return `
-          <div class="rounded-2xl border border-white/10 bg-black/20 p-5 space-y-4">
-            <div class="flex items-center justify-between gap-3">
-              <div class="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Video</div>
-              <a href="${escapeHtml(url)}" download="${escapeHtml(downloadName)}"
-                class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-widest">
-                Download
-              </a>
-            </div>
-            <div class="rounded-2xl overflow-hidden border border-white/10 bg-black/30">
-              <video src="${escapeHtml(url)}" controls class="w-full h-auto block"></video>
-            </div>
-            <div class="text-[10px] font-mono opacity-40 break-all">${escapeHtml(String(o?.url || ''))}</div>
-          </div>
-        `;
-      }
-
-      return `
-        <div class="rounded-2xl border border-white/10 bg-black/20 p-5 space-y-4">
-          <div class="flex items-center justify-between gap-3">
-            <div class="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Image</div>
-            <a href="${escapeHtml(url)}" download="${escapeHtml(downloadName)}"
-              class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-widest">
-              Download
-            </a>
-          </div>
-          <div class="rounded-2xl overflow-hidden border border-white/10 bg-black/30">
-            <img src="${escapeHtml(url)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
-          </div>
-          <div class="text-[10px] font-mono opacity-40 break-all">${escapeHtml(String(o?.url || ''))}</div>
-        </div>
-      `;
-    })
-    .filter(Boolean)
-    .join('');
-
-  msg.innerHTML = `
-    <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60 space-y-6">
-      <div class="flex items-center justify-between gap-6">
-        <div class="flex items-center gap-4 opacity-50">
-          <i class="fas fa-wand-magic-sparkles text-studio-accent text-xs"></i>
-          <span class="text-[10px] font-black uppercase tracking-[0.3em]">Postprocess Complete</span>
-        </div>
-      </div>
-      <div class="space-y-4">
-        ${rows || `<div class="text-[11px] font-mono opacity-60">无可用结果</div>`}
-      </div>
-      <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
-    </div>
-  `;
-
-  bindPreview(msg);
-  return msg;
-}
-
 function renderMessage(m: StreamMessage): HTMLElement {
   if (m.kind === 'deconstruct') return renderDeconstructMessage(m);
   if (m.kind === 'upscale') return renderUpscaleMessage(m);
   if (m.kind === 'pedit') return renderPeditMessage(m);
   if (m.kind === 'video') return renderVideoMessage(m);
-  if (m.kind === 'postprocess') return renderPostprocessMessage(m);
   if (m.kind === 'suno') return renderSunoMessage(m);
   if (m.kind === 'youtube') return renderYoutubeMessage(m);
   return renderGenerateMessage(m);
@@ -955,9 +862,101 @@ function renderMessage(m: StreamMessage): HTMLElement {
 
 export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   const stream = byId<HTMLElement>('productionStream');
+  const scrollTopBtn = document.getElementById('streamScrollTopBtn') as HTMLButtonElement | null;
+  const scrollBottomBtn = document.getElementById('streamScrollBottomBtn') as HTMLButtonElement | null;
   const rendered = new Map<string, HTMLElement>();
   const lastById = new Map<string, StreamMessage>();
   let lastIds: string[] = [];
+  let didInitialAutoScroll = false;
+  let followBottom = true;
+  let settleRaf = 0;
+  let stickQueued = false;
+
+  const resizeObserver =
+    typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+          if (!followBottom) return;
+          queueStickToBottom();
+        })
+      : null;
+
+  function isNearBottom(threshold = 120): boolean {
+    return stream.scrollTop + stream.clientHeight >= stream.scrollHeight - threshold;
+  }
+
+  function scrollToBottom() {
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  function updateScrollJumpButtons() {
+    const hasOverflow = stream.scrollHeight > stream.clientHeight + 8;
+    const nearTop = stream.scrollTop <= 24;
+    const nearBottom = isNearBottom(24);
+
+    if (scrollTopBtn) scrollTopBtn.classList.toggle('hidden', !hasOverflow || nearTop);
+    if (scrollBottomBtn) scrollBottomBtn.classList.toggle('hidden', !hasOverflow || nearBottom);
+  }
+
+  function settleToBottom() {
+    if (settleRaf) cancelAnimationFrame(settleRaf);
+    let lastHeight = -1;
+    let stableFrames = 0;
+    let ticks = 0;
+    const maxTicks = 36;
+    const loop = () => {
+      if (!followBottom) return;
+      const h = stream.scrollHeight;
+      if (h !== lastHeight) {
+        lastHeight = h;
+        stableFrames = 0;
+        scrollToBottom();
+      } else {
+        if (!isNearBottom(2)) scrollToBottom();
+        stableFrames += 1;
+      }
+      ticks += 1;
+      if (stableFrames >= 3 || ticks >= maxTicks) return;
+      settleRaf = requestAnimationFrame(loop);
+    };
+    settleRaf = requestAnimationFrame(loop);
+  }
+
+  function queueStickToBottom() {
+    if (!followBottom || stickQueued) return;
+    stickQueued = true;
+    requestAnimationFrame(() => {
+      stickQueued = false;
+      if (!followBottom) return;
+      scrollToBottom();
+      settleToBottom();
+    });
+  }
+
+  function bindAsyncLayoutStick(el: HTMLElement) {
+    if (resizeObserver) resizeObserver.observe(el);
+
+    const onMediaReady = () => {
+      if (!followBottom) return;
+      queueStickToBottom();
+    };
+
+    el.querySelectorAll('img').forEach((img) => {
+      if ((img as HTMLImageElement).complete) {
+        onMediaReady();
+      } else {
+        img.addEventListener('load', onMediaReady, { once: true });
+      }
+    });
+
+    el.querySelectorAll('video').forEach((video) => {
+      const v = video as HTMLVideoElement;
+      if (v.readyState >= 1) {
+        onMediaReady();
+      } else {
+        v.addEventListener('loadedmetadata', onMediaReady, { once: true });
+      }
+    });
+  }
 
   function backfillForBranch(messageId: string) {
     const s = params.store.get();
@@ -1035,84 +1034,14 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
         const prompt = (msg.text || '').trim();
         if (!prompt) return showError('提示词为空');
 
-        const isMv =
-          String(msg.provider || '').trim() === 'mv' || Boolean(msg.mvResolution || (msg as any).mvSequence || msg.mvSubtitleSrt);
-        if (isMv) {
-          const mvVideoUrl = typeof msg.mvVideoUrl === 'string' ? msg.mvVideoUrl : undefined;
-          const mvAudioUrl = typeof msg.mvAudioUrl === 'string' ? msg.mvAudioUrl : undefined;
-          const mvSrt = typeof msg.mvSubtitleSrt === 'string' ? msg.mvSubtitleSrt : '';
-          const mvSeqRaw = Array.isArray((msg as any).mvSequence) ? (msg as any).mvSequence : [];
-          const mvAction = (msg as any).mvAction === 'clip' ? 'clip' : 'mv';
-
-          const selectedRefIds = mvSeqRaw
-            .map((it: any) => String(it?.refId || '').trim())
-            .filter(Boolean)
-            .slice(0, 24);
-
-          const recipe: 'mv-mix' | 'mv-images' | 'mv-clip' | 'mv-subtitle' =
-            mvSrt && mvSrt.trim()
-              ? 'mv-subtitle'
-              : mvAction === 'clip'
-                ? mvVideoUrl
-                  ? 'mv-clip'
-                  : 'mv-images'
-                : 'mv-mix';
-
-          params.store.update((st) => {
-            const mediaAssets = Array.isArray(st.mediaAssets) ? st.mediaAssets.slice() : [];
-
-            const ensureUrlAsset = (kind: 'video' | 'audio', url: string | undefined) => {
-              if (!url) return undefined;
-              const existing = mediaAssets.find((a) => a.kind === kind && (a.localUrl === url || a.url === url));
-              if (existing) return existing.id;
-              const name = url.split('/').pop() || `${kind}`;
-              const id = randomId('asset');
-              mediaAssets.push({ id, kind, name, createdAt: Date.now(), url, localUrl: url.startsWith('/uploads/') ? url : undefined });
-              return id;
-            };
-
-            const ensureSubtitleAsset = (srt: string) => {
-              const text = String(srt || '').trim();
-              if (!text) return undefined;
-              const existing = mediaAssets.find((a) => a.kind === 'subtitle' && typeof a.text === 'string' && a.text.trim() === text);
-              if (existing) return existing.id;
-              const id = randomId('asset');
-              mediaAssets.push({ id, kind: 'subtitle', name: `subtitle-${new Date().toISOString().slice(0, 10)}.srt`, createdAt: Date.now(), text });
-              return id;
-            };
-
-            const videoAssetId = ensureUrlAsset('video', mvVideoUrl);
-            const audioAssetId = ensureUrlAsset('audio', mvAudioUrl);
-            const subtitleAssetId = ensureSubtitleAsset(mvSrt);
-
-            return {
-              ...st,
-              traceHeadMessageId: msg.id,
-              commandMode: recipe,
-              mediaAssets: mediaAssets.slice(-120),
-              mvResolution: typeof msg.mvResolution === 'string' ? msg.mvResolution : st.mvResolution,
-              mvFps: typeof msg.mvFps === 'number' ? msg.mvFps : st.mvFps,
-              mvDurationSeconds: typeof msg.mvDurationSeconds === 'number' ? msg.mvDurationSeconds : st.mvDurationSeconds,
-              mvSubtitleMode: msg.mvSubtitleMode === 'burn' ? 'burn' : 'soft',
-              mvAction: mvAction,
-              selectedReferenceIds: selectedRefIds,
-              selectedMediaAssetIds: [videoAssetId, audioAssetId, subtitleAssetId].filter(Boolean) as string[],
-            };
-          });
-
-          setPromptInput(prompt);
-          showMessage('已回填 MV 入参（新分支）：编辑素材/参数后点击发送（小飞机）执行');
-          return;
-        }
-
         params.store.update((st) => ({
           ...st,
           traceHeadMessageId: msg.id,
           commandMode: 'video',
-          videoProvider: msg.provider === 'jimeng' || msg.provider === 'kling' || msg.provider === 'gemini' ? (msg.provider as any) : st.videoProvider,
+          videoProvider: msg.provider === 'sora' || msg.provider === 'gemini' ? (msg.provider as any) : st.videoProvider,
           videoModel: typeof msg.videoModel === 'string' ? msg.videoModel : st.videoModel,
           videoSeconds: typeof msg.videoSeconds === 'number' ? msg.videoSeconds : st.videoSeconds,
-          videoMode: typeof msg.videoMode === 'string' ? msg.videoMode : st.videoMode,
+          videoMode: undefined,
           videoAspect: typeof msg.videoAspect === 'string' ? msg.videoAspect : st.videoAspect,
           videoSize: typeof msg.videoSize === 'string' ? msg.videoSize : st.videoSize,
           videoStartRefId: typeof msg.videoStartRefId === 'string' ? msg.videoStartRefId : st.videoStartRefId,
@@ -1178,28 +1107,6 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     btn.innerHTML = '<i class="fas fa-sitemap text-[11px]"></i>';
     panel.appendChild(btn);
 
-    if (resolved.kind === 'postprocess') {
-      const outputs = Array.isArray((resolved as any).postOutputs) ? ((resolved as any).postOutputs as any[]).slice(0, 24) : [];
-      const firstImageOutput = outputs.find((o) => (o?.kind === 'image' || o?.kind === undefined) && String(o?.url || '').trim());
-      const raw = String(firstImageOutput?.url || '').trim();
-      if (raw) {
-        const base = safeDownloadName(String(firstImageOutput?.name || 'postprocess'), 'postprocess');
-        const downloadName =
-          base.toLowerCase().endsWith('.jpg') || base.toLowerCase().endsWith('.jpeg') ? base : `${base}.jpg`;
-        const href = `/api/image?src=${encodeURIComponent(raw)}&format=jpeg&download=1&name=${encodeURIComponent(base)}`;
-
-        const jpeg = document.createElement('a');
-        jpeg.href = href;
-        jpeg.download = downloadName;
-        jpeg.title = '下载 JPEG';
-        jpeg.setAttribute('aria-label', '下载 JPEG');
-        jpeg.className =
-          'absolute -top-4 right-[7.75rem] w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all flex items-center justify-center z-30';
-        jpeg.innerHTML = '<i class="fas fa-file-arrow-down text-[11px]"></i>';
-        panel.appendChild(jpeg);
-      }
-    }
-
     return el;
   }
 
@@ -1217,12 +1124,12 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
       errEl.textContent = has ? m.error! : '';
       errEl.classList.toggle('hidden', !has);
     }
-  }
 
-  function isPostprocessPending(m: StreamMessage): boolean {
-    if (m.kind !== 'postprocess') return false;
-    const outputs = Array.isArray((m as any).postOutputs) ? ((m as any).postOutputs as any[]) : [];
-    return !outputs.length && !m.error && (typeof m.progress !== 'number' || m.progress < 100);
+    const retryWrap = el.querySelector<HTMLElement>('[data-retry-wrap="1"]');
+    if (retryWrap) {
+      const canRetry = Boolean(m.taskId && m.taskId.trim() && m.error && m.error.trim());
+      retryWrap.classList.toggle('hidden', !canRetry);
+    }
   }
 
   function isSunoPending(m: StreamMessage): boolean {
@@ -1244,6 +1151,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     // Remove deleted messages
     for (const [id, el] of rendered) {
       if (!nextSet.has(id)) {
+        if (resizeObserver) resizeObserver.unobserve(el);
         el.remove();
         rendered.delete(id);
         lastById.delete(id);
@@ -1259,6 +1167,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
 
       if (!existing) {
         const el = mountMessage(resolved, state);
+        bindAsyncLayoutStick(el);
         rendered.set(id, el);
         lastById.set(id, resolved);
         stream.appendChild(el);
@@ -1267,6 +1176,8 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
 
       if (!prev) {
         const el = mountMessage(resolved, state);
+        if (resizeObserver) resizeObserver.unobserve(existing);
+        bindAsyncLayoutStick(el);
         existing.replaceWith(el);
         rendered.set(id, el);
         lastById.set(id, resolved);
@@ -1292,14 +1203,6 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
           : '';
       const peditTransition = prev.kind === 'pedit' && prev.role === 'ai' && prevPeditSig !== nextPeditSig;
       const videoTransition = prev.kind === 'video' && prev.role === 'ai' && prev.videoUrl !== resolved.videoUrl;
-      const postprocessTransition =
-        prev.kind === 'postprocess' &&
-        prev.role === 'ai' &&
-        (isPostprocessPending(prev) !== isPostprocessPending(resolved) ||
-          JSON.stringify(((prev as any).postOutputs || []).slice(0, 24)) !==
-            JSON.stringify((((resolved as any).postOutputs || []) as any[]).slice(0, 24)) ||
-          (prev.text || '') !== (resolved.text || '') ||
-          (prev.error || '') !== (resolved.error || ''));
       const sunoTransition =
         prev.kind === 'suno' &&
         prev.role === 'ai' &&
@@ -1319,7 +1222,6 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
         upscaleTransition ||
         peditTransition ||
         videoTransition ||
-        postprocessTransition ||
         sunoTransition ||
         youtubeTransition ||
         (prev.kind === 'deconstruct' && (prev.text !== resolved.text || prev.imageUrl !== resolved.imageUrl)) ||
@@ -1329,6 +1231,8 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
 
       if (needsReplace) {
         const el = mountMessage(resolved, state);
+        if (resizeObserver) resizeObserver.unobserve(existing);
+        bindAsyncLayoutStick(el);
         existing.replaceWith(el);
         rendered.set(id, el);
         lastById.set(id, resolved);
@@ -1346,7 +1250,17 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     }
 
     ensureZeroState(stream, visibleMessages.length > 0);
-    if (isAppend && atBottom) stream.scrollTop = stream.scrollHeight;
+    if (!didInitialAutoScroll) {
+      didInitialAutoScroll = true;
+      if (visibleMessages.length > 0) {
+        followBottom = true;
+        queueStickToBottom();
+      }
+    } else if (isAppend && atBottom) {
+      followBottom = true;
+      queueStickToBottom();
+    }
+    updateScrollJumpButtons();
     lastIds = nextIds;
   }
 
@@ -1360,6 +1274,30 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     e.stopPropagation();
     clearDesktopUi();
   });
+
+  scrollTopBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    followBottom = false;
+    stream.scrollTo({ top: 0, behavior: 'smooth' });
+    requestAnimationFrame(() => updateScrollJumpButtons());
+  });
+
+  scrollBottomBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    followBottom = true;
+    stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' });
+    queueStickToBottom();
+    requestAnimationFrame(() => updateScrollJumpButtons());
+  });
+
+  stream.addEventListener('scroll', () => {
+    followBottom = isNearBottom(120);
+    updateScrollJumpButtons();
+  });
+
+  window.addEventListener('resize', () => updateScrollJumpButtons());
 
   stream.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
@@ -1402,4 +1340,5 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
   params.store.subscribe((s) => {
     reconcile(s.streamMessages);
   });
+  updateScrollJumpButtons();
 }

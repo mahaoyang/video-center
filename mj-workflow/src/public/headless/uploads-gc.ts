@@ -35,12 +35,9 @@ function collectMessageKeys(set: Set<string>, m: StreamMessage) {
   pushLocalKeyFromUrl(set, m.peditImageUrl);
   pushLocalKeyFromUrl(set, m.videoUrl);
   pushLocalKeyFromUrl(set, m.thumbnailUrl);
-  pushLocalKeyFromUrl(set, m.mvVideoUrl);
-  pushLocalKeyFromUrl(set, m.mvAudioUrl);
 
   if (Array.isArray(m.peditImageUrls)) m.peditImageUrls.forEach((u) => pushLocalKeyFromUrl(set, u));
   if (Array.isArray(m.inputImageUrls)) m.inputImageUrls.forEach((u) => pushLocalKeyFromUrl(set, u));
-  if (Array.isArray(m.postOutputs)) m.postOutputs.forEach((o) => pushLocalKeyFromUrl(set, o?.url));
 }
 
 export function collectReferencedUploadKeys(state: WorkflowState): string[] {
@@ -76,12 +73,6 @@ export function collectReferencedUploadKeys(state: WorkflowState): string[] {
     }
   }
 
-  for (const a of state.mediaAssets || []) {
-    pushUnique(set, a.localKey);
-    pushLocalKeyFromUrl(set, a.localUrl);
-    pushLocalKeyFromUrl(set, a.url);
-  }
-
   return Array.from(set).slice(0, 5000);
 }
 
@@ -98,4 +89,3 @@ export async function cleanupOrphanUploads(params: {
     return null;
   }
 }
-

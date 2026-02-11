@@ -5,14 +5,10 @@ import { createPopoverMenu } from '../atoms/popover-menu';
 import { clearAspectRatio, parseMjParams, removeMjParams, setAspectRatio, upsertMjParam } from '../atoms/mj-params';
 import { getPreferredMjAspectRatio, setPreferredMjAspectRatio } from '../atoms/mj-preferences';
 import { scrollAreaViewport, setupScrollArea } from '../atoms/scroll-area';
-import { setTraceOpen } from '../atoms/overlays';
-import { showError } from '../atoms/notify';
-import { readSelectedReferenceIds } from '../state/material';
 
 function readMode(state: WorkflowState): CommandMode {
   const m = state.commandMode;
-  if (typeof m === 'string' && m.startsWith('mv')) return 'mv';
-  return m === 'mj' || m === 'suno' || m === 'youtube' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' || m === 'post' ? m : 'mj';
+  return m === 'mj' || m === 'suno' || m === 'youtube' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' ? m : 'mj';
 }
 
 function getPromptInput(): HTMLTextAreaElement | null {
@@ -34,8 +30,8 @@ function promptText(state: WorkflowState, promptInput: HTMLTextAreaElement | nul
 function prettyVideoModel(model: string): string {
   const m = String(model || '').trim();
   if (!m) return '默认';
-  if (m === 'jimeng-video-3.0') return 'Jimeng 3.0';
-  if (m === 'kling-v2-6') return 'Kling 2.6';
+  if (m === 'sora-2') return 'Sora 2';
+  if (m === 'sora-2-pro') return 'Sora 2 Pro';
   if (m === 'veo-3.0-fast-generate-001') return 'Veo 3 Fast';
   if (m === 'veo-3.0-generate-001') return 'Veo 3';
   if (m === 'veo-3.1-fast-generate-preview') return 'Veo 3.1 Fast';
@@ -186,96 +182,6 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
 
   const video = document.createElement('div');
   video.className = 'flex items-center gap-2 flex-nowrap hidden';
-
-  const post = document.createElement('div');
-  post.className = 'flex items-center gap-2 flex-nowrap hidden';
-
-  const mv = document.createElement('div');
-  mv.className = 'flex items-center gap-2 flex-nowrap hidden';
-
-  // --- MV controls (ffmpeg compose)
-  const mvHeadBtn = mkBtn('HEAD');
-  const mvTraceBtn = mkIconBtn('选择分支（Trace）', 'fas fa-sitemap');
-
-  const mvResWrap = document.createElement('div');
-  mvResWrap.className = 'relative';
-  const mvResBtn = mkBtn('Res');
-  const mvResMenu = mkMenu();
-  mvResWrap.appendChild(mvResBtn);
-  mvResWrap.appendChild(mvResMenu);
-  const mvResPopover = createFooterPopover({ button: mvResBtn, menu: mvResMenu });
-
-  const mvFpsWrap = document.createElement('div');
-  mvFpsWrap.className = 'relative';
-  const mvFpsBtn = mkBtn('FPS');
-  const mvFpsMenu = mkMenu();
-  mvFpsWrap.appendChild(mvFpsBtn);
-  mvFpsWrap.appendChild(mvFpsMenu);
-  const mvFpsPopover = createFooterPopover({ button: mvFpsBtn, menu: mvFpsMenu });
-
-  const mvDurWrap = document.createElement('div');
-  mvDurWrap.className = 'relative';
-  const mvDurBtn = mkBtn('Dur');
-  const mvDurMenu = mkMenu();
-  mvDurWrap.appendChild(mvDurBtn);
-  mvDurWrap.appendChild(mvDurMenu);
-  const mvDurPopover = createFooterPopover({ button: mvDurBtn, menu: mvDurMenu });
-
-  const mvSubWrap = document.createElement('div');
-  mvSubWrap.className = 'relative';
-  const mvSubBtn = mkBtn('Sub');
-  const mvSubMenu = mkMenu();
-  mvSubWrap.appendChild(mvSubBtn);
-  mvSubWrap.appendChild(mvSubMenu);
-  const mvSubPopover = createFooterPopover({ button: mvSubBtn, menu: mvSubMenu });
-
-  mv.appendChild(mvHeadBtn);
-  mv.appendChild(mvTraceBtn);
-  mv.appendChild(mvResWrap);
-  mv.appendChild(mvFpsWrap);
-  mv.appendChild(mvDurWrap);
-  mv.appendChild(mvSubWrap);
-
-  function shortId(id: string): string {
-    const s = String(id || '').trim();
-    if (!s) return '-';
-    if (s.length <= 14) return s;
-    return `${s.slice(0, 6)}…${s.slice(-4)}`;
-  }
-
-  function prettyResolution(value: string): string {
-    const v = String(value || '').trim();
-    if (!v || v === 'source') return 'Source';
-    if (v === '1280x720') return '720P';
-    if (v === '1920x1080') return '1080P';
-    return v;
-  }
-
-  function prettySubtitleMode(value: string): string {
-    return value === 'burn' ? 'Burn' : 'Soft';
-  }
-
-  mvHeadBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const st = store.get();
-    const head = typeof st.traceHeadMessageId === 'string' ? st.traceHeadMessageId.trim() : '';
-    if (!head) return showError('当前没有 HEAD');
-    store.update((s) => ({ ...s, traceTarget: { type: 'message', id: head }, traceReturnTo: undefined }));
-    setTraceOpen(true);
-  });
-
-  mvTraceBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const st = store.get();
-    const head = typeof st.traceHeadMessageId === 'string' ? st.traceHeadMessageId.trim() : '';
-    const fallback = (st.streamMessages || []).filter((m) => m.role === 'ai').at(-1)?.id || '';
-    const targetId = head || fallback;
-    if (!targetId) return showError('暂无可追踪记录');
-    store.update((s) => ({ ...s, traceTarget: { type: 'message', id: targetId }, traceReturnTo: undefined }));
-    setTraceOpen(true);
-  });
 
   const beautify = document.createElement('div');
   beautify.className = 'flex items-center gap-2 flex-nowrap hidden';
@@ -904,32 +810,22 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   video.appendChild(videoEndWrap);
 
   function renderVideo(state: WorkflowState) {
-    const provider = state.videoProvider === 'kling' ? 'kling' : state.videoProvider === 'gemini' ? 'gemini' : 'jimeng';
-
-    const providerLabel = provider === 'jimeng' ? 'Jimeng' : provider === 'kling' ? 'Kling' : 'Gemini';
+    const provider = state.videoProvider === 'sora' ? 'sora' : 'gemini';
+    const providerLabel = provider === 'sora' ? 'Sora' : 'Gemini';
     videoProviderBtn.textContent = `Provider ${providerLabel}`;
     buildSingleSelectMenu({
       menu: videoProviderMenu,
       current: providerLabel,
-      options: ['Jimeng', 'Kling', 'Gemini'],
+      options: ['Gemini', 'Sora'],
       onPick: (v) => {
-        const nextProvider = v === 'Kling' ? 'kling' : v === 'Gemini' ? 'gemini' : 'jimeng';
+        const nextProvider = v === 'Sora' ? 'sora' : 'gemini';
         store.update((s) => ({
           ...s,
           videoProvider: nextProvider,
           videoModel:
-            nextProvider === 'gemini'
-              ? 'veo-3.0-fast-generate-001'
-              : nextProvider === 'kling'
-                ? 'kling-v2-6'
-                : 'jimeng-video-3.0',
-          videoMode:
-            nextProvider === 'kling'
-              ? typeof s.videoMode === 'string' && s.videoMode.trim()
-                ? s.videoMode.trim()
-                : 'std'
-              : undefined,
-          videoSeconds: nextProvider === 'jimeng' ? undefined : s.videoSeconds,
+            nextProvider === 'sora' ? 'sora-2' : 'veo-3.0-fast-generate-001',
+          videoMode: undefined,
+          videoSeconds: s.videoSeconds,
         }));
         videoProviderPopover.close();
       },
@@ -937,11 +833,9 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
 
     // Model options (dropdown)
     const models: string[] =
-      provider === 'jimeng'
-        ? ['jimeng-video-3.0']
-        : provider === 'kling'
-          ? ['kling-v2-6']
-          : ['veo-3.0-fast-generate-001', 'veo-3.0-generate-001', 'veo-3.1-fast-generate-preview', 'veo-3.1-generate-preview'];
+      provider === 'sora'
+        ? ['sora-2', 'sora-2-pro']
+        : ['veo-3.0-fast-generate-001', 'veo-3.0-generate-001', 'veo-3.1-fast-generate-preview', 'veo-3.1-generate-preview'];
 
     const currentModel = typeof state.videoModel === 'string' && state.videoModel.trim() ? state.videoModel.trim() : models[0]!;
     videoModelBtn.textContent = `Model ${prettyVideoModel(currentModel)}`;
@@ -964,30 +858,21 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
       setupScrollArea(videoModelMenu);
     }
 
-    // Kling mode (dropdown)
-    const showMode = provider === 'kling';
-    videoModeWrap.classList.toggle('hidden', !showMode);
-    const mode = typeof state.videoMode === 'string' && state.videoMode.trim() ? state.videoMode.trim() : 'std';
-    videoModeBtn.textContent = `Mode ${mode.toUpperCase()}`;
-    buildSingleSelectMenu({
-      menu: videoModeMenu,
-      current: mode.toUpperCase(),
-      options: ['STD', 'PRO'],
-      onPick: (v) => {
-        store.update((s) => ({ ...s, videoMode: v.toLowerCase() as any }));
-        videoModePopover.close();
-      },
-    });
+    // Legacy mode selector is retired (only Gemini/Sora remain).
+    videoModeWrap.classList.add('hidden');
+    videoModeBtn.textContent = 'Mode N/A';
+    void videoModeMenu;
+    void videoModePopover;
 
     // Seconds
-    const secondsSupported = provider !== 'jimeng';
-    videoSecondsWrap.classList.toggle('hidden', !secondsSupported);
+    const secondsSupported = true;
+    videoSecondsWrap.classList.toggle('hidden', false);
     const seconds = typeof state.videoSeconds === 'number' && Number.isFinite(state.videoSeconds) ? state.videoSeconds : undefined;
     videoSecondsBtn.textContent = secondsSupported ? `时长 ${seconds ? `${seconds}s` : '默认'}` : '时长';
     const videoSecondsViewport = scrollAreaViewport(videoSecondsMenu);
     videoSecondsViewport.innerHTML = '';
     if (secondsSupported) {
-      const opts = provider === 'kling' ? [5, 10] : [5, 10, 15];
+      const opts = [5, 10, 15];
       for (const s of opts) {
         const b = document.createElement('button');
         b.type = 'button';
@@ -1014,10 +899,10 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
       videoSecondsViewport.appendChild(clear);
     }
 
-    // Aspect/Size (supported by jimeng/gemini; kling doesn't support in backend)
-    const supportsAspectSize = provider !== 'kling';
-    videoAspectWrap.classList.toggle('hidden', !supportsAspectSize);
-    videoSizeWrap.classList.toggle('hidden', !supportsAspectSize);
+    // Aspect/Size is supported for Gemini/Sora.
+    const supportsAspectSize = true;
+    videoAspectWrap.classList.toggle('hidden', false);
+    videoSizeWrap.classList.toggle('hidden', false);
     const aspect = typeof state.videoAspect === 'string' && state.videoAspect.trim() ? state.videoAspect.trim() : '';
     videoAspectBtn.textContent = supportsAspectSize ? `画幅 ${aspect || '默认'}` : '画幅';
     const videoAspectViewport = scrollAreaViewport(videoAspectMenu);
@@ -1054,7 +939,7 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     const videoSizeViewport = scrollAreaViewport(videoSizeMenu);
     videoSizeViewport.innerHTML = '';
     if (supportsAspectSize) {
-      const sizeOptions = provider === 'jimeng' ? ['1080P', '720P'] : ['large', 'medium', 'small', '1080P', '720P'];
+      const sizeOptions = provider === 'sora' ? ['large', 'medium', 'small'] : ['large', 'medium', 'small', '1080P', '720P'];
       for (const opt of sizeOptions) {
         const b = document.createElement('button');
         b.type = 'button';
@@ -1126,16 +1011,6 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     rebuildMenu(videoEndMenu, 'end');
   }
 
-  // --- POST controls: video postprocess (ffmpeg)
-  const postAuto = mkBtn('AUTO');
-  postAuto.title = '后处理参数由程序自动选择';
-  post.appendChild(postAuto);
-
-  function renderPost(_state: WorkflowState) {
-    // Intentionally no user-facing knobs: backend auto-tunes.
-    postAuto.textContent = 'AUTO';
-  }
-
   // --- BEAUTIFY controls: hint input (synced with settings overlay input)
   const beautifyHint = document.createElement('input');
   beautifyHint.type = 'text';
@@ -1159,80 +1034,6 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     if (overlayHint && overlayHint.value !== v) overlayHint.value = v;
   }
 
-  function renderMv(state: WorkflowState) {
-    const cmd = String(state.commandMode || '').trim();
-    const recipe =
-      cmd === 'mv-mix' || cmd === 'mv-images' || cmd === 'mv-clip' || cmd === 'mv-subtitle' ? (cmd as any) : ('mv' as const);
-
-    const head = typeof state.traceHeadMessageId === 'string' ? state.traceHeadMessageId.trim() : '';
-    mvHeadBtn.textContent = `HEAD ${shortId(head)}`;
-
-    const hasImages = readSelectedReferenceIds(state, 24).length > 0;
-    const showFps = recipe === 'mv-images' || (recipe === 'mv-mix' && hasImages);
-    const showDur = recipe === 'mv-clip' || recipe === 'mv-images' || (recipe === 'mv-mix' && hasImages);
-    const showSub = recipe === 'mv-mix' || recipe === 'mv-subtitle';
-    mvFpsWrap.classList.toggle('hidden', !showFps);
-    mvDurWrap.classList.toggle('hidden', !showDur);
-    mvSubWrap.classList.toggle('hidden', !showSub);
-
-    const currentRes = typeof state.mvResolution === 'string' && state.mvResolution.trim() ? state.mvResolution.trim() : '1280x720';
-    mvResBtn.textContent = `Res ${prettyResolution(currentRes)}`;
-    buildSingleSelectMenu({
-      menu: mvResMenu,
-      current: prettyResolution(currentRes),
-      options: ['Source', '720P', '1080P'],
-      onPick: (v) => {
-        const next = v === 'Source' ? 'source' : v === '1080P' ? '1920x1080' : '1280x720';
-        store.update((s) => ({ ...s, mvResolution: next }));
-        mvResPopover.close();
-      },
-    });
-
-    if (showFps) {
-      const fps = typeof state.mvFps === 'number' && Number.isFinite(state.mvFps) ? state.mvFps : 25;
-      mvFpsBtn.textContent = `FPS ${fps}`;
-      buildSingleSelectMenu({
-        menu: mvFpsMenu,
-        current: String(fps),
-        options: ['24', '25', '30', '60'],
-        onPick: (v) => {
-          store.update((s) => ({ ...s, mvFps: Number(v) }));
-          mvFpsPopover.close();
-        },
-      });
-    }
-
-    if (showDur) {
-      const dur = typeof state.mvDurationSeconds === 'number' && Number.isFinite(state.mvDurationSeconds) ? state.mvDurationSeconds : 5;
-      mvDurBtn.textContent = recipe === 'mv-clip' ? `Trim ${dur}s` : `Dur ${dur}s`;
-
-      const opts = recipe === 'mv-clip' ? ['5', '10', '15', '30', '60', '120'] : ['2', '3', '5', '8', '10', '15'];
-      buildSingleSelectMenu({
-        menu: mvDurMenu,
-        current: String(dur),
-        options: opts,
-        onPick: (v) => {
-          store.update((s) => ({ ...s, mvDurationSeconds: Number(v) }));
-          mvDurPopover.close();
-        },
-      });
-    }
-
-    if (showSub) {
-      const mode = state.mvSubtitleMode === 'burn' ? 'burn' : 'soft';
-      mvSubBtn.textContent = `Sub ${prettySubtitleMode(mode)}`;
-      buildSingleSelectMenu({
-        menu: mvSubMenu,
-        current: prettySubtitleMode(mode),
-        options: ['Soft', 'Burn'],
-        onPick: (v) => {
-          store.update((s) => ({ ...s, mvSubtitleMode: v === 'Burn' ? 'burn' : 'soft' }));
-          mvSubPopover.close();
-        },
-      });
-    }
-  }
-
   // --- DECONSTRUCT controls: keep empty (avoid non-actionable labels)
   const clearSelected = mkIconBtn('清空参考图选择', 'fas fa-ban');
   clearSelected.addEventListener('click', (e) => {
@@ -1246,8 +1047,6 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
   chips.appendChild(suno);
   chips.appendChild(pedit);
   chips.appendChild(video);
-  chips.appendChild(post);
-  chips.appendChild(mv);
   chips.appendChild(beautify);
   chips.appendChild(deconstruct);
 
@@ -1257,29 +1056,11 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     suno.classList.toggle('hidden', mode !== 'suno');
     pedit.classList.toggle('hidden', mode !== 'pedit');
     video.classList.toggle('hidden', mode !== 'video');
-    post.classList.toggle('hidden', mode !== 'post');
-    mv.classList.toggle('hidden', mode !== 'mv');
     beautify.classList.toggle('hidden', mode !== 'beautify');
     deconstruct.classList.toggle('hidden', mode !== 'deconstruct');
 
-    const cmd = String(state.commandMode || '').trim();
-    const mvLabel =
-      cmd === 'mv-images'
-        ? 'MV 图片→视频'
-        : cmd === 'mv-clip'
-          ? 'MV 视频剪辑'
-          : cmd === 'mv-subtitle'
-            ? 'MV 字幕'
-            : cmd.startsWith('mv')
-              ? 'MV 合成'
-              : '';
-    if (mvLabel) {
-      modeLabel.textContent = mvLabel;
-      modeLabel.classList.remove('hidden');
-    } else {
-      modeLabel.textContent = '';
-      modeLabel.classList.add('hidden');
-    }
+    modeLabel.textContent = '';
+    modeLabel.classList.add('hidden');
   }
 
   function prettySunoMode(v: string): string {
@@ -1354,8 +1135,6 @@ export function createCommandFooterControls(store: Store<WorkflowState>) {
     else if (mode === 'suno') renderSuno(state);
     else if (mode === 'pedit') renderPedit(state);
     else if (mode === 'video') renderVideo(state);
-    else if (mode === 'post') renderPost(state);
-    else if (mode === 'mv') renderMv(state);
     else if (mode === 'beautify') renderBeautify(state);
   }
 

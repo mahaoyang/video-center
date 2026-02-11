@@ -19,8 +19,6 @@ export function createCommandModeBlock(params: {
   describe: { deconstructAssets: () => void | Promise<void> };
   pedit: { applyEdit: () => void | Promise<void> };
   video: { setVisible: (visible: boolean) => void; generateVideoFromCurrentPrompt: () => void | Promise<void> };
-  mv: { cook: (recipe: CommandMode) => void | Promise<void> };
-  post: { run: () => void | Promise<void> };
 }) {
   const modeBtn = byId<HTMLElement>('commandModeBtn');
   const modeMenu = byId<HTMLElement>('commandModeMenu');
@@ -77,32 +75,13 @@ export function createCommandModeBlock(params: {
 
   function readMode(): CommandMode {
     const raw = String(params.store.get().commandMode || '').trim();
-    // Backward compat: old persisted "mv*" -> "mv-mix"
-    if (
-      raw === 'mv' ||
-      raw === 'mv-assets' ||
-      raw === 'mv-settings' ||
-      raw === 'mv-subtitles' ||
-      raw === 'mv-text' ||
-      raw === 'mv-plan' ||
-      raw === 'mv-submit' ||
-      raw === 'mv-track'
-    ) {
-      return 'mv-mix';
-    }
-    if (raw === 'mv-sub-soft' || raw === 'mv-sub-burn') return 'mv-subtitle';
     return raw === 'mj' ||
       raw === 'suno' ||
       raw === 'youtube' ||
       raw === 'video' ||
       raw === 'deconstruct' ||
       raw === 'pedit' ||
-      raw === 'beautify' ||
-      raw === 'post' ||
-      raw === 'mv-mix' ||
-      raw === 'mv-images' ||
-      raw === 'mv-clip' ||
-      raw === 'mv-subtitle'
+      raw === 'beautify'
       ? (raw as any)
       : 'mj';
   }
@@ -113,7 +92,6 @@ export function createCommandModeBlock(params: {
   }
 
   function applyModeUi(mode: CommandMode) {
-    const isMv = String(mode).startsWith('mv');
     modeBadge.textContent =
       mode === 'mj'
         ? 'MJ'
@@ -123,15 +101,13 @@ export function createCommandModeBlock(params: {
           ? 'YT'
         : mode === 'video'
           ? 'VID'
-          : isMv
-            ? 'MV'
-            : mode === 'deconstruct'
-              ? 'DESC'
-              : mode === 'pedit'
-                ? 'IMG'
-                : mode === 'beautify'
-                  ? 'POL'
-                  : 'POST';
+          : mode === 'deconstruct'
+            ? 'DESC'
+            : mode === 'pedit'
+              ? 'IMG'
+              : mode === 'beautify'
+                ? 'POL'
+                : 'MJ';
     modeMenu.querySelectorAll<HTMLElement>('button[data-command-mode]').forEach((el) => {
       const v = String((el as any).dataset?.commandMode || '').trim();
       el.classList.toggle('bg-white/5', v === mode);
@@ -152,21 +128,9 @@ export function createCommandModeBlock(params: {
         v === 'video' ||
         v === 'deconstruct' ||
         v === 'pedit' ||
-        v === 'beautify' ||
-        v === 'post' ||
-        v === 'mv-mix' ||
-        v === 'mv-images' ||
-        v === 'mv-clip' ||
-        v === 'mv-subtitle'
+        v === 'beautify'
           ? (v as any)
           : 'mj';
-      if (next === 'mv-images' || next === 'mv-clip') {
-        params.store.update((s) => ({ ...s, mvAction: 'clip' }));
-      } else if (next === 'mv-mix') {
-        params.store.update((s) => ({ ...s, mvAction: 'mv' }));
-      } else if (next === 'mv-subtitle') {
-        params.store.update((s) => ({ ...s, mvAction: 'mv' }));
-      }
       setMode(next);
       applyModeUi(next);
       if (modeSearch) {
@@ -219,14 +183,6 @@ export function createCommandModeBlock(params: {
         await params.video.generateVideoFromCurrentPrompt();
         return;
       }
-      if (modeNow === 'mv-mix' || modeNow === 'mv-images' || modeNow === 'mv-clip' || modeNow === 'mv-subtitle') {
-        await params.mv.cook(modeNow);
-        return;
-      }
-      if (modeNow === 'post') {
-        await params.post.run();
-        return;
-      }
       if (modeNow === 'beautify') {
         const promptInput = byId<HTMLTextAreaElement>('promptInput');
         const prompt = normalizeSpaces(promptInput.value);
@@ -263,29 +219,13 @@ export function createCommandModeBlock(params: {
   }
 
   // Initial UI
-  if (String(params.store.get().commandMode || '').startsWith('mv')) setMode(readMode());
-    const initialMode = readMode();
-    if (initialMode !== 'beautify') lastNonBeautifyMode = initialMode;
-    applyModeUi(initialMode);
-    applyModeFilter();
-    params.store.subscribe((s) => {
-      const m = s.commandMode;
-      if (
-        m === 'mj' ||
-        m === 'suno' ||
-        m === 'video' ||
-        m === 'deconstruct' ||
-        m === 'pedit' ||
-        m === 'beautify' ||
-        m === 'post' ||
-      m === 'mv-mix' ||
-      m === 'mv-images' ||
-      m === 'mv-clip' ||
-      m === 'mv-subtitle' ||
-      String(m || '').startsWith('mv')
-    ) {
-      applyModeUi(readMode());
-    }
+  const initialMode = readMode();
+  if (params.store.get().commandMode !== initialMode) setMode(initialMode);
+  if (initialMode !== 'beautify') lastNonBeautifyMode = initialMode;
+  applyModeUi(initialMode);
+  applyModeFilter();
+  params.store.subscribe(() => {
+    applyModeUi(readMode());
   });
 
   return { execute };

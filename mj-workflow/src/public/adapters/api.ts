@@ -3,37 +3,6 @@ export interface ApiClient {
   deleteUpload(params: { localKey: string }): Promise<any>;
   promoteUpload(params: { localKey: string }): Promise<any>;
   cleanupUploads(params: { keepLocalKeys: string[]; minAgeSeconds?: number }): Promise<any>;
-  audioProcess(params: { src: string }): Promise<any>;
-  videoProcess(params: { src: string; preset?: string; crf?: number }): Promise<any>;
-  mvCompose(params: {
-    prompt?: string;
-    text?: string;
-    action?: string;
-    visualSequence?: Array<{ url: string; durationSeconds?: number }>;
-    visualImageUrls?: string[];
-    videoUrl?: string;
-    audioUrl?: string;
-    subtitleSrt?: string;
-    subtitleMode?: string;
-    resolution?: string;
-    fps?: number;
-    durationSeconds?: number;
-  }): Promise<any>;
-  mvComposePlan(params: {
-    prompt?: string;
-    text?: string;
-    action?: string;
-    visualSequence?: Array<{ url: string; durationSeconds?: number }>;
-    visualImageUrls?: string[];
-    videoUrl?: string;
-    audioUrl?: string;
-    subtitleSrt?: string;
-    subtitleMode?: string;
-    resolution?: string;
-    fps?: number;
-    durationSeconds?: number;
-  }): Promise<any>;
-  mediaTask(params: { taskId: string }): Promise<any>;
   describe(params: { base64?: string; imageUrl?: string }): Promise<any>;
   visionDescribe(params: { imageUrl: string; question?: string; model?: string }): Promise<any>;
   geminiDescribe(params: { imageUrl: string }): Promise<any>;
@@ -130,12 +99,6 @@ export function createApiClient(apiBase = '/api'): ApiClient {
     deleteUpload: async (params) => await requestJson('POST', `${apiBase}/upload/delete`, params),
     promoteUpload: async (params) => await requestJson('POST', `${apiBase}/upload/promote`, params),
     cleanupUploads: async (params) => await requestJson('POST', `${apiBase}/upload/cleanup`, params),
-    audioProcess: async (params) => await requestJson('POST', `${apiBase}/audio/process`, params),
-    videoProcess: async (params) => await requestJson('POST', `${apiBase}/video/process`, params),
-    mvCompose: async (params) => await requestJson('POST', `${apiBase}/mv/compose`, params),
-    mvComposePlan: async (params) => await requestJson('POST', `${apiBase}/mv/compose/plan`, params),
-    mediaTask: async (params) =>
-      await requestJson('GET', `${apiBase}/media/task/${encodeURIComponent(params.taskId)}`),
     describe: async (params) => await requestJson('POST', `${apiBase}/describe`, params),
     visionDescribe: async (params) => await requestJson('POST', `${apiBase}/vision/describe`, params),
     geminiDescribe: async (params) => await requestJson('POST', `${apiBase}/gemini/describe`, params),

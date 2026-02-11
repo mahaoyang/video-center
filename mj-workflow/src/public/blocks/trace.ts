@@ -328,30 +328,18 @@ function renderNode(state: WorkflowState, node: TraceNode, currentTarget: TraceT
       )}</div>`
     : '';
 
-  const inputRefs = (() => {
+  const inputRefs: string[] = (() => {
     if (msg.kind === 'generate') {
       const padIds = (Array.isArray(msg.mjPadRefIds) ? msg.mjPadRefIds : typeof msg.mjPadRefId === 'string' ? [msg.mjPadRefId] : [])
         .map((x) => String(x || '').trim())
         .filter(Boolean)
         .slice(0, 12);
-      return [...padIds, msg.mjSrefRefId, msg.mjCrefRefId].filter(
-        (x): x is string => typeof x === 'string' && x.trim()
-      );
+      return [...padIds, msg.mjSrefRefId, msg.mjCrefRefId].filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
     }
     if (msg.kind === 'pedit') return (Array.isArray(msg.refIds) ? msg.refIds : msg.refId ? [msg.refId] : []).filter(Boolean);
     if (msg.kind === 'suno') return (Array.isArray(msg.refIds) ? msg.refIds : []).filter(Boolean);
     if (msg.kind === 'video') {
-      const provider = String(msg.provider || '').trim();
-      const mvSeqRaw = Array.isArray((msg as any).mvSequence) ? (msg as any).mvSequence : [];
-      const mvRefs =
-        provider === 'mv'
-          ? mvSeqRaw
-              .map((it: any) => String(it?.refId || '').trim())
-              .filter(Boolean)
-              .slice(0, 24)
-          : [];
-      if (mvRefs.length) return mvRefs;
-      return [msg.videoStartRefId, msg.videoEndRefId].filter((x): x is string => typeof x === 'string' && x.trim());
+      return [msg.videoStartRefId, msg.videoEndRefId].filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
     }
     if (msg.kind === 'deconstruct') return msg.refId ? [msg.refId] : [];
     return [];
@@ -361,7 +349,7 @@ function renderNode(state: WorkflowState, node: TraceNode, currentTarget: TraceT
     ? `
       <div class="mt-4 flex items-center gap-2 flex-wrap">
         ${inputRefs
-          .map((id) => {
+          .map((id: string) => {
             const r = (state.referenceImages || []).find((x) => x.id === id);
             const label = r?.name || id;
             return `<button data-trace-action="open-ref" data-ref-id="${escapeHtml(id)}" type="button"
@@ -560,76 +548,14 @@ export function createTraceBlock(params: {
         const prompt = (msg.text || '').trim();
         if (!prompt) return showError('提示词为空');
 
-        const isMv =
-          String(msg.provider || '').trim() === 'mv' || Boolean(msg.mvResolution || (msg as any).mvSequence || msg.mvSubtitleSrt);
-	        if (isMv) {
-	          const mvVideoUrl = typeof msg.mvVideoUrl === 'string' ? msg.mvVideoUrl : undefined;
-	          const mvAudioUrl = typeof msg.mvAudioUrl === 'string' ? msg.mvAudioUrl : undefined;
-	          const mvSrt = typeof msg.mvSubtitleSrt === 'string' ? msg.mvSubtitleSrt : '';
-	          const mvSeqRaw = Array.isArray((msg as any).mvSequence) ? (msg as any).mvSequence : [];
-
-	          params.store.update((st) => {
-	            const mediaAssets = Array.isArray(st.mediaAssets) ? st.mediaAssets.slice() : [];
-
-	            const ensureUrlAsset = (kind: 'video' | 'audio', url: string | undefined) => {
-	              if (!url) return undefined;
-	              const existing = mediaAssets.find((a) => a.kind === kind && (a.localUrl === url || a.url === url));
-	              if (existing) return existing.id;
-	              const name = url.split('/').pop() || `${kind}`;
-	              const id = randomId('asset');
-	              mediaAssets.push({ id, kind, name, createdAt: Date.now(), url, localUrl: url.startsWith('/uploads/') ? url : undefined });
-	              return id;
-	            };
-
-	            const ensureSubtitleAsset = (srt: string) => {
-	              const text = String(srt || '').trim();
-	              if (!text) return undefined;
-	              const existing = mediaAssets.find((a) => a.kind === 'subtitle' && typeof a.text === 'string' && a.text.trim() === text);
-	              if (existing) return existing.id;
-	              const id = randomId('asset');
-	              mediaAssets.push({ id, kind: 'subtitle', name: `subtitle-${new Date().toISOString().slice(0, 10)}.srt`, createdAt: Date.now(), text });
-	              return id;
-	            };
-
-	            const videoAssetId = ensureUrlAsset('video', mvVideoUrl);
-	            const audioAssetId = ensureUrlAsset('audio', mvAudioUrl);
-	            const subtitleAssetId = ensureSubtitleAsset(mvSrt);
-
-	            const selectedRefIds = mvSeqRaw
-	              .map((it: any) => String(it?.refId || '').trim())
-	              .filter(Boolean)
-	              .slice(0, 24);
-
-	            return {
-	              ...st,
-	              traceHeadMessageId: msg.id,
-	              commandMode: 'mv-mix',
-	              mediaAssets: mediaAssets.slice(-120),
-	              mvResolution: typeof msg.mvResolution === 'string' ? msg.mvResolution : st.mvResolution,
-	              mvFps: typeof msg.mvFps === 'number' ? msg.mvFps : st.mvFps,
-	              mvDurationSeconds: typeof msg.mvDurationSeconds === 'number' ? msg.mvDurationSeconds : st.mvDurationSeconds,
-	              mvSubtitleMode: msg.mvSubtitleMode === 'burn' ? 'burn' : 'soft',
-	              selectedReferenceIds: selectedRefIds,
-	              selectedMediaAssetIds: [videoAssetId, audioAssetId, subtitleAssetId].filter(Boolean) as string[],
-	            };
-	          });
-
-	          applyPromptToMainInput(prompt);
-
-	          closeToMainWorkspace();
-	          focusMainPrompt();
-	          showMessage('已回填到输入区（MV），可修改素材/字幕/参数，点击发送即可重新合成');
-	          return;
-	        }
-
         params.store.update((st) => ({
           ...st,
           traceHeadMessageId: msg.id,
           commandMode: 'video',
-          videoProvider: msg.provider === 'jimeng' || msg.provider === 'kling' || msg.provider === 'gemini' ? (msg.provider as any) : st.videoProvider,
+          videoProvider: msg.provider === 'gemini' || msg.provider === 'sora' ? (msg.provider as any) : st.videoProvider,
           videoModel: typeof msg.videoModel === 'string' ? msg.videoModel : st.videoModel,
           videoSeconds: typeof msg.videoSeconds === 'number' ? msg.videoSeconds : st.videoSeconds,
-          videoMode: typeof msg.videoMode === 'string' ? msg.videoMode : st.videoMode,
+          videoMode: undefined,
           videoAspect: typeof msg.videoAspect === 'string' ? msg.videoAspect : st.videoAspect,
           videoSize: typeof msg.videoSize === 'string' ? msg.videoSize : st.videoSize,
           videoStartRefId: typeof msg.videoStartRefId === 'string' ? msg.videoStartRefId : st.videoStartRefId,

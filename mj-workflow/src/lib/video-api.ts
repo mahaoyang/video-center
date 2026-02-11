@@ -1,4 +1,4 @@
-export type VideoProvider = 'jimeng' | 'kling' | 'gemini';
+export type VideoProvider = 'gemini' | 'sora';
 
 export interface VideoCreateParams {
   provider: VideoProvider;
@@ -58,19 +58,7 @@ function pickObj(value: unknown): Record<string, any> | undefined {
 
 function extractIdFromCreate(provider: VideoProvider, raw: any): string | undefined {
   if (!raw) return undefined;
-
-  if (provider === 'kling') {
-    return (
-      pickString(raw?.task_id) ||
-      pickString(raw?.taskId) ||
-      pickString(raw?.data?.task_id) ||
-      pickString(raw?.data?.taskId) ||
-      pickString(raw?.result?.task_id) ||
-      pickString(raw?.result?.taskId)
-    );
-  }
-
-  // jimeng/gemini via /v1/video/create
+  // sora/gemini via /v1/video/create
   return (
     pickString(raw?.id) ||
     pickString(raw?.data?.id) ||
@@ -160,36 +148,11 @@ export class VideoApi {
 
     if (!this.token) throw new Error('未配置 YUNWU_ALL_KEY / LLM_API_TOKEN');
 
-    if (provider === 'kling') {
-      const image = pickString(params.startImageUrl);
-      if (!image) throw new Error('Kling 需要 start frame（起始帧图片 URL）');
-      const payload: Record<string, any> = {
-        model_name: pickString(params.model) || 'kling-v2-6',
-        image,
-        prompt,
-        mode: pickString(params.mode) || 'std',
-        duration: String(Math.max(1, Math.floor(pickNumber(params.seconds) || 5))),
-      };
-      const tail = pickString(params.endImageUrl);
-      if (tail) payload.image_tail = tail;
-
-      const raw = await this.fetchJson('/kling/v1/videos/image2video', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      const id = extractIdFromCreate(provider, raw);
-      if (!id) throw new Error('Kling 提交失败：未返回 task_id');
-      return { provider, id, raw };
-    }
-
-    // jimeng / gemini (generic /v1/video/create)
+    // sora / gemini (generic /v1/video/create)
     const payload: Record<string, any> = {
-      model: pickString(params.model) || (provider === 'jimeng' ? 'jimeng-video-3.0' : 'gemini-video'),
+      model:
+        pickString(params.model) ||
+        (provider === 'sora' ? 'sora-2' : 'veo-3.1-fast-generate-preview'),
       prompt,
     };
 
@@ -204,15 +167,9 @@ export class VideoApi {
     const size = pickString(params.size);
     const seconds = pickNumber(params.seconds);
 
-    if (provider === 'jimeng') {
-      if (aspect) payload.aspect_ratio = aspect;
-      if (size) payload.size = size;
-    } else {
-      // gemini: keep optional fields loose; only attach if explicitly provided.
-      if (aspect) payload.aspect_ratio = aspect;
-      if (size) payload.size = size;
-      if (seconds) payload.duration = Math.max(1, Math.floor(seconds));
-    }
+    if (aspect) payload.aspect_ratio = aspect;
+    if (size) payload.size = size;
+    if (seconds) payload.duration = Math.max(1, Math.floor(seconds));
 
     const raw = await this.fetchJson('/v1/video/create', {
       method: 'POST',
@@ -234,18 +191,10 @@ export class VideoApi {
     if (!id) throw new Error('id 不能为空');
     if (!this.token) throw new Error('未配置 YUNWU_ALL_KEY / LLM_API_TOKEN');
 
-    let raw: unknown;
-    if (provider === 'kling') {
-      raw = await this.fetchJson(`/kling/v1/videos/image2video/${encodeURIComponent(id)}`, {
-        method: 'GET',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${this.token}` },
-      });
-    } else {
-      raw = await this.fetchJson(`/v1/video/query?id=${encodeURIComponent(id)}`, {
-        method: 'GET',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${this.token}` },
-      });
-    }
+    const raw = await this.fetchJson(`/v1/video/query?id=${encodeURIComponent(id)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${this.token}` },
+    });
 
     const status = extractStatusFromQuery(raw);
     const progress = extractProgressFromQuery(raw);

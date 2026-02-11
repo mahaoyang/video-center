@@ -7,12 +7,13 @@ import { readSelectedReferenceIds } from '../state/material';
 export function createMjPromptPreview(store: Store<WorkflowState>) {
   const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement | null;
   if (!promptInput) return;
+  const promptEl = promptInput;
 
   const preview = document.getElementById('mjPromptPreview') as HTMLElement | null;
   const stats = document.getElementById('mjWrapperStats') as HTMLElement | null;
 
   function compute(state: WorkflowState): string {
-    const basePrompt = (promptInput.value.trim() || (state.prompt || '').trim()).trim();
+    const basePrompt = (promptEl.value.trim() || (state.prompt || '').trim()).trim();
 
     const padUrls = readSelectedReferenceIds(state, 12)
       .map((id) => state.referenceImages.find((r) => r.id === id))
@@ -59,8 +60,8 @@ export function createMjPromptPreview(store: Store<WorkflowState>) {
     }
   }
 
-  promptInput.addEventListener('input', () => {
-    const p = promptInput.value;
+  promptEl.addEventListener('input', () => {
+    const p = promptEl.value;
     store.update((s) => ({ ...s, prompt: p }));
   });
 

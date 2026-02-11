@@ -79,6 +79,62 @@ async function fetchImageAsFile(src: string): Promise<File> {
 }
 
 export function createStreamActions(params: { api: ApiClient; store: Store<WorkflowState> }) {
+  const retryingMessageIds = new Set<string>();
+
+  async function retryTaskFetchByMessageId(messageId: string) {
+    const id = String(messageId || '').trim();
+    if (!id) return;
+    if (retryingMessageIds.has(id)) {
+      showMessage('该任务正在重试拉取，请稍候');
+      return;
+    }
+
+    const current = (params.store.get().streamMessages || []).find((m) => m.id === id);
+    if (!current) {
+      showError('找不到该消息，无法重试');
+      return;
+    }
+    if (current.role !== 'ai' || (current.kind !== 'generate' && current.kind !== 'upscale')) {
+      showError('该消息不支持重试拉取');
+      return;
+    }
+    const taskId = String(current.taskId || '').trim();
+    if (!taskId) {
+      showError('缺少任务 ID，无法重试拉取');
+      return;
+    }
+
+    retryingMessageIds.add(id);
+    updateMessageById(params.store, id, {
+      error: undefined,
+      progress: Math.max(1, Math.min(99, Number.isFinite(current.progress as any) ? Number(current.progress) : 1)),
+    });
+    showMessage('网络波动：开始重新拉取任务结果');
+
+    try {
+      const imageUrl = await pollTaskUntilImageUrl({
+        api: params.api,
+        taskId,
+        onProgress: (p) => updateMessageById(params.store, id, { progress: p, error: undefined }),
+      });
+
+      if (current.kind === 'generate') {
+        updateMessageById(params.store, id, { gridImageUrl: imageUrl, progress: 100, error: undefined });
+        params.store.update((s) => ({ ...s, gridImageUrl: imageUrl }));
+      } else {
+        updateMessageById(params.store, id, { upscaledImageUrl: imageUrl, progress: 100, error: undefined });
+      }
+
+      showMessage('任务结果已恢复');
+    } catch (e) {
+      const msg = (e as Error)?.message || '重新拉取失败';
+      updateMessageById(params.store, id, { error: msg });
+      showError(msg);
+    } finally {
+      retryingMessageIds.delete(id);
+    }
+  }
+
   async function addPadFromSlice(src: string, index: number) {
     try {
       const originKey = `slice:${src}#${index}`;
@@ -280,7 +336,8 @@ export function createStreamActions(params: { api: ApiClient; store: Store<Workf
     if (d.action === 'upscale') void upscaleFromGrid(d.taskId, d.index);
     if (d.action === 'select') void selectFromSlice(d.src, d.index);
     if (d.action === 'selectUrl') void selectFromUrl(d.src);
+    if (d.action === 'retryTask') void retryTaskFetchByMessageId(d.messageId);
   });
 
-  return { addPadFromSlice, upscaleFromGrid, selectFromSlice, selectFromUrl };
+  return { addPadFromSlice, upscaleFromGrid, selectFromSlice, selectFromUrl, retryTaskFetchByMessageId };
 }

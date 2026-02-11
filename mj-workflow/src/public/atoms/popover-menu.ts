@@ -42,7 +42,7 @@ export function createPopoverMenu(params: {
     get open() {
       return open;
     },
-    open: () => setOpen(true),
+    show: () => setOpen(true),
     close: () => setOpen(false),
     toggle,
   };

@@ -26,14 +26,7 @@ export interface WorkflowHistoryItem {
 }
 
 export type StreamMessageRole = 'user' | 'ai';
-export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'postprocess' | 'suno' | 'youtube';
-
-export type PostprocessOutputKind = 'image' | 'audio' | 'video';
-export interface PostprocessOutput {
-  kind: PostprocessOutputKind;
-  url: string;
-  name?: string;
-}
+export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'suno' | 'youtube';
 
 export type TraceTarget =
   | { type: 'message'; id: string }
@@ -76,8 +69,6 @@ export interface StreamMessage {
   progress?: number; // 0..100 for async tasks
   error?: string;
 
-  postOutputs?: PostprocessOutput[];
-
   // Trace metadata (snapshot configs, for redo)
   userPrompt?: string; // raw prompt typed by user before translation/wrapping
 
@@ -106,17 +97,6 @@ export interface StreamMessage {
   videoSize?: string;
   videoStartRefId?: string;
   videoEndRefId?: string;
-
-  // MV Compose snapshot (ffmpeg / media-backend)
-  mvResolution?: string;
-  mvFps?: number;
-  mvDurationSeconds?: number;
-  mvSubtitleMode?: string;
-  mvSequence?: Array<{ refId: string; durationSeconds?: number }>;
-  mvVideoUrl?: string;
-  mvAudioUrl?: string;
-  mvSubtitleSrt?: string;
-  mvAction?: string;
 }
 
 export type CommandMode =
@@ -126,42 +106,8 @@ export type CommandMode =
   | 'video'
   | 'deconstruct'
   | 'pedit'
-  | 'beautify'
-  | 'post'
-  // MV compose recipes (菜谱)
-  | 'mv-mix'
-  | 'mv-images'
-  | 'mv-clip'
-  | 'mv-subtitle'
-  // legacy (kept for persisted state backward-compat)
-  | 'mv'
-  | 'mv-assets'
-  | 'mv-settings'
-  | 'mv-subtitles'
-  | 'mv-text'
-  | 'mv-plan'
-  | 'mv-submit'
-  | 'mv-track';
-export type VideoProvider = 'jimeng' | 'kling' | 'gemini';
-
-export type MediaAssetKind = 'video' | 'audio' | 'text' | 'subtitle';
-export interface MediaAsset {
-  id: string;
-  kind: MediaAssetKind;
-  name: string;
-  createdAt: number;
-  originKey?: string;
-  url?: string;
-  localUrl?: string;
-  localPath?: string;
-  localKey?: string;
-  text?: string; // for subtitle/text assets
-}
-
-export interface MvSequenceItem {
-  refId: string;
-  durationSeconds?: number; // per-image override; fallback to mvDurationSeconds
-}
+  | 'beautify';
+export type VideoProvider = 'gemini' | 'sora';
 
 export interface WorkflowState {
   step: WorkflowStep;
@@ -171,7 +117,7 @@ export interface WorkflowState {
   uploadedImageUrl?: string;
 
   referenceImages: ReferenceImage[];
-  // Material selection: multi-select buffer for reference images (used by postprocess/deconstruct/mv, etc.)
+  // Material selection: multi-select buffer for reference images.
   selectedReferenceIds: string[];
 
   // MJ prompt "PAD" (垫图) - multi image reference
@@ -237,23 +183,6 @@ export interface WorkflowState {
   videoSize?: string;
   videoStartRefId?: string;
   videoEndRefId?: string;
-
-  // MV compose (FFmpeg)
-  mediaAssets: MediaAsset[];
-  // Material selection: multi-select buffer for audio/video/subtitle assets
-  selectedMediaAssetIds: string[];
-  mvSequence: MvSequenceItem[];
-  mvSubtitleText?: string;
-  mvText?: string;
-  mvResolution?: string; // e.g. "source" | "1280x720" | "1920x1080"
-  mvFps?: number;
-  mvDurationSeconds?: number; // default image duration (seconds) for mvSequence items
-  mvSubtitleMode?: 'soft' | 'burn';
-  mvAction?: 'clip' | 'mv';
-
-  // Postprocess (ffmpeg)
-  postVideoPreset?: string;
-  postVideoCrf?: number;
 }
 
 export function createInitialWorkflowState(): WorkflowState {
@@ -275,21 +204,7 @@ export function createInitialWorkflowState(): WorkflowState {
     beautifyHint: '',
     gimageAspect: '16:9',
     gimageSize: '2K',
-    videoProvider: 'jimeng',
-    videoModel: 'jimeng-video-3.0',
-
-    mediaAssets: [],
-    selectedMediaAssetIds: [],
-    mvSequence: [],
-    mvSubtitleText: '',
-    mvText: '',
-    mvResolution: '1280x720',
-    mvFps: 25,
-    mvDurationSeconds: 5,
-    mvSubtitleMode: 'soft',
-    mvAction: 'mv',
-
-    postVideoPreset: 'pet',
-    postVideoCrf: 23,
+    videoProvider: 'gemini',
+    videoModel: 'veo-3.1-fast-generate-preview',
   };
 }
