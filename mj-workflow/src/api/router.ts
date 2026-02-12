@@ -295,19 +295,76 @@ async function fetchExternalImageBytes(req: Request, absolute: URL): Promise<{ b
   throw lastError instanceof Error ? lastError : new Error('拉取图片失败');
 }
 
-async function runPythonAdd(a: number, b: number): Promise<{ a: number; b: number; sum: number; engine: 'python3' }> {
+function normalizeMathExpression(raw: string): string {
+  const normalized = String(raw || '')
+    .trim()
+    .replace(/[（]/g, '(')
+    .replace(/[）]/g, ')')
+    .replace(/[＋]/g, '+')
+    .replace(/[－]/g, '-')
+    .replace(/[×]/g, '*')
+    .replace(/[÷]/g, '/')
+    .replace(/[，]/g, ',')
+    .replace(/[＝]/g, '=')
+    .replace(/[？]/g, '?')
+    .replace(/\s+/g, '');
+
+  return normalized.replace(/[=?]+$/g, '').trim();
+}
+
+async function runPythonMath(expressionRaw: string): Promise<{ expression: string; value: number; engine: 'python3' }> {
+  const expression = normalizeMathExpression(expressionRaw);
+  if (!expression) throw new Error('expression 不能为空');
+
   const pyCode = [
+    'import ast',
     'import json',
     'import sys',
-    'a = float(sys.argv[1])',
-    'b = float(sys.argv[2])',
-    's = a + b',
-    'if s.is_integer():',
-    '    s = int(s)',
-    'print(json.dumps({"sum": s}, ensure_ascii=False))',
+    '',
+    'expr = (sys.argv[1] if len(sys.argv) > 1 else "").strip()',
+    '',
+    'bin_ops = {',
+    '    ast.Add: lambda a, b: a + b,',
+    '    ast.Sub: lambda a, b: a - b,',
+    '    ast.Mult: lambda a, b: a * b,',
+    '    ast.Div: lambda a, b: a / b,',
+    '    ast.Mod: lambda a, b: a % b,',
+    '    ast.Pow: lambda a, b: a ** b,',
+    '}',
+    'unary_ops = {',
+    '    ast.UAdd: lambda a: +a,',
+    '    ast.USub: lambda a: -a,',
+    '}',
+    '',
+    'def eval_node(node):',
+    '    if isinstance(node, ast.Expression):',
+    '        return eval_node(node.body)',
+    '    if isinstance(node, ast.Constant):',
+    '        if isinstance(node.value, (int, float)):',
+    '            return float(node.value)',
+    '        raise ValueError("only numeric constants are allowed")',
+    '    if hasattr(ast, "Num") and isinstance(node, ast.Num):',
+    '        return float(node.n)',
+    '    if isinstance(node, ast.BinOp) and type(node.op) in bin_ops:',
+    '        left = eval_node(node.left)',
+    '        right = eval_node(node.right)',
+    '        return float(bin_ops[type(node.op)](left, right))',
+    '    if isinstance(node, ast.UnaryOp) and type(node.op) in unary_ops:',
+    '        return float(unary_ops[type(node.op)](eval_node(node.operand)))',
+    '    raise ValueError(f"unsupported expression node: {type(node).__name__}")',
+    '',
+    'try:',
+    '    tree = ast.parse(expr, mode="eval")',
+    '    value = eval_node(tree)',
+    '    if isinstance(value, float) and value.is_integer():',
+    '        value = int(value)',
+    '    print(json.dumps({"value": value}, ensure_ascii=False))',
+    'except Exception as e:',
+    '    print(json.dumps({"error": str(e)}, ensure_ascii=False))',
+    '    sys.exit(2)',
   ].join('\n');
 
-  const proc = Bun.spawn(['python3', '-c', pyCode, String(a), String(b)], {
+  const proc = Bun.spawn(['python3', '-c', pyCode, expression], {
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -319,17 +376,9 @@ async function runPythonAdd(a: number, b: number): Promise<{ a: number; b: numbe
 
   const raw = (await new Response(proc.stdout).text()).trim();
   const parsed = JSON.parse(raw || '{}');
-  const sum = Number(parsed?.sum);
-  if (!Number.isFinite(sum)) throw new Error('Python 输出解析失败');
-  return { a, b, sum, engine: 'python3' };
-}
-
-function isLikelyAdditionQuery(text: string): boolean {
-  const raw = String(text || '').trim();
-  if (!raw) return false;
-  const normalized = raw.replace(/\s+/g, '').replace(/[＝]/g, '=').replace(/[？]/g, '?');
-  // Match patterns like: 1+2, 1.2+3.22313=?, -10+2？
-  return /^[-+]?\d+(?:\.\d+)?\+[-+]?\d+(?:\.\d+)?(?:[=?])?$/.test(normalized);
+  const value = Number(parsed?.value);
+  if (!Number.isFinite(value)) throw new Error('Python 输出解析失败');
+  return { expression, value, engine: 'python3' };
 }
 
 export function createApiRouter(deps: {
@@ -1273,19 +1322,18 @@ export function createApiRouter(deps: {
 
         const modelRaw = String(body.model || '').trim();
         const model = modelRaw === 'gemini-3-pro-preview' || modelRaw === 'gemini-3-flash-preview' ? modelRaw : 'gemini-3-flash-preview';
-        const latestUserContent = [...baseMessages].reverse().find((m) => m.role === 'user')?.content || '';
-        const forceToolForMath = isLikelyAdditionQuery(latestUserContent);
 
         const system = [
           'You are a helpful assistant.',
           'You can decide whether to use tools via function calling.',
           '',
           'Available tool:',
-          '- py_add(a:number, b:number): returns exact numeric sum.',
+          '- py_math(expression:string): evaluates arithmetic expression and returns exact numeric result.',
           '',
           'Decision policy:',
-          '- For numeric addition requests, especially decimal precision like "1.2+3.22313", always call py_add.',
-          '- For non-addition requests, answer directly unless a tool is necessary.',
+          '- For arithmetic requests (+ - * / parentheses/decimals), prefer calling py_math.',
+          '- expression must be plain math expression only, no natural language.',
+          '- For non-arithmetic requests, answer directly unless a tool is necessary.',
           '',
           'Reply in the user language.',
         ].join('\n');
@@ -1298,19 +1346,18 @@ export function createApiRouter(deps: {
           system,
           functionDeclarations: [
             {
-              name: 'py_add',
-              description: 'Perform exact numeric addition for two numbers and return the sum.',
+              name: 'py_math',
+              description: 'Evaluate arithmetic expression (+ - * / parentheses, decimals) and return the numeric result.',
               parametersJsonSchema: {
                 type: 'object',
                 properties: {
-                  a: { type: 'number', description: 'First addend' },
-                  b: { type: 'number', description: 'Second addend' },
+                  expression: { type: 'string', description: 'Plain arithmetic expression, e.g. (1.2+3.4)/2' },
                 },
-                required: ['a', 'b'],
+                required: ['expression'],
               },
             },
           ],
-          mode: forceToolForMath ? 'ANY' : 'AUTO',
+          mode: 'AUTO',
         });
 
         const calls = firstTurn.functionCalls.slice(0, 8);
@@ -1323,30 +1370,29 @@ export function createApiRouter(deps: {
             const name = String(call?.name || '').trim();
             const args = call?.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args : {};
 
-            if (name !== 'py_add') {
+            if (name !== 'py_math') {
               const err = `未知工具: ${name || '(empty)'}`;
               toolTrace.push({ name: name || 'unknown', arguments: args, error: err });
               toolResults.push({ id: call.id, name, ok: false, error: err });
               continue;
             }
 
-            const a = Number((args as any)?.a);
-            const b = Number((args as any)?.b);
-            if (!Number.isFinite(a) || !Number.isFinite(b)) {
-              const err = 'py_add 参数非法，a/b 必须是数字';
-              toolTrace.push({ name: 'py_add', arguments: args, error: err });
-              toolResults.push({ id: call.id, name: 'py_add', ok: false, error: err, arguments: args });
+            const expression = String((args as any)?.expression || '').trim();
+            if (!expression) {
+              const err = 'py_math 参数非法，expression 不能为空';
+              toolTrace.push({ name: 'py_math', arguments: args, error: err });
+              toolResults.push({ id: call.id, name: 'py_math', ok: false, error: err, arguments: args });
               continue;
             }
 
             try {
-              const result = await runPythonAdd(a, b);
-              toolTrace.push({ name: 'py_add', arguments: { a, b }, result });
-              toolResults.push({ id: call.id, name: 'py_add', ok: true, result });
+              const result = await runPythonMath(expression);
+              toolTrace.push({ name: 'py_math', arguments: { expression }, result });
+              toolResults.push({ id: call.id, name: 'py_math', ok: true, result });
             } catch (error) {
-              const err = (error as Error)?.message || 'py_add 执行失败';
-              toolTrace.push({ name: 'py_add', arguments: { a, b }, error: err });
-              toolResults.push({ id: call.id, name: 'py_add', ok: false, error: err, arguments: { a, b } });
+              const err = (error as Error)?.message || 'py_math 执行失败';
+              toolTrace.push({ name: 'py_math', arguments: { expression }, error: err });
+              toolResults.push({ id: call.id, name: 'py_math', ok: false, error: err, arguments: { expression } });
             }
           }
 
@@ -1390,11 +1436,24 @@ export function createApiRouter(deps: {
         if (!Number.isFinite(a) || !Number.isFinite(b)) {
           return jsonError({ status: 400, description: 'a 和 b 必须是数字' });
         }
-        const result = await runPythonAdd(a, b);
+        const result = await runPythonMath(`${a}+${b}`);
         return json({ code: 0, description: '成功', result });
       } catch (error) {
         console.error('AI py-add skill error:', error);
         return jsonError({ status: 500, description: 'Python 加法技能失败', error });
+      }
+    }
+
+    if (pathname === '/api/ai/skill/py-math' && req.method === 'POST') {
+      try {
+        const body = await readJson<{ expression?: unknown }>(req);
+        const expression = String(body?.expression || '').trim();
+        if (!expression) return jsonError({ status: 400, description: 'expression 不能为空' });
+        const result = await runPythonMath(expression);
+        return json({ code: 0, description: '成功', result });
+      } catch (error) {
+        console.error('AI py-math skill error:', error);
+        return jsonError({ status: 500, description: 'Python 数学技能失败', error });
       }
     }
 
