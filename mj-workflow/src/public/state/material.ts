@@ -22,6 +22,11 @@ export function readSelectedReferenceIds(state: WorkflowState, limit = 24): stri
   return normalizeIds(state.selectedReferenceIds, limit, { valid: (id) => existing.has(id) });
 }
 
+export function readSelectedMediaAssetIds(state: WorkflowState, limit = 36): string[] {
+  const existing = new Set((Array.isArray(state.mediaAssets) ? state.mediaAssets : []).map((a) => a.id));
+  return normalizeIds(state.selectedMediaAssetIds, limit, { valid: (id) => existing.has(id) });
+}
+
 export function toggleId(list: string[], id: string, limit: number): string[] {
   const cleaned = String(id || '').trim();
   const normalized = Array.from(new Set((Array.isArray(list) ? list : []).map((x) => String(x || '').trim()).filter(Boolean)));
@@ -32,4 +37,10 @@ export function toggleId(list: string[], id: string, limit: number): string[] {
 
   const next = [...normalized, cleaned];
   return next.length > limit ? next.slice(next.length - limit) : next;
+}
+
+export function removeId(list: string[], id: string, limit: number): string[] {
+  const cleaned = String(id || '').trim();
+  if (!cleaned) return list.slice(0, limit);
+  return list.filter((x) => x !== cleaned).slice(0, limit);
 }

@@ -19,6 +19,7 @@ export function createCommandModeBlock(params: {
   describe: { deconstructAssets: () => void | Promise<void> };
   pedit: { applyEdit: () => void | Promise<void> };
   video: { setVisible: (visible: boolean) => void; generateVideoFromCurrentPrompt: () => void | Promise<void> };
+  post: { run: () => void | Promise<void> };
 }) {
   const modeBtn = byId<HTMLElement>('commandModeBtn');
   const modeMenu = byId<HTMLElement>('commandModeMenu');
@@ -81,7 +82,8 @@ export function createCommandModeBlock(params: {
       raw === 'video' ||
       raw === 'deconstruct' ||
       raw === 'pedit' ||
-      raw === 'beautify'
+      raw === 'beautify' ||
+      raw === 'post'
       ? (raw as any)
       : 'mj';
   }
@@ -103,11 +105,13 @@ export function createCommandModeBlock(params: {
           ? 'VID'
           : mode === 'deconstruct'
             ? 'DESC'
-            : mode === 'pedit'
-              ? 'IMG'
-              : mode === 'beautify'
-                ? 'POL'
-                : 'MJ';
+              : mode === 'pedit'
+                ? 'IMG'
+                : mode === 'beautify'
+                  ? 'POL'
+                  : mode === 'post'
+                    ? 'POST'
+                    : 'MJ';
     modeMenu.querySelectorAll<HTMLElement>('button[data-command-mode]').forEach((el) => {
       const v = String((el as any).dataset?.commandMode || '').trim();
       el.classList.toggle('bg-white/5', v === mode);
@@ -128,7 +132,8 @@ export function createCommandModeBlock(params: {
         v === 'video' ||
         v === 'deconstruct' ||
         v === 'pedit' ||
-        v === 'beautify'
+        v === 'beautify' ||
+        v === 'post'
           ? (v as any)
           : 'mj';
       setMode(next);
@@ -181,6 +186,10 @@ export function createCommandModeBlock(params: {
       }
       if (modeNow === 'video') {
         await params.video.generateVideoFromCurrentPrompt();
+        return;
+      }
+      if (modeNow === 'post') {
+        await params.post.run();
         return;
       }
       if (modeNow === 'beautify') {

@@ -38,6 +38,9 @@ function collectMessageKeys(set: Set<string>, m: StreamMessage) {
 
   if (Array.isArray(m.peditImageUrls)) m.peditImageUrls.forEach((u) => pushLocalKeyFromUrl(set, u));
   if (Array.isArray(m.inputImageUrls)) m.inputImageUrls.forEach((u) => pushLocalKeyFromUrl(set, u));
+  if (Array.isArray((m as any).postOutputs)) {
+    (m as any).postOutputs.forEach((o: any) => pushLocalKeyFromUrl(set, String(o?.url || '')));
+  }
 }
 
 export function collectReferencedUploadKeys(state: WorkflowState): string[] {
@@ -48,6 +51,11 @@ export function collectReferencedUploadKeys(state: WorkflowState): string[] {
   state.upscaledImages?.forEach((u) => pushLocalKeyFromUrl(set, u));
 
   for (const ref of state.referenceImages || []) collectRefKeys(set, ref);
+  for (const asset of state.mediaAssets || []) {
+    pushUnique(set, asset.localKey);
+    pushLocalKeyFromUrl(set, asset.localUrl);
+    pushLocalKeyFromUrl(set, asset.url);
+  }
 
   // History snapshots (may only contain ref ids / localUrl)
   for (const h of state.history || []) {

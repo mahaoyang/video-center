@@ -3,6 +3,8 @@ export interface ApiClient {
   deleteUpload(params: { localKey: string }): Promise<any>;
   promoteUpload(params: { localKey: string }): Promise<any>;
   cleanupUploads(params: { keepLocalKeys: string[]; minAgeSeconds?: number }): Promise<any>;
+  audioProcess(params: { src: string }): Promise<any>;
+  videoProcess(params: { src: string; preset?: string; crf?: number }): Promise<any>;
   describe(params: { base64?: string; imageUrl?: string }): Promise<any>;
   visionDescribe(params: { imageUrl: string; question?: string; model?: string }): Promise<any>;
   geminiDescribe(params: { imageUrl: string }): Promise<any>;
@@ -102,6 +104,8 @@ export function createApiClient(apiBase = '/api'): ApiClient {
     deleteUpload: async (params) => await requestJson('POST', `${apiBase}/upload/delete`, params),
     promoteUpload: async (params) => await requestJson('POST', `${apiBase}/upload/promote`, params),
     cleanupUploads: async (params) => await requestJson('POST', `${apiBase}/upload/cleanup`, params),
+    audioProcess: async (params) => await requestJson('POST', `${apiBase}/audio/process`, params),
+    videoProcess: async (params) => await requestJson('POST', `${apiBase}/video/process`, params),
     describe: async (params) => await requestJson('POST', `${apiBase}/describe`, params),
     visionDescribe: async (params) => await requestJson('POST', `${apiBase}/vision/describe`, params),
     geminiDescribe: async (params) => await requestJson('POST', `${apiBase}/gemini/describe`, params),

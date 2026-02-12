@@ -1,7 +1,7 @@
 import type { Store } from '../state/store';
-import type { PlannerMessage, ReferenceImage, StreamMessage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
+import type { MediaAsset, PlannerMessage, ReferenceImage, StreamMessage, WorkflowHistoryItem, WorkflowState } from '../state/workflow';
 import { randomId } from '../atoms/id';
-import { readSelectedReferenceIds } from '../state/material';
+import { readSelectedMediaAssetIds, readSelectedReferenceIds } from '../state/material';
 
 const STORAGE_KEY = 'mj-workflow:persist:v1';
 
@@ -26,6 +26,7 @@ type PersistedStreamMessage = {
   provider?: string;
   progress?: number;
   error?: string;
+  postOutputs?: Array<{ kind: string; url: string; name?: string }>;
 
   userPrompt?: string;
   mjPadRefIds?: string[];
@@ -86,6 +87,19 @@ type Persisted = {
     role: string;
     text: string;
   }>;
+  mediaAssets?: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    createdAt: number;
+    originKey?: string;
+    url?: string;
+    localUrl?: string;
+    localPath?: string;
+    localKey?: string;
+    text?: string;
+  }>;
+  selectedMediaAssetIds?: string[];
   desktopHiddenStreamMessageIds?: string[];
   desktopHiddenPlannerMessageIds?: string[];
   commandMode?: string;
@@ -152,6 +166,7 @@ function toPersisted(state: WorkflowState): Persisted {
     })),
     referenceLibrary: referenceLibrary.slice(-40),
     selectedReferenceIds: readSelectedReferenceIds(state, 24),
+    selectedMediaAssetIds: readSelectedMediaAssetIds(state, 36),
     mjPadRefIds: Array.isArray(state.mjPadRefIds) ? state.mjPadRefIds.slice(0, 12) : [],
     mjPadRefId: Array.isArray(state.mjPadRefIds) && state.mjPadRefIds.length ? state.mjPadRefIds[0] : undefined,
     mjSrefImageUrl: state.mjSrefImageUrl,
@@ -180,6 +195,16 @@ function toPersisted(state: WorkflowState): Persisted {
       provider: m.provider,
       progress: typeof m.progress === 'number' ? m.progress : undefined,
       error: typeof m.error === 'string' ? m.error : undefined,
+      postOutputs: Array.isArray((m as any).postOutputs)
+        ? (m as any).postOutputs
+            .map((it: any) => ({
+              kind: it?.kind === 'audio' ? 'audio' : it?.kind === 'video' ? 'video' : 'image',
+              url: String(it?.url || '').trim(),
+              name: typeof it?.name === 'string' ? it.name : undefined,
+            }))
+            .filter((it: any) => Boolean(it.url))
+            .slice(0, 24)
+        : undefined,
 
       userPrompt: typeof m.userPrompt === 'string' && m.userPrompt.trim() ? m.userPrompt.trim() : undefined,
       mjPadRefIds: Array.isArray((m as any).mjPadRefIds)
@@ -212,6 +237,18 @@ function toPersisted(state: WorkflowState): Persisted {
       createdAt: m.createdAt,
       role: m.role,
       text: m.text,
+    })),
+    mediaAssets: state.mediaAssets.slice(-120).map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      name: a.name,
+      createdAt: a.createdAt,
+      originKey: typeof a.originKey === 'string' ? a.originKey : undefined,
+      url: typeof a.url === 'string' ? a.url : undefined,
+      localUrl: typeof a.localUrl === 'string' ? a.localUrl : undefined,
+      localPath: typeof a.localPath === 'string' ? a.localPath : undefined,
+      localKey: typeof a.localKey === 'string' ? a.localKey : undefined,
+      text: typeof a.text === 'string' ? a.text : undefined,
     })),
     desktopHiddenStreamMessageIds: Array.isArray(state.desktopHiddenStreamMessageIds)
       ? state.desktopHiddenStreamMessageIds.map((id) => String(id || '').trim()).filter(Boolean).slice(-400)
@@ -249,6 +286,8 @@ export function loadPersistedState(): {
   activeImageId?: string;
   streamMessages: StreamMessage[];
   plannerMessages: PlannerMessage[];
+  mediaAssets: MediaAsset[];
+  selectedMediaAssetIds: string[];
   desktopHiddenStreamMessageIds: string[];
   desktopHiddenPlannerMessageIds: string[];
   commandMode?: string;
@@ -276,6 +315,8 @@ export function loadPersistedState(): {
       mjPadRefIds: [],
       streamMessages: [],
       plannerMessages: [],
+      mediaAssets: [],
+      selectedMediaAssetIds: [],
       desktopHiddenStreamMessageIds: [],
       desktopHiddenPlannerMessageIds: [],
     };
@@ -319,6 +360,7 @@ export function loadPersistedState(): {
         m.kind === 'deconstruct' ||
         m.kind === 'pedit' ||
         m.kind === 'video' ||
+        m.kind === 'postprocess' ||
         m.kind === 'suno' ||
         m.kind === 'youtube'
           ? m.kind
@@ -349,6 +391,16 @@ export function loadPersistedState(): {
         provider: typeof m.provider === 'string' ? m.provider : undefined,
         progress: typeof m.progress === 'number' ? m.progress : undefined,
         error: typeof m.error === 'string' ? m.error : undefined,
+        postOutputs: Array.isArray((m as any).postOutputs)
+          ? (m as any).postOutputs
+              .map((it: any) => ({
+                kind: it?.kind === 'audio' ? 'audio' : it?.kind === 'video' ? 'video' : 'image',
+                url: String(it?.url || '').trim(),
+                name: typeof it?.name === 'string' ? it.name : undefined,
+              }))
+              .filter((it: any) => Boolean(it.url))
+              .slice(0, 24)
+          : undefined,
 
         userPrompt: typeof m.userPrompt === 'string' ? m.userPrompt : undefined,
         mjPadRefIds: Array.isArray(m.mjPadRefIds)
@@ -392,8 +444,28 @@ export function loadPersistedState(): {
     .filter((m) => Boolean(m.text && m.text.trim()))
     .slice(-200);
 
+  const mediaAssets: MediaAsset[] = Array.isArray((parsed as any).mediaAssets)
+    ? (parsed as any).mediaAssets
+        .map((a: any) => ({
+          id: String(a?.id || randomId('asset')),
+          kind: a?.kind === 'audio' || a?.kind === 'subtitle' ? a.kind : 'video',
+          name: String(a?.name || 'asset'),
+          createdAt: typeof a?.createdAt === 'number' ? a.createdAt : Date.now(),
+          originKey: typeof a?.originKey === 'string' ? a.originKey : undefined,
+          url: typeof a?.url === 'string' ? a.url : undefined,
+          localUrl: typeof a?.localUrl === 'string' ? a.localUrl : undefined,
+          localPath: typeof a?.localPath === 'string' ? a.localPath : undefined,
+          localKey: typeof a?.localKey === 'string' ? a.localKey : undefined,
+          text: typeof a?.text === 'string' ? a.text : undefined,
+        }))
+        .slice(-120)
+    : [];
+
   const selectedReferenceIds: string[] = Array.isArray((parsed as any).selectedReferenceIds)
     ? (parsed as any).selectedReferenceIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 24)
+    : [];
+  const selectedMediaAssetIds: string[] = Array.isArray((parsed as any).selectedMediaAssetIds)
+    ? (parsed as any).selectedMediaAssetIds.map((id: any) => String(id || '').trim()).filter(Boolean).slice(0, 36)
     : [];
 
   const desktopHiddenStreamMessageIds: string[] = Array.isArray((parsed as any).desktopHiddenStreamMessageIds)
@@ -436,6 +508,8 @@ export function loadPersistedState(): {
     activeImageId: typeof (parsed as any).activeImageId === 'string' ? (parsed as any).activeImageId : undefined,
     streamMessages,
     plannerMessages,
+    mediaAssets,
+    selectedMediaAssetIds,
     desktopHiddenStreamMessageIds,
     desktopHiddenPlannerMessageIds,
     commandMode: typeof (parsed as any).commandMode === 'string' ? (parsed as any).commandMode : undefined,

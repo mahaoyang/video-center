@@ -8,7 +8,7 @@ import { scrollAreaViewport, setupScrollArea } from '../atoms/scroll-area';
 
 function readMode(state: WorkflowState): CommandMode {
   const m = state.commandMode;
-  return m === 'mj' || m === 'suno' || m === 'youtube' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' ? m : 'mj';
+  return m === 'mj' || m === 'suno' || m === 'youtube' || m === 'video' || m === 'deconstruct' || m === 'pedit' || m === 'beautify' || m === 'post' ? m : 'mj';
 }
 
 function getPromptInput(): HTMLTextAreaElement | null {

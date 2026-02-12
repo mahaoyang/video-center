@@ -26,7 +26,14 @@ export interface WorkflowHistoryItem {
 }
 
 export type StreamMessageRole = 'user' | 'ai';
-export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'suno' | 'youtube';
+export type StreamMessageKind = 'deconstruct' | 'generate' | 'upscale' | 'pedit' | 'video' | 'postprocess' | 'suno' | 'youtube';
+
+export type PostprocessOutputKind = 'image' | 'audio' | 'video';
+export interface PostprocessOutput {
+  kind: PostprocessOutputKind;
+  url: string;
+  name?: string;
+}
 
 export type TraceTarget =
   | { type: 'message'; id: string }
@@ -68,6 +75,7 @@ export interface StreamMessage {
 
   progress?: number; // 0..100 for async tasks
   error?: string;
+  postOutputs?: PostprocessOutput[];
 
   // Trace metadata (snapshot configs, for redo)
   userPrompt?: string; // raw prompt typed by user before translation/wrapping
@@ -106,8 +114,23 @@ export type CommandMode =
   | 'video'
   | 'deconstruct'
   | 'pedit'
-  | 'beautify';
+  | 'beautify'
+  | 'post';
 export type VideoProvider = 'gemini' | 'sora';
+
+export type MediaAssetKind = 'video' | 'audio' | 'subtitle';
+export interface MediaAsset {
+  id: string;
+  kind: MediaAssetKind;
+  name: string;
+  createdAt: number;
+  originKey?: string;
+  url?: string;
+  localUrl?: string;
+  localPath?: string;
+  localKey?: string;
+  text?: string;
+}
 
 export interface WorkflowState {
   step: WorkflowStep;
@@ -161,6 +184,10 @@ export interface WorkflowState {
   // Pure chat mode for prompt planning
   plannerMessages: PlannerMessage[];
 
+  // Upload tray extra assets (for postprocess)
+  mediaAssets: MediaAsset[];
+  selectedMediaAssetIds: string[];
+
   // Command hub mode + video settings
   commandMode?: CommandMode;
   // SUNO prompt settings (for "Suno prompts" generator)
@@ -198,6 +225,8 @@ export function createInitialWorkflowState(): WorkflowState {
     desktopHiddenStreamMessageIds: [],
     plannerMessages: [],
     desktopHiddenPlannerMessageIds: [],
+    mediaAssets: [],
+    selectedMediaAssetIds: [],
     commandMode: 'mj',
     sunoMode: 'auto',
     sunoLanguage: 'auto',

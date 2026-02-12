@@ -24,6 +24,7 @@ import { keepStreamBottomPaddingClear } from './blocks/stream-bottom-padding';
 import { createSunoBlock } from './blocks/suno';
 import { createYoutubeMetaBlock } from './blocks/youtube';
 import { cleanupOrphanUploads } from './headless/uploads-gc';
+import { createPostprocessBlock } from './blocks/postprocess';
 
 document.addEventListener('DOMContentLoaded', () => {
   const api = createApiClient('/api');
@@ -41,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initial.streamMessages = persisted.streamMessages || [];
   initial.desktopHiddenStreamMessageIds = persisted.desktopHiddenStreamMessageIds || [];
   initial.plannerMessages = persisted.plannerMessages || [];
+  initial.mediaAssets = persisted.mediaAssets || [];
+  initial.selectedMediaAssetIds = persisted.selectedMediaAssetIds || [];
   initial.desktopHiddenPlannerMessageIds = persisted.desktopHiddenPlannerMessageIds || [];
   initial.traceHeadMessageId = persisted.traceHeadMessageId;
   if (!initial.traceHeadMessageId && initial.streamMessages.length) {
@@ -88,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
   createStreamHistory({ store });
   createPlannerChat({ api, store });
   const video = createVideoGenerateBlock({ api, store });
+  const post = createPostprocessBlock({ api, store });
   const command = createCommandModeBlock({
     api,
     store,
@@ -97,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     describe,
     pedit,
     video,
+    post,
   });
   initOverlays();
   setupScrollAreas(document);

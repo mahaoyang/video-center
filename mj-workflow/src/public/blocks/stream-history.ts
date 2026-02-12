@@ -486,6 +486,122 @@ function renderVideoMessage(m: StreamMessage): HTMLElement {
   return msg;
 }
 
+function safeDownloadName(name: string, fallback: string): string {
+  const raw = String(name || '').trim();
+  const cleaned = raw.replace(/[^\w.-]+/g, '_');
+  return cleaned || fallback;
+}
+
+function renderPostprocessMessage(m: StreamMessage): HTMLElement {
+  const msg = document.createElement('div');
+  msg.dataset.streamMessage = '1';
+
+  const outputs = Array.isArray((m as any).postOutputs) ? ((m as any).postOutputs as any[]).slice(0, 24) : [];
+  const pending = !outputs.length && !m.error && (typeof m.progress !== 'number' || m.progress < 100);
+  const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
+
+  msg.className = 'group animate-fade-in-up';
+  if (pending) {
+    msg.innerHTML = `
+      <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60">
+        <div class="flex items-center gap-4 opacity-60">
+          <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+            <i class="fas fa-spinner fa-spin text-[12px] text-studio-accent"></i>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-[10px] font-black uppercase tracking-[0.3em]">Post Processing</span>
+            <span class="text-[9px] font-mono opacity-40">处理中...（${p}%）</span>
+          </div>
+        </div>
+        <div class="mt-6 text-[11px] font-mono opacity-70 whitespace-pre-wrap break-words">${escapeHtml(m.text || '')}</div>
+        <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+      </div>
+    `;
+    return msg;
+  }
+
+  const rows = outputs
+    .map((o) => {
+      const kind = o?.kind === 'audio' ? 'audio' : o?.kind === 'video' ? 'video' : 'image';
+      const url = kind === 'image' ? toAppImageSrc(String(o?.url || '')) : toAppVideoSrc(String(o?.url || ''));
+      const downloadName = safeDownloadName(
+        String(o?.name || ''),
+        kind === 'audio' ? 'audio_pro.wav' : kind === 'video' ? 'video_post.mp4' : 'image'
+      );
+      if (!url) return '';
+
+      if (kind === 'audio') {
+        return `
+          <div class="rounded-2xl border border-white/10 bg-black/20 p-5 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Audio</div>
+              <a href="${escapeHtml(url)}" download="${escapeHtml(downloadName)}"
+                class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-widest">
+                Download
+              </a>
+            </div>
+            <audio src="${escapeHtml(url)}" controls class="w-full"></audio>
+            <div class="text-[10px] font-mono opacity-40 break-all">${escapeHtml(String(o?.url || ''))}</div>
+          </div>
+        `;
+      }
+
+      if (kind === 'video') {
+        return `
+          <div class="rounded-2xl border border-white/10 bg-black/20 p-5 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Video</div>
+              <a href="${escapeHtml(url)}" download="${escapeHtml(downloadName)}"
+                class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-widest">
+                Download
+              </a>
+            </div>
+            <div class="rounded-2xl overflow-hidden border border-white/10 bg-black/30">
+              <video src="${escapeHtml(url)}" controls class="w-full h-auto block"></video>
+            </div>
+            <div class="text-[10px] font-mono opacity-40 break-all">${escapeHtml(String(o?.url || ''))}</div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="rounded-2xl border border-white/10 bg-black/20 p-5 space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-[10px] font-black uppercase tracking-[0.25em] opacity-50">Image</div>
+            <a href="${escapeHtml(url)}" download="${escapeHtml(downloadName)}"
+              class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all text-[9px] font-black uppercase tracking-widest">
+              Download
+            </a>
+          </div>
+          <div class="rounded-2xl overflow-hidden border border-white/10 bg-black/30">
+            <img src="${escapeHtml(url)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
+          </div>
+          <div class="text-[10px] font-mono opacity-40 break-all">${escapeHtml(String(o?.url || ''))}</div>
+        </div>
+      `;
+    })
+    .filter(Boolean)
+    .join('');
+
+  msg.innerHTML = `
+    <div class="max-w-4xl glass-panel p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-visible bg-studio-panel/60 space-y-6">
+      <div class="flex items-center justify-between gap-6">
+        <div class="flex items-center gap-4 opacity-50">
+          <i class="fas fa-wand-magic-sparkles text-studio-accent text-xs"></i>
+          <span class="text-[10px] font-black uppercase tracking-[0.3em]">Postprocess Complete</span>
+        </div>
+      </div>
+      <div class="space-y-4">
+        ${rows || `<div class="text-[11px] font-mono opacity-60">无可用结果</div>`}
+      </div>
+      <div data-error-text="1" class="mt-6 text-[11px] text-red-300/90 font-mono ${m.error ? '' : 'hidden'}">${escapeHtml(m.error || '')}</div>
+    </div>
+  `;
+
+  bindPreview(msg);
+  return msg;
+}
+
 function parseSunoBlocks(text: string): { control: string; style: string } | null {
   const raw = String(text || '').trim();
   if (!raw) return null;
@@ -862,6 +978,7 @@ function renderMessage(m: StreamMessage): HTMLElement {
   if (m.kind === 'upscale') return renderUpscaleMessage(m);
   if (m.kind === 'pedit') return renderPeditMessage(m);
   if (m.kind === 'video') return renderVideoMessage(m);
+  if (m.kind === 'postprocess') return renderPostprocessMessage(m);
   if (m.kind === 'suno') return renderSunoMessage(m);
   if (m.kind === 'youtube') return renderYoutubeMessage(m);
   return renderGenerateMessage(m);
@@ -1223,6 +1340,14 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
         prev.kind === 'youtube' &&
         prev.role === 'ai' &&
         youtubeReconcileSignature(prev) !== youtubeReconcileSignature(resolved);
+      const postprocessTransition =
+        prev.kind === 'postprocess' &&
+        prev.role === 'ai' &&
+        (JSON.stringify(((prev as any).postOutputs || []).slice(0, 24)) !==
+          JSON.stringify((((resolved as any).postOutputs || []) as any[]).slice(0, 24)) ||
+          (prev.error || '') !== (resolved.error || '') ||
+          (prev.text || '') !== (resolved.text || '') ||
+          (prev.progress || 0) !== (resolved.progress || 0));
       const kindChanged = prev.kind !== resolved.kind || prev.role !== resolved.role;
       const needsReplace =
         kindChanged ||
@@ -1232,6 +1357,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
         videoTransition ||
         sunoTransition ||
         youtubeTransition ||
+        postprocessTransition ||
         (prev.kind === 'deconstruct' && (prev.text !== resolved.text || prev.imageUrl !== resolved.imageUrl)) ||
         (prev.kind === 'generate' && prev.role === 'user' && prev.text !== resolved.text) ||
         (prev.kind === 'upscale' && prev.role === 'user' && prev.text !== resolved.text) ||
@@ -1249,7 +1375,11 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
 
       if (
         resolved.role === 'ai' &&
-        (resolved.kind === 'generate' || resolved.kind === 'upscale' || resolved.kind === 'pedit' || resolved.kind === 'video')
+        (resolved.kind === 'generate' ||
+          resolved.kind === 'upscale' ||
+          resolved.kind === 'pedit' ||
+          resolved.kind === 'video' ||
+          resolved.kind === 'postprocess')
       ) {
         updatePendingCard(existing, resolved);
       }

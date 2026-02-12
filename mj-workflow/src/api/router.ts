@@ -198,6 +198,156 @@ const allowedUploadExts = new Set([
   '.srt',
 ]);
 
+const ffmpegFilterCache = new Map<string, boolean>();
+const ffmpegEncoderCache = new Map<string, boolean>();
+
+async function runCommand(args: string[], opts?: { cwd?: string }): Promise<{ stdout: string; stderr: string; code: number }> {
+  const proc = Bun.spawn(args, { cwd: opts?.cwd, stdout: 'pipe', stderr: 'pipe' });
+  const [stdout, stderr, code] = await Promise.all([
+    proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
+    proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
+    proc.exited,
+  ]);
+  return { stdout, stderr, code };
+}
+
+function tailLines(text: string, maxChars = 1600): string {
+  const raw = String(text || '');
+  if (raw.length <= maxChars) return raw;
+  return raw.slice(-maxChars);
+}
+
+async function ffmpegHasFilter(name: string): Promise<boolean> {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return false;
+  const cached = ffmpegFilterCache.get(key);
+  if (typeof cached === 'boolean') return cached;
+  try {
+    const res = await runCommand(['ffmpeg', '-hide_banner', '-h', `filter=${key}`]);
+    const out = `${res.stdout || ''}\n${res.stderr || ''}`;
+    const ok = !out.includes('Unknown filter') && !out.includes('No such filter');
+    ffmpegFilterCache.set(key, ok);
+    return ok;
+  } catch {
+    ffmpegFilterCache.set(key, false);
+    return false;
+  }
+}
+
+async function ffmpegHasEncoder(name: string): Promise<boolean> {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return false;
+  const cached = ffmpegEncoderCache.get(key);
+  if (typeof cached === 'boolean') return cached;
+  try {
+    const res = await runCommand(['ffmpeg', '-hide_banner', '-h', `encoder=${key}`]);
+    const out = `${res.stdout || ''}\n${res.stderr || ''}`;
+    const ok = !out.includes('Unknown encoder') && !out.includes('No such encoder');
+    ffmpegEncoderCache.set(key, ok);
+    return ok;
+  } catch {
+    ffmpegEncoderCache.set(key, false);
+    return false;
+  }
+}
+
+async function pickH264Encoder(): Promise<{ encoder: string; reason?: string }> {
+  if (await ffmpegHasEncoder('libx264')) return { encoder: 'libx264' };
+  if (await ffmpegHasEncoder('libopenh264')) return { encoder: 'libopenh264' };
+  return { encoder: '', reason: 'ffmpeg 缺少 H.264 编码器（libx264/libopenh264）' };
+}
+
+function normalizeVideoVfParts(): string[] {
+  return ['scale=iw-mod(iw\\,2):ih-mod(ih\\,2)', 'format=yuv420p', 'setsar=1'];
+}
+
+function parseLoudnormJson(stderr: string): any {
+  const matches = String(stderr || '').match(/\{[\s\S]*?\}/g);
+  if (!matches || !matches.length) throw new Error('Failed to find loudnorm JSON in ffmpeg output.');
+  try {
+    return JSON.parse(matches[matches.length - 1]!);
+  } catch {
+    throw new Error('Failed to parse loudnorm JSON in ffmpeg output.');
+  }
+}
+
+function formatLoudnormSecondPass(measure: any): string {
+  const required = ['input_i', 'input_tp', 'input_lra', 'input_thresh', 'target_offset'];
+  const missing = required.filter((k) => measure?.[k] === undefined || measure?.[k] === null);
+  if (missing.length) throw new Error(`loudnorm JSON missing keys: ${missing.join(', ')}`);
+  const f = (k: string) => `${Number(measure[k]).toFixed(6)}`;
+  return (
+    'loudnorm=I=-16:TP=-1.5:LRA=11:' +
+    `measured_I=${f('input_i')}:` +
+    `measured_TP=${f('input_tp')}:` +
+    `measured_LRA=${f('input_lra')}:` +
+    `measured_thresh=${f('input_thresh')}:` +
+    `offset=${f('target_offset')}:` +
+    'print_format=summary'
+  );
+}
+
+async function sampleRateFromFile(inputPath: string): Promise<number> {
+  try {
+    const res = await runCommand([
+      'ffprobe',
+      '-v',
+      'error',
+      '-select_streams',
+      'a:0',
+      '-show_entries',
+      'stream=sample_rate',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
+      inputPath,
+    ]);
+    const v = Number(String(res.stdout || '').trim());
+    if (Number.isFinite(v) && v > 0) return v;
+  } catch {
+    // ignore
+  }
+  return 48000;
+}
+
+async function buildAudioFiltergraph(params: { sampleRate: number; includeLoudnorm: string }): Promise<string> {
+  const tempo = 1.0003;
+  const rubberband = await ffmpegHasFilter('rubberband');
+  const firequalizer = await ffmpegHasFilter('firequalizer');
+  const vibrato = await ffmpegHasFilter('vibrato');
+
+  const tempoFilter = Math.abs(tempo - 1.0) < 1e-9 ? '' : rubberband ? `rubberband=tempo=${tempo.toFixed(7)},` : `atempo=${tempo.toFixed(7)},`;
+  const eq = firequalizer ? "firequalizer=gain='if(gt(f,16000),-0.8,0)'," : '';
+  const vib = vibrato ? 'vibrato=f=0.3:d=0.00002,' : '';
+
+  return (
+    '[0:a]' +
+    tempoFilter +
+    'aformat=channel_layouts=stereo,' +
+    'highpass=f=20,' +
+    'lowpass=f=19500,' +
+    eq +
+    'acompressor=threshold=0.1:ratio=1.15:attack=25:release=250:knee=2,' +
+    'asplit[m1][m2];' +
+    '[m1]pan=1c|c0=0.5*c0+0.5*c1[mid];' +
+    '[m2]pan=1c|c0=0.5*c0-0.5*c1,' +
+    'highpass=f=5000,' +
+    vib +
+    'volume=0.95[side];' +
+    '[mid][side]join=inputs=2:channel_layout=stereo[ms];' +
+    `[ms]pan=stereo|c0=c0+c1|c1=c0-c1,aresample=${params.sampleRate},` +
+    params.includeLoudnorm
+  );
+}
+
+function resolveUploadsLocalPath(uploadsDir: string, src: string): string | null {
+  const raw = String(src || '').trim();
+  const m = raw.match(/^\/uploads\/([^/?#]+)$/);
+  if (!m) return null;
+  const key = basename(m[1]!);
+  if (!key || key !== m[1]) return null;
+  return join(uploadsDir, key);
+}
+
 function parseYoutubeTitleDescription(text: string): { title: string; description: string } {
   const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
   if (!raw) return { title: '', description: '' };
@@ -1050,13 +1200,212 @@ export function createApiRouter(deps: {
       }
     }
 
+    if (pathname === '/api/audio/process' && req.method === 'POST') {
+      try {
+        const body = await readJson<{ src?: string }>(req);
+        const src = String(body.src || '').trim();
+        if (!src) return jsonError({ status: 400, description: 'src 不能为空' });
+
+        const localPath = resolveUploadsLocalPath(deps.uploads.dir, src);
+        if (!localPath) return jsonError({ status: 400, description: '仅支持 /uploads/<key> 作为音频输入' });
+
+        const file = Bun.file(localPath);
+        if (!(await file.exists())) return jsonError({ status: 404, description: '音频不存在' });
+
+        const ext = normalizeNonImageExt(extname(localPath));
+        const allowedAudioExts = new Set(['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg']);
+        if (!allowedAudioExts.has(ext)) return jsonError({ status: 400, description: `不支持的音频格式：${ext || '(无扩展名)'}` });
+
+        await mkdir(deps.uploads.dir, { recursive: true });
+        const outKey = `${randomUUID()}_pro.wav`;
+        const outPath = join(deps.uploads.dir, outKey);
+        const sampleRate = await sampleRateFromFile(localPath);
+
+        try {
+          const analysisGraph = await buildAudioFiltergraph({
+            sampleRate,
+            includeLoudnorm: 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json',
+          });
+          const analysis = await runCommand([
+            'ffmpeg',
+            '-hide_banner',
+            '-nostdin',
+            '-i',
+            localPath,
+            '-filter_complex',
+            analysisGraph,
+            '-f',
+            'null',
+            '-',
+          ]);
+          if (analysis.code !== 0) {
+            throw new Error(analysis.stderr?.trim() || 'ffmpeg loudnorm analysis failed');
+          }
+
+          const measure = parseLoudnormJson(analysis.stderr || '');
+          const loudnormSecondPass = formatLoudnormSecondPass(measure);
+          const filterGraph = await buildAudioFiltergraph({ sampleRate, includeLoudnorm: loudnormSecondPass });
+
+          const proc = await runCommand([
+            'ffmpeg',
+            '-y',
+            '-hide_banner',
+            '-nostdin',
+            '-i',
+            localPath,
+            '-filter_complex',
+            filterGraph,
+            '-c:a',
+            'pcm_s24le',
+            '-ar',
+            String(sampleRate),
+            outPath,
+          ]);
+          if (proc.code !== 0) {
+            throw new Error(proc.stderr?.trim() || 'ffmpeg audio process failed');
+          }
+        } catch (error) {
+          const fallback = await runCommand([
+            'ffmpeg',
+            '-y',
+            '-hide_banner',
+            '-nostdin',
+            '-i',
+            localPath,
+            '-af',
+            'loudnorm=I=-16:TP=-1.5:LRA=11',
+            '-c:a',
+            'pcm_s24le',
+            '-ar',
+            String(sampleRate),
+            outPath,
+          ]);
+          if (fallback.code !== 0) {
+            const detail = tailLines(fallback.stderr || (error as Error)?.message || '', 2000);
+            return jsonError({ status: 500, description: '音频后处理失败', error: detail });
+          }
+        }
+
+        const outputUrl = `${deps.uploads.publicPath}/${outKey}`;
+        return json({ code: 0, description: '成功', result: { outputUrl, localKey: outKey } });
+      } catch (error) {
+        console.error('Audio process error:', error);
+        return jsonError({ status: 500, description: '音频后处理失败', error });
+      }
+    }
+
+    if (pathname === '/api/video/process' && req.method === 'POST') {
+      try {
+        const body = await readJson<{ src?: string; preset?: string; crf?: number }>(req);
+        const src = String(body.src || '').trim();
+        if (!src) return jsonError({ status: 400, description: 'src 不能为空' });
+
+        const localPath = resolveUploadsLocalPath(deps.uploads.dir, src);
+        if (!localPath) return jsonError({ status: 400, description: '仅支持 /uploads/<key> 作为视频输入' });
+
+        const file = Bun.file(localPath);
+        if (!(await file.exists())) return jsonError({ status: 404, description: '视频不存在' });
+
+        const ext = normalizeNonImageExt(extname(localPath));
+        const allowedVideoExts = new Set(['.mp4', '.mov', '.mkv', '.webm']);
+        if (!allowedVideoExts.has(ext)) return jsonError({ status: 400, description: `不支持的视频格式：${ext || '(无扩展名)'}` });
+
+        const presetRaw = String(body.preset || '').trim().toLowerCase();
+        const chosenPreset =
+          presetRaw === 'enhance' ||
+          presetRaw === 'bw' ||
+          presetRaw === 'sepia' ||
+          presetRaw === 'soft' ||
+          presetRaw === 'sharpen' ||
+          presetRaw === 'denoise' ||
+          presetRaw === 'none'
+            ? presetRaw
+            : 'pet';
+
+        const crf = typeof body.crf === 'number' && Number.isFinite(body.crf) ? Math.round(body.crf) : 23;
+        if (crf < 10 || crf > 40) return jsonError({ status: 400, description: 'crf 不合法（建议 10~40）' });
+
+        await mkdir(deps.uploads.dir, { recursive: true });
+        const outKey = `${randomUUID()}_post_${chosenPreset}.mp4`;
+        const outPath = join(deps.uploads.dir, outKey);
+
+        const picked = await pickH264Encoder();
+        if (!picked.encoder) return jsonError({ status: 500, description: '视频后处理失败', error: picked.reason || '缺少 H.264 编码器' });
+
+        const vf: string[] = [];
+        if (chosenPreset === 'pet' || chosenPreset === 'enhance') {
+          vf.push('eq=contrast=1.06:brightness=0.01:saturation=1.10');
+          vf.push('unsharp=luma_msize_x=5:luma_msize_y=5:luma_amount=0.8:chroma_msize_x=5:chroma_msize_y=5:chroma_amount=0');
+        } else if (chosenPreset === 'bw') {
+          vf.push('hue=s=0');
+          vf.push('eq=contrast=1.08:brightness=0.02');
+        } else if (chosenPreset === 'sepia') {
+          vf.push('colorchannelmixer=0.393:0.769:0.189:0:0.349:0.686:0.168:0:0.272:0.534:0.131');
+        } else if (chosenPreset === 'soft') {
+          vf.push('eq=contrast=0.98:saturation=1.05');
+          vf.push('boxblur=1:1');
+        } else if (chosenPreset === 'sharpen') {
+          vf.push('unsharp=luma_msize_x=7:luma_msize_y=7:luma_amount=1.2:chroma_msize_x=7:chroma_msize_y=7:chroma_amount=0');
+        } else if (chosenPreset === 'denoise') {
+          const hasHqdn3d = await ffmpegHasFilter('hqdn3d');
+          if (hasHqdn3d) vf.push('hqdn3d=1.5:1.5:6:6');
+          else vf.push('boxblur=1:1');
+          vf.push('eq=contrast=1.04:saturation=1.05');
+        }
+        vf.push(...normalizeVideoVfParts());
+        const vfGraph = vf.join(',');
+
+        const primaryArgs = [
+          'ffmpeg',
+          '-y',
+          '-hide_banner',
+          '-nostdin',
+          '-i',
+          localPath,
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a:0?',
+          '-vf',
+          vfGraph,
+          '-c:v',
+          picked.encoder,
+          '-preset',
+          'veryfast',
+          '-crf',
+          String(crf),
+          '-pix_fmt',
+          'yuv420p',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '192k',
+          '-max_muxing_queue_size',
+          '4096',
+          '-movflags',
+          '+faststart',
+          outPath,
+        ];
+
+        const proc = await runCommand(primaryArgs);
+        if (proc.code !== 0) {
+          const detail = tailLines(proc.stderr || proc.stdout || '', 2000);
+          return jsonError({ status: 500, description: '视频后处理失败', error: detail });
+        }
+
+        const outputUrl = `${deps.uploads.publicPath}/${outKey}`;
+        return json({ code: 0, description: '成功', result: { outputUrl, localKey: outKey, preset: chosenPreset, crf } });
+      } catch (error) {
+        console.error('Video process error:', error);
+        return jsonError({ status: 500, description: '视频后处理失败', error });
+      }
+    }
+
     if (
-      (pathname === '/api/audio/process' && req.method === 'POST') ||
-      (pathname === '/api/video/process' && req.method === 'POST') ||
       ((pathname === '/api/mv/compose' || pathname === '/api/mv/compose/plan') && req.method === 'POST') ||
       (req.method === 'GET' && /^\/api\/media\/task\/[^/]+$/.test(pathname))
     ) {
-      return jsonError({ status: 410, description: '该功能已下线（仅保留 Gemini / Sora 视频）' });
+      return jsonError({ status: 410, description: 'MV 合成功能当前下线，后处理功能已恢复' });
     }
 
     if (pathname === '/api/describe' && req.method === 'POST') {

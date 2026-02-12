@@ -9,7 +9,7 @@ import { randomId } from '../atoms/id';
 import { sha256HexFromBlob } from '../atoms/blob-hash';
 import { toAppImageSrc } from '../atoms/image-src';
 import { isHttpUrl } from '../atoms/url';
-import { readSelectedReferenceIds, toggleId } from '../state/material';
+import { readSelectedMediaAssetIds, readSelectedReferenceIds, removeId, toggleId } from '../state/material';
 import { attachDownloadProcessor, buildDownloadFilename } from '../atoms/download';
 
 export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
@@ -301,6 +301,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     tray.innerHTML = '';
 
     const selectedImageIds = readSelectedReferenceIds(s, 24);
+    const selectedMediaIds = readSelectedMediaAssetIds(s, 36);
     if (padCount) padCount.textContent = String(selectedImageIds.length);
     if (padZipDownloadBtn) {
       const disabled = zipBusy || !s.referenceImages.length;
@@ -456,6 +457,106 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
 
       tray.appendChild(item);
     });
+
+    const media = Array.isArray(s.mediaAssets) ? s.mediaAssets.slice() : [];
+    for (const a of media.slice().reverse().slice(0, 36)) {
+      const kind = a.kind;
+      if (kind !== 'video' && kind !== 'audio' && kind !== 'subtitle') continue;
+      const selected = selectedMediaIds.includes(a.id);
+
+      const item = document.createElement('div');
+      item.className =
+        'group/ref relative flex-shrink-0 w-16 pt-3 animate-pop-in cursor-pointer transition-all duration-300 ' +
+        '-ml-10 first:ml-0 group-hover:ml-2 group-hover:first:ml-0 hover:z-20 hover:-translate-y-1';
+
+      const frame = document.createElement('div');
+      frame.className =
+        'relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 transition-all duration-300 bg-studio-panel flex items-center justify-center ' +
+        (selected ? 'ring-2 ring-studio-accent border-studio-accent/30' : '');
+
+      const icon = document.createElement('div');
+      icon.className = 'text-white/50';
+      icon.innerHTML =
+        kind === 'video'
+          ? '<i class="fas fa-film"></i>'
+          : kind === 'audio'
+            ? '<i class="fas fa-music"></i>'
+            : '<i class="fas fa-closed-captioning"></i>';
+      frame.appendChild(icon);
+
+      const tag = document.createElement('div');
+      tag.className =
+        'absolute left-1 top-1 min-w-6 h-6 px-2 rounded-full bg-black/60 border border-white/10 text-[9px] font-black text-white/70 flex items-center justify-center z-20';
+      tag.textContent = kind === 'video' ? 'V' : kind === 'audio' ? 'A' : 'S';
+      frame.appendChild(tag);
+
+      const name = document.createElement('div');
+      name.className =
+        'absolute left-1 right-1 bottom-1 text-[7px] font-mono text-white/80 truncate px-1 py-0.5 rounded-md bg-black border border-white/15';
+      name.textContent = String(a.name || kind);
+      frame.appendChild(name);
+
+      const selectOverlay = document.createElement('div');
+      selectOverlay.className =
+        'absolute inset-0 flex items-center justify-center opacity-0 group-hover/ref:opacity-100 transition-opacity z-20';
+
+      const selectBtn = document.createElement('button');
+      selectBtn.type = 'button';
+      const kindLabel = kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕';
+      selectBtn.title = selected ? `取消选择${kindLabel}` : `选择${kindLabel}`;
+      selectBtn.setAttribute('aria-label', selected ? `取消选择${kindLabel}` : `选择${kindLabel}`);
+      selectBtn.className =
+        'w-10 h-10 rounded-2xl border border-white/10 bg-black/55 backdrop-blur flex items-center justify-center ' +
+        (selected
+          ? 'text-studio-accent bg-black border-studio-accent/40 shadow-[0_0_18px_rgba(197,243,65,0.18)]'
+          : 'text-white/80 hover:border-studio-accent/40 hover:text-studio-accent');
+      selectBtn.innerHTML = selected ? '<i class="fas fa-check text-xs"></i>' : '<i class="fas fa-plus text-xs"></i>';
+      selectBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        store.update((st) => ({
+          ...st,
+          selectedMediaAssetIds: toggleId(readSelectedMediaAssetIds(st, 36), a.id, 36),
+        }));
+        showMessage(`${selected ? '已取消选择' : '已选择'}${kindLabel}素材`);
+        renderTray();
+      });
+
+      selectOverlay.appendChild(selectBtn);
+      frame.appendChild(selectOverlay);
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.title = '删除素材';
+      del.setAttribute('aria-label', '删除素材');
+      del.className =
+        'absolute right-0 top-3 translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-studio-panel/80 border border-white/10 text-white/60 flex items-center justify-center shadow-xl z-30 ' +
+        'opacity-0 group-hover/ref:opacity-100 transition-opacity hover:bg-red-500/70 hover:border-red-400/30 hover:text-white';
+      del.innerHTML = '<i class="fas fa-times text-[9px]"></i>';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void removeMediaAsset(a.id);
+      });
+
+      item.appendChild(frame);
+      item.appendChild(del);
+
+      item.addEventListener('click', (e) => {
+        const me = e as MouseEvent;
+        if (me.metaKey || me.ctrlKey) {
+          const url = String(a.localUrl || a.url || '').trim();
+          if (url) window.open(url, '_blank', 'noreferrer');
+          return;
+        }
+        store.update((st) => ({
+          ...st,
+          selectedMediaAssetIds: toggleId(readSelectedMediaAssetIds(st, 36), a.id, 36),
+        }));
+        showMessage(`${selected ? '已取消选择' : '已选择'}${kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '字幕'}素材`);
+        renderTray();
+      });
+
+      tray.appendChild(item);
+    }
   }
 
   async function removeRef(id: string) {
@@ -480,6 +581,85 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
         // ignore
       }
     }
+  }
+
+  async function removeMediaAsset(id: string) {
+    const asset = store.get().mediaAssets.find((a) => a.id === id);
+    store.update((s) => ({
+      ...s,
+      mediaAssets: s.mediaAssets.filter((a) => a.id !== id),
+      selectedMediaAssetIds: removeId(readSelectedMediaAssetIds(s, 36), id, 36),
+    }));
+    renderTray();
+    const deleteKey = asset ? (asset.localKey || (typeof asset.localUrl === 'string' ? asset.localUrl.split('/').pop() : undefined)) : undefined;
+    if (deleteKey) {
+      try {
+        await api.deleteUpload({ localKey: deleteKey });
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  function isSrtFilename(name: string): boolean {
+    return String(name || '').toLowerCase().endsWith('.srt');
+  }
+
+  function inferMediaKind(file: File): 'video' | 'audio' | 'subtitle' | null {
+    const name = String(file.name || '').toLowerCase();
+    const type = String(file.type || '').toLowerCase();
+    if (name.endsWith('.srt') || type === 'application/x-subrip') return 'subtitle';
+    if (type.startsWith('video/') || name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.mkv') || name.endsWith('.webm')) return 'video';
+    if (type.startsWith('audio/') || name.endsWith('.wav') || name.endsWith('.mp3') || name.endsWith('.m4a') || name.endsWith('.aac') || name.endsWith('.flac') || name.endsWith('.ogg')) return 'audio';
+    if (type.startsWith('text/') && name.endsWith('.srt')) return 'subtitle';
+    return null;
+  }
+
+  async function handleMediaFile(file: File) {
+    const kind = inferMediaKind(file);
+    if (!kind) throw new Error('不支持的素材类型（仅支持图片/视频/音频/SRT）');
+
+    const id = randomId('asset');
+    const createdAt = Date.now();
+    const name = file.name || kind;
+
+    let text: string | undefined;
+    if (kind === 'subtitle') {
+      if (!isSrtFilename(name)) showError('字幕文件建议使用 .srt 扩展名');
+      try {
+        text = await file.text();
+      } catch {
+        text = undefined;
+      }
+    }
+
+    store.update((s) => ({
+      ...s,
+      mediaAssets: [...(Array.isArray(s.mediaAssets) ? s.mediaAssets : []), { id, kind, name, createdAt, text }].slice(-120),
+      selectedMediaAssetIds: readSelectedMediaAssetIds(s, 36),
+    }));
+    renderTray();
+
+    const uploaded = await api.upload(file);
+    const result = uploaded?.result;
+    const localUrl = typeof result?.localUrl === 'string' ? result.localUrl : typeof result?.url === 'string' ? result.url : undefined;
+    const url = typeof result?.url === 'string' ? result.url : localUrl;
+    store.update((s) => ({
+      ...s,
+      mediaAssets: s.mediaAssets.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              url,
+              localUrl,
+              localPath: typeof result?.localPath === 'string' ? result.localPath : undefined,
+              localKey: typeof result?.localKey === 'string' ? result.localKey : undefined,
+            }
+          : a
+      ),
+    }));
+    renderTray();
+    showMessage(`已添加素材：${kind === 'subtitle' ? '字幕' : kind === 'audio' ? '音频' : '视频'}`);
   }
 
   async function handleImageFile(file: File) {
@@ -563,7 +743,7 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     const isImage =
       type.startsWith('image/') || name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp') || name.endsWith('.gif');
     if (isImage) return await handleImageFile(file);
-    throw new Error('不支持的素材类型（仅支持图片）');
+    return await handleMediaFile(file);
   }
 
   uploadInput?.addEventListener('change', async (e) => {
