@@ -967,6 +967,23 @@ export function createApiRouter(deps: {
       }
     }
 
+    if (pathname === '/api/gemini/mv-storyboard' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+        const body = await readJson<{ requirement?: string }>(req);
+        const requirement = String(body.requirement || '').trim();
+        if (!requirement) return jsonError({ status: 400, description: 'requirement 不能为空' });
+
+        const text = await deps.gemini.mvStoryboard({ requirement });
+        return json({ code: 0, description: '成功', result: { text } });
+      } catch (error) {
+        console.error('Gemini mv storyboard error:', error);
+        return jsonError({ status: 500, description: 'MV 分镜生成失败', error });
+      }
+    }
+
     if (pathname === '/api/gemini/suno' && req.method === 'POST') {
       try {
         if (!deps.auth.geminiConfigured) {

@@ -1085,14 +1085,20 @@
         <div class="flex items-end gap-3 p-1">
           <textarea id="plannerInput"
             class="flex-1 bg-transparent border-none focus:ring-0 p-4 text-sm placeholder:opacity-20 resize-none min-h-[72px] max-h-[260px] leading-relaxed font-medium"
-            placeholder="规划分镜/MJ 提示词，或输入 suno/歌词/配乐 让它把多分镜合成 1 首歌（Ctrl+Enter 发送）..."></textarea>
-          <button id="plannerSend" type="button"
-            class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-studio-accent text-studio-bg hover:scale-105 active:scale-95 transition-all shadow-[0_0_25px_rgba(197,243,65,0.25)]">
-            <i class="fas fa-paper-plane text-xs"></i>
-          </button>
+            placeholder="输入需求：Ctrl+Enter 走 Planner 对话；Ctrl+Shift+Enter 直接生成 MV 分镜..."></textarea>
+          <div class="flex flex-col gap-2">
+            <button id="plannerSendMv" type="button" title="MV 分镜（Ctrl+Shift+Enter）"
+              class="h-10 px-4 flex items-center justify-center rounded-2xl bg-white/10 border border-white/15 text-white/90 hover:border-studio-accent/50 hover:text-studio-accent transition-all text-[10px] font-black tracking-[0.15em]">
+              MV
+            </button>
+            <button id="plannerSend" type="button" title="Planner 对话（Ctrl+Enter）"
+              class="w-14 h-14 flex items-center justify-center rounded-[1.8rem] bg-studio-accent text-studio-bg hover:scale-105 active:scale-95 transition-all shadow-[0_0_25px_rgba(197,243,65,0.25)]">
+              <i class="fas fa-paper-plane text-xs"></i>
+            </button>
+          </div>
         </div>
         <div class="px-5 pb-3 text-[9px] font-mono opacity-30">
-          说明：MJ 模式会拆成多条分镜并可 “Use” 填入主输入框；Suno 模式会输出 LYRICS_PROMPT + STYLE_PROMPT，可一键复制。
+          说明：`MV` 按钮会用 Gemini 3 Flash 按预置规则输出 MV 分镜；常规发送仍可规划 MJ + Suno（LYRICS_PROMPT / STYLE_PROMPT）。
         </div>
       </div>
     </div>

@@ -10,6 +10,7 @@ export interface GeminiVisionClient {
   imageToPrompt(imageUrl: string): Promise<string>;
   chat(messages: Array<{ role: string; content: string }>): Promise<string>;
   generateText(system: string, user: string): Promise<string>;
+  mvStoryboard(params: { requirement: string }): Promise<string>;
   sunoPrompt(params: { requirement: string; imageUrls?: string[]; mode?: string; language?: string }): Promise<string>;
   youtubeMeta(params: { topic: string; extra?: string; imageUrls?: string[]; language?: string }): Promise<string>;
   editImage(imageUrl: string, editPrompt: string): Promise<string | null>;
@@ -241,6 +242,38 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
       const response = await getAi().models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
+      });
+
+      return response.text?.trim() || '';
+    },
+
+    async mvStoryboard(params: { requirement: string }): Promise<string> {
+      const requirement = String(params?.requirement || '').trim();
+      if (!requirement) return '';
+
+      const system = [
+        'You are an MV storyboard director for prompt writing.',
+        'Task: convert user requirements into a sequence of MV shot prompts.',
+        '',
+        'Hard rules:',
+        '- Output language: Simplified Chinese (简体中文).',
+        '- Output MUST be EXACTLY one block and nothing else:',
+        '  SHOTS:',
+        '  1. ...',
+        '  2. ...',
+        '- Use numbered list only, one shot per line.',
+        '- Keep narrative continuity across all shots (character, outfit, props, timeline, mood).',
+        '- Each shot line should include: subject/action, scene details, camera language, lighting, and emotional tone.',
+        '- Do NOT add code fences, explanations, or image URLs.',
+        '- If the user specifies shot count/sections, follow it; otherwise default to 8 shots.',
+      ].join('\n');
+
+      const response = await getAi().models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: `${system}\n\nUSER_REQUIREMENT:\n${requirement}`.trim() }] }],
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         },

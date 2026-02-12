@@ -14,6 +14,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
   const list = byId<HTMLElement>('plannerMessages');
   const input = byId<HTMLTextAreaElement>('plannerInput');
   const send = byId<HTMLButtonElement>('plannerSend');
+  const sendMv = byId<HTMLButtonElement>('plannerSendMv');
   const clear = byId<HTMLButtonElement>('plannerClear');
 
   let usedSeq = 0;
@@ -567,7 +568,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     list.scrollTop = list.scrollHeight;
   }
 
-  async function sendMessage() {
+  async function sendMessage(mode: 'chat' | 'mv' = 'chat') {
     const text = input.value.trim();
     if (!text) return;
 
@@ -581,11 +582,15 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
     params.store.update((s) => ({ ...s, plannerMessages: [...s.plannerMessages, user, pending].slice(-200) }));
 
     try {
-      const msgs = params.store.get().plannerMessages
-        .filter((m) => m.id !== aiId)
-        .map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
-
-      const res = await params.api.geminiChat({ messages: msgs });
+      let res: any;
+      if (mode === 'mv') {
+        res = await params.api.geminiMvStoryboard({ requirement: text });
+      } else {
+        const msgs = params.store.get().plannerMessages
+          .filter((m) => m.id !== aiId)
+          .map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
+        res = await params.api.geminiChat({ messages: msgs });
+      }
       if (res?.code !== 0) throw new Error(res?.description || '对话失败');
       const out = String(res?.result?.text || '').trim();
       if (!out) throw new Error('对话失败：空响应');
@@ -607,13 +612,24 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
   send.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    void sendMessage();
+    void sendMessage('chat');
+  });
+
+  sendMv.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void sendMessage('mv');
   });
 
   input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+      e.preventDefault();
+      void sendMessage('mv');
+      return;
+    }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      void sendMessage();
+      void sendMessage('chat');
     }
   });
 

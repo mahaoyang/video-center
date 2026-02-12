@@ -4,13 +4,13 @@ services:
       context: ./mj-workflow
       dockerfile: Dockerfile
     environment:
-      PORT: "3015"
+      PORT: "${MJFLOW_PORT:-3015}"
       BIND_HOST: "0.0.0.0"
       AUDIO_REDUNDANCY_PRESET: "distribution"
     env_file:
       - ./.env.local
     ports:
-      - "3015:3015"
+      - "${MJFLOW_PORT:-3015}:${MJFLOW_PORT:-3015}"
     restart: unless-stopped
     volumes:
       - mjflow_data:/app/.data

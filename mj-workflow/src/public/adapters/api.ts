@@ -7,6 +7,7 @@ export interface ApiClient {
   visionDescribe(params: { imageUrl: string; question?: string; model?: string }): Promise<any>;
   geminiDescribe(params: { imageUrl: string }): Promise<any>;
   geminiChat(params: { messages: Array<{ role: string; content: string }> }): Promise<any>;
+  geminiMvStoryboard(params: { requirement: string }): Promise<any>;
   geminiSuno(params: { requirement: string; imageUrls?: string[]; mode?: string; language?: string }): Promise<any>;
   geminiTranslate(params: { text: string }): Promise<any>;
   geminiBeautify(params: { text: string; hint?: string }): Promise<any>;
@@ -103,6 +104,7 @@ export function createApiClient(apiBase = '/api'): ApiClient {
     visionDescribe: async (params) => await requestJson('POST', `${apiBase}/vision/describe`, params),
     geminiDescribe: async (params) => await requestJson('POST', `${apiBase}/gemini/describe`, params),
     geminiChat: async (params) => await requestJson('POST', `${apiBase}/gemini/chat`, params),
+    geminiMvStoryboard: async (params) => await requestJson('POST', `${apiBase}/gemini/mv-storyboard`, params),
     geminiSuno: async (params) => await requestJson('POST', `${apiBase}/gemini/suno`, params),
     geminiTranslate: async (params) => await requestJson('POST', `${apiBase}/gemini/translate`, params),
     geminiBeautify: async (params) => await requestJson('POST', `${apiBase}/gemini/beautify`, params),
