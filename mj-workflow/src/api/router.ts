@@ -381,6 +381,84 @@ async function runPythonMath(expressionRaw: string): Promise<{ expression: strin
   return { expression, value, engine: 'python3' };
 }
 
+interface AiSkillDefinition {
+  name: string;
+  title: string;
+  description: string;
+  keywords: string[];
+  functionDeclaration: {
+    name: string;
+    description: string;
+    parametersJsonSchema: unknown;
+  };
+}
+
+const AI_SKILLS: AiSkillDefinition[] = [
+  {
+    name: 'py_math',
+    title: 'Python 数学表达式求值',
+    description: '用 Python 安全计算数学表达式，适合加减乘除、小数、括号。',
+    keywords: ['math', 'calculate', 'calc', '加法', '减法', '乘法', '除法', '表达式', '+', '-', '*', '/', '÷', '×'],
+    functionDeclaration: {
+      name: 'py_math',
+      description: 'Evaluate arithmetic expression (+ - * / parentheses, decimals) and return the numeric result.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          expression: { type: 'string', description: 'Plain arithmetic expression, e.g. (1.2+3.4)/2' },
+        },
+        required: ['expression'],
+      },
+    },
+  },
+];
+
+function getAiSkillByName(nameRaw: string): AiSkillDefinition | undefined {
+  const name = String(nameRaw || '').trim();
+  if (!name) return undefined;
+  return AI_SKILLS.find((s) => s.name === name);
+}
+
+function parseAssistantJsonObject(raw: string): Record<string, unknown> | null {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  const directCandidates = [text];
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) directCandidates.push(String(fenced[1]).trim());
+  const objLike = text.match(/\{[\s\S]*\}/);
+  if (objLike?.[0]) directCandidates.push(String(objLike[0]).trim());
+
+  for (const candidate of directCandidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
+async function executeAiSkill(nameRaw: string, args: Record<string, unknown>): Promise<{ result?: unknown; error?: string; normalizedArgs?: Record<string, unknown> }> {
+  const skill = getAiSkillByName(nameRaw);
+  if (!skill) return { error: `未知工具: ${String(nameRaw || '(empty)')}` };
+
+  if (skill.name === 'py_math') {
+    const expression = String((args as any)?.expression || '').trim();
+    if (!expression) return { error: 'py_math 参数非法，expression 不能为空', normalizedArgs: args };
+    try {
+      const result = await runPythonMath(expression);
+      return { result, normalizedArgs: { expression } };
+    } catch (error) {
+      return { error: (error as Error)?.message || 'py_math 执行失败', normalizedArgs: { expression } };
+    }
+  }
+
+  return { error: `工具暂未实现: ${skill.name}` };
+}
+
 export function createApiRouter(deps: {
   mjApi: MJApi;
   chatApi: YunwuChatApi;
@@ -1308,13 +1386,123 @@ export function createApiRouter(deps: {
       }
     }
 
+    if (pathname === '/api/ai/skills' && req.method === 'GET') {
+      return json({
+        code: 0,
+        description: '成功',
+        result: {
+          skills: AI_SKILLS.map((s) => ({
+            name: s.name,
+            title: s.title,
+            description: s.description,
+            keywords: s.keywords,
+          })),
+        },
+      });
+    }
+
+    if (pathname === '/api/ai/skills/suggest' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+
+        const body = await readJson<{
+          query?: string;
+          userText?: string;
+          assistantText?: string;
+          model?: string;
+        }>(req);
+
+        const modelRaw = String(body.model || '').trim();
+        const model = modelRaw === 'gemini-3-pro-preview' || modelRaw === 'gemini-3-flash-preview' ? modelRaw : 'gemini-3-flash-preview';
+        const query = String(body.query || '').trim();
+        const userText = String(body.userText || '').trim();
+        const assistantText = String(body.assistantText || '').trim();
+
+        const skillsLite = AI_SKILLS.map((s) => ({
+          name: s.name,
+          title: s.title,
+          description: s.description,
+          keywords: s.keywords,
+        }));
+
+        const system = [
+          'You are a skill routing assistant.',
+          'Select relevant skills from the provided list.',
+          'Return STRICT JSON only in this exact schema:',
+          '{"skills":["skill_name"],"reason":"short reason"}',
+          'No markdown, no extra text.',
+        ].join('\n');
+
+        const userPrompt = [
+          `QUERY:\n${query || '(empty)'}`,
+          '',
+          `LATEST_USER_MESSAGE:\n${userText || '(empty)'}`,
+          '',
+          `LATEST_ASSISTANT_REPLY:\n${assistantText || '(empty)'}`,
+          '',
+          `SKILL_CATALOG_JSON:\n${JSON.stringify(skillsLite)}`,
+          '',
+          'Pick zero or more skills from catalog. Do not invent names.',
+        ].join('\n');
+
+        const raw = await deps.gemini.chat([{ role: 'user', content: userPrompt }], model, system);
+        const parsed = parseAssistantJsonObject(raw);
+        const allowed = new Set(AI_SKILLS.map((s) => s.name));
+        const fromModel = Array.isArray(parsed?.skills)
+          ? parsed.skills.map((x: unknown) => String(x || '').trim()).filter((n: string) => Boolean(n) && allowed.has(n))
+          : [];
+        const uniqueFromModel = Array.from(new Set(fromModel));
+
+        const fallbackNames = (() => {
+          const text = `${query}\n${userText}\n${assistantText}`.toLowerCase();
+          if (!text.trim()) return [] as string[];
+          return AI_SKILLS.filter((s) =>
+            s.keywords.some((k) => {
+              const needle = String(k || '').toLowerCase();
+              return needle ? text.includes(needle) : false;
+            })
+          ).map((s) => s.name);
+        })();
+
+        const selectedNames = uniqueFromModel.length ? uniqueFromModel : Array.from(new Set(fallbackNames));
+        const selectedSkills = selectedNames
+          .map((name) => getAiSkillByName(name))
+          .filter((s): s is AiSkillDefinition => Boolean(s))
+          .map((s) => ({
+            name: s.name,
+            title: s.title,
+            description: s.description,
+            keywords: s.keywords,
+          }));
+
+        return json({
+          code: 0,
+          description: '成功',
+          result: {
+            skills: selectedSkills,
+            reason: typeof parsed?.reason === 'string' ? parsed.reason : '',
+          },
+        });
+      } catch (error) {
+        console.error('AI skill suggest error:', error);
+        return jsonError({ status: 500, description: 'AI 技能筛选失败', error });
+      }
+    }
+
     if (pathname === '/api/ai/chat' && req.method === 'POST') {
       try {
         if (!deps.auth.geminiConfigured) {
           return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
         }
 
-        const body = await readJson<{ messages?: Array<{ role?: string; content?: string }>; model?: string }>(req);
+        const body = await readJson<{
+          messages?: Array<{ role?: string; content?: string }>;
+          model?: string;
+          forceSkill?: string;
+          skillPromptHint?: string;
+        }>(req);
         const baseMessages = Array.isArray(body.messages)
           ? body.messages.map((m) => ({ role: String(m.role || 'user'), content: String(m.content || '').trim() })).filter((m) => Boolean(m.content))
           : [];
@@ -1322,18 +1510,26 @@ export function createApiRouter(deps: {
 
         const modelRaw = String(body.model || '').trim();
         const model = modelRaw === 'gemini-3-pro-preview' || modelRaw === 'gemini-3-flash-preview' ? modelRaw : 'gemini-3-flash-preview';
+        const forceSkill = String(body.forceSkill || '').trim();
+        const forcedSkillDef = forceSkill ? getAiSkillByName(forceSkill) : undefined;
+        if (forceSkill && !forcedSkillDef) {
+          return jsonError({ status: 400, description: `forceSkill 不存在: ${forceSkill}` });
+        }
+        const skillPromptHint = String(body.skillPromptHint || '').trim();
+        const activeSkills = forcedSkillDef ? [forcedSkillDef] : AI_SKILLS;
 
         const system = [
           'You are a helpful assistant.',
           'You can decide whether to use tools via function calling.',
           '',
-          'Available tool:',
-          '- py_math(expression:string): evaluates arithmetic expression and returns exact numeric result.',
+          'Available tools:',
+          ...activeSkills.map((s) => `- ${s.functionDeclaration.name}: ${s.functionDeclaration.description}`),
           '',
           'Decision policy:',
-          '- For arithmetic requests (+ - * / parentheses/decimals), prefer calling py_math.',
-          '- expression must be plain math expression only, no natural language.',
-          '- For non-arithmetic requests, answer directly unless a tool is necessary.',
+          '- Choose the most relevant skill if a skill is needed.',
+          '- For non-tool questions, answer directly unless a tool is necessary.',
+          forcedSkillDef ? `- Forced mode: you MUST call ${forcedSkillDef.name} before final answer.` : '',
+          skillPromptHint ? `- Extra routing hint: ${skillPromptHint}` : '',
           '',
           'Reply in the user language.',
         ].join('\n');
@@ -1344,20 +1540,9 @@ export function createApiRouter(deps: {
           messages: baseMessages,
           model,
           system,
-          functionDeclarations: [
-            {
-              name: 'py_math',
-              description: 'Evaluate arithmetic expression (+ - * / parentheses, decimals) and return the numeric result.',
-              parametersJsonSchema: {
-                type: 'object',
-                properties: {
-                  expression: { type: 'string', description: 'Plain arithmetic expression, e.g. (1.2+3.4)/2' },
-                },
-                required: ['expression'],
-              },
-            },
-          ],
-          mode: 'AUTO',
+          functionDeclarations: activeSkills.map((s) => ({ ...s.functionDeclaration })),
+          mode: forcedSkillDef ? 'ANY' : 'AUTO',
+          allowedFunctionNames: forcedSkillDef ? [forcedSkillDef.name] : undefined,
         });
 
         const calls = firstTurn.functionCalls.slice(0, 8);
@@ -1370,29 +1555,13 @@ export function createApiRouter(deps: {
             const name = String(call?.name || '').trim();
             const args = call?.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args : {};
 
-            if (name !== 'py_math') {
-              const err = `未知工具: ${name || '(empty)'}`;
-              toolTrace.push({ name: name || 'unknown', arguments: args, error: err });
-              toolResults.push({ id: call.id, name, ok: false, error: err });
-              continue;
-            }
-
-            const expression = String((args as any)?.expression || '').trim();
-            if (!expression) {
-              const err = 'py_math 参数非法，expression 不能为空';
-              toolTrace.push({ name: 'py_math', arguments: args, error: err });
-              toolResults.push({ id: call.id, name: 'py_math', ok: false, error: err, arguments: args });
-              continue;
-            }
-
-            try {
-              const result = await runPythonMath(expression);
-              toolTrace.push({ name: 'py_math', arguments: { expression }, result });
-              toolResults.push({ id: call.id, name: 'py_math', ok: true, result });
-            } catch (error) {
-              const err = (error as Error)?.message || 'py_math 执行失败';
-              toolTrace.push({ name: 'py_math', arguments: { expression }, error: err });
-              toolResults.push({ id: call.id, name: 'py_math', ok: false, error: err, arguments: { expression } });
+            const executed = await executeAiSkill(name, args);
+            if (executed.error) {
+              toolTrace.push({ name: name || 'unknown', arguments: executed.normalizedArgs || args, error: executed.error });
+              toolResults.push({ id: call.id, name, ok: false, error: executed.error, arguments: executed.normalizedArgs || args });
+            } else {
+              toolTrace.push({ name, arguments: executed.normalizedArgs || args, result: executed.result });
+              toolResults.push({ id: call.id, name, ok: true, result: executed.result });
             }
           }
 

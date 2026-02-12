@@ -233,6 +233,29 @@
       border-color: #2e4868;
     }
 
+    .msg-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .mini-btn {
+      border: 1px solid #365072;
+      color: #c7dbfa;
+      background: #102238;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .mini-btn:hover {
+      border-color: var(--accent-2);
+    }
+
     .composer {
       border-top: 1px solid var(--line);
       padding: 12px;
@@ -277,6 +300,103 @@
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+
+    .skill-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 10, 17, 0.65);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+      padding: 16px;
+    }
+
+    .skill-overlay.open {
+      display: flex;
+    }
+
+    .skill-modal {
+      width: min(760px, 100%);
+      max-height: min(80vh, 760px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #101c2a;
+      box-shadow: 0 18px 56px rgba(0, 0, 0, 0.4);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .skill-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .skill-title {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .skill-search {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #0c1623;
+      color: var(--fg);
+      border-radius: 10px;
+      padding: 9px 10px;
+      font: inherit;
+      outline: none;
+      font-size: 12px;
+    }
+
+    .skill-search:focus {
+      border-color: var(--accent-2);
+    }
+
+    .skill-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .skill-item {
+      width: 100%;
+      text-align: left;
+      border: 1px solid #2d4666;
+      background: #12263b;
+      color: var(--fg);
+      border-radius: 12px;
+      padding: 10px 11px;
+      cursor: pointer;
+      display: grid;
+      gap: 4px;
+    }
+
+    .skill-item:hover {
+      border-color: var(--accent-2);
+    }
+
+    .skill-item strong {
+      font-size: 12px;
+    }
+
+    .skill-item span {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .skill-empty {
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px dashed #355073;
+      border-radius: 12px;
+      padding: 10px;
     }
 
     .btn:disabled {
@@ -332,6 +452,17 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <div id="skillOverlay" class="skill-overlay">
+    <div class="skill-modal">
+      <div class="skill-head">
+        <h3 class="skill-title">技能选择</h3>
+        <button id="skillCloseBtn" class="btn" type="button">关闭</button>
+      </div>
+      <input id="skillSearchInput" class="skill-search" placeholder="快速搜索技能（名称 / 描述 / 关键词）" />
+      <div id="skillList" class="skill-list"></div>
+    </div>
   </div>
 
   <script type="module" src="/assets/ai-app.js"></script>

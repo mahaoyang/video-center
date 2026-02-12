@@ -32,6 +32,7 @@ export interface GeminiVisionClient {
     system?: string;
     functionDeclarations: GeminiFunctionDeclaration[];
     mode?: 'AUTO' | 'ANY' | 'NONE' | 'VALIDATED';
+    allowedFunctionNames?: string[];
   }): Promise<GeminiToolChatResult>;
   plannerChat(messages: Array<{ role: string; content: string }>, model?: string): Promise<string>;
   generateText(system: string, user: string): Promise<string>;
@@ -252,7 +253,15 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
         contents: [{ parts: [{ text: prompt }] }],
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          toolConfig: { functionCallingConfig: { mode } },
+          toolConfig: {
+            functionCallingConfig: {
+              mode,
+              allowedFunctionNames:
+                Array.isArray(params.allowedFunctionNames) && params.allowedFunctionNames.length
+                  ? params.allowedFunctionNames.map((n) => String(n || '').trim()).filter(Boolean)
+                  : undefined,
+            },
+          },
           tools: [{ functionDeclarations: (params.functionDeclarations || []).map((d) => ({ ...d })) }],
         },
       });
