@@ -10,6 +10,7 @@ import { toAppVideoSrc } from '../atoms/video-src';
 import { setTraceOpen } from '../atoms/overlays';
 import { showError, showMessage } from '../atoms/notify';
 import { randomId } from '../atoms/id';
+import { bindDownloadProcessor } from '../atoms/download';
 import { hideAllStreamMessagesUiOnly, hideStreamMessageUiOnly } from '../headless/conversation-actions';
 
 function ensureZeroState(stream: HTMLElement, hasMessages: boolean) {
@@ -200,7 +201,7 @@ function renderGenerateMessage(m: StreamMessage): HTMLElement {
 		                class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-studio-accent/40 hover:text-studio-accent transition-all flex items-center justify-center pointer-events-auto">
 		                <i class="fas fa-plus text-xs"></i>
 		              </button>
-                  <a href="/api/slice?src=${encodeURIComponent(src)}&index=${i}" download="mj-grid-${i}.png"
+                  <a href="/api/slice?src=${encodeURIComponent(src)}&index=${i}" data-dl-prefix="mj-grid-v${i}" data-dl-ext="png"
                     class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all flex items-center justify-center pointer-events-auto"
                     title="Download">
                     <i class="fas fa-download text-xs"></i>
@@ -229,9 +230,8 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
   const msg = document.createElement('div');
   msg.dataset.streamMessage = '1';
   const taskId = m.taskId || '';
-  const id = taskId || m.id;
-    const rawSrc = m.upscaledImageUrl;
-    const src = rawSrc ? toAppImageSrc(rawSrc) : '';
+  const rawSrc = m.upscaledImageUrl;
+  const src = rawSrc ? toAppImageSrc(rawSrc) : '';
   if (!src) {
     const p = Math.max(0, Math.min(100, Number.isFinite(m.progress as any) ? (m.progress as number) : 0));
     msg.className = 'group animate-fade-in-up';
@@ -280,7 +280,7 @@ function renderUpscaleMessage(m: StreamMessage): HTMLElement {
         <img data-preview-src="${escapeHtml(src)}" src="${escapeHtml(src)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
         <div class="absolute top-4 right-4 opacity-0 group-hover/tile:opacity-100 transition-opacity">
           <div class="flex items-center gap-2">
-            <a href="${escapeHtml(src)}" download="mj-upscale-${Date.now()}.png"
+            <a href="${escapeHtml(src)}" data-dl-prefix="mj-upscale" data-dl-ext="png"
               class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all flex items-center justify-center"
               title="Download">
               <i class="fas fa-download text-xs"></i>
@@ -375,7 +375,7 @@ function renderPeditMessage(m: StreamMessage): HTMLElement {
           <div class="relative rounded-3xl overflow-hidden border border-white/10 bg-black/40 group/tile">
             <img data-preview-src="${escapeHtml(u)}" src="${escapeHtml(u)}" referrerpolicy="no-referrer" class="w-full h-auto block" />
             <div class="absolute top-4 right-4 opacity-0 group-hover/tile:opacity-100 transition-opacity">
-              <a href="${escapeHtml(u)}" download="gemini-image-${Date.now()}.png"
+              <a href="${escapeHtml(u)}" data-dl-prefix="gemini-image" data-dl-ext="png"
                 class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 hover:text-white transition-all flex items-center justify-center"
                 title="Download">
                 <i class="fas fa-download text-xs"></i>
@@ -443,7 +443,14 @@ function renderVideoMessage(m: StreamMessage): HTMLElement {
     return msg;
   }
 
-  const filename = `video-${Date.now()}.mp4`;
+  const videoExt = (() => {
+    const raw = String(rawSrc || '').trim().toLowerCase();
+    if (raw.includes('.webm')) return 'webm';
+    if (raw.includes('.mov')) return 'mov';
+    if (raw.includes('.mkv')) return 'mkv';
+    return 'mp4';
+  })();
+  const providerKey = provider ? provider.toLowerCase() : 'video';
   msg.className = 'group animate-fade-in-up';
   msg.innerHTML = `
     <div class="glass-panel p-8 rounded-[2.5rem] border border-white/10 bg-studio-panel/60 shadow-2xl space-y-6">
@@ -453,7 +460,7 @@ function renderVideoMessage(m: StreamMessage): HTMLElement {
           <span class="text-[9px] font-mono opacity-40">${taskId ? `TASK: ${escapeHtml(taskId)}` : provider}</span>
         </div>
         <div class="flex items-center gap-2">
-          <a href="${escapeHtml(src)}" download="${escapeHtml(filename)}"
+          <a href="${escapeHtml(src)}" data-dl-prefix="${escapeHtml(providerKey)}-video" data-dl-ext="${escapeHtml(videoExt)}"
             class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 text-white/70 hover:text-studio-accent hover:border-studio-accent/40 transition-all flex items-center justify-center"
             title="Download">
             <i class="fas fa-download text-[11px]"></i>
@@ -1074,8 +1081,8 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     (el as any).dataset.messageId = resolved.id;
 
     // Add Trace entry on every stream card (主流消息卡片).
-    const panel = el.querySelector<HTMLElement>('.glass-panel') || el;
-    panel.classList.add('relative');
+  const panel = el.querySelector<HTMLElement>('.glass-panel') || el;
+  panel.classList.add('relative');
 
     const hideBtn = document.createElement('button');
     hideBtn.type = 'button';
@@ -1107,6 +1114,7 @@ export function createStreamHistory(params: { store: Store<WorkflowState> }) {
     btn.innerHTML = '<i class="fas fa-sitemap text-[11px]"></i>';
     panel.appendChild(btn);
 
+    bindDownloadProcessor(el);
     return el;
   }
 

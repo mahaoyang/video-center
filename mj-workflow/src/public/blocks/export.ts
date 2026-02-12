@@ -1,6 +1,7 @@
 import type { Store } from '../state/store';
 import type { WorkflowState } from '../state/workflow';
 import { showError } from '../atoms/notify';
+import { buildDownloadFilename } from '../atoms/download';
 
 export function createExportBlock(store: Store<WorkflowState>) {
   function downloadFinalImage() {
@@ -13,7 +14,7 @@ export function createExportBlock(store: Store<WorkflowState>) {
     const url = images[images.length - 1]!;
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mj-upscaled-${Date.now()}.png`;
+    a.download = buildDownloadFilename({ prefix: 'mj-upscaled', ext: 'png', href: url });
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

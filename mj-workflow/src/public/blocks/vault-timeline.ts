@@ -4,6 +4,7 @@ import { byId } from '../atoms/ui';
 import { escapeHtml } from '../atoms/html';
 import { openImagePreview } from '../atoms/image-preview';
 import { setTraceOpen, setVaultOpen } from '../atoms/overlays';
+import { buildDownloadFilename } from '../atoms/download';
 import { deriveTimelineItems, type TimelineItem, type TimelineResource } from '../state/timeline';
 import type { ApiClient } from '../adapters/api';
 import { cleanupOrphanUploads } from '../headless/uploads-gc';
@@ -31,12 +32,12 @@ function roleLabel(role: TimelineItem['role']): string {
   return role === 'user' ? 'USER' : 'AI';
 }
 
-function downloadJson(filename: string, data: unknown) {
+function downloadJson(prefix: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = buildDownloadFilename({ prefix, ext: 'json' });
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -166,8 +167,7 @@ export function createVaultTimeline(params: { store: Store<WorkflowState>; api: 
 
   function saveAll() {
     const data = params.store.get().streamMessages;
-    const filename = `mj-vault-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-    downloadJson(filename, { version: 1, exportedAt: Date.now(), messages: data });
+    downloadJson('mj-vault', { version: 1, exportedAt: Date.now(), messages: data });
   }
 
   clearBtn?.addEventListener('click', (e) => {
