@@ -295,6 +295,35 @@ async function fetchExternalImageBytes(req: Request, absolute: URL): Promise<{ b
   throw lastError instanceof Error ? lastError : new Error('拉取图片失败');
 }
 
+async function runPythonAdd(a: number, b: number): Promise<{ a: number; b: number; sum: number; engine: 'python3' }> {
+  const pyCode = [
+    'import json',
+    'import sys',
+    'a = float(sys.argv[1])',
+    'b = float(sys.argv[2])',
+    's = a + b',
+    'if s.is_integer():',
+    '    s = int(s)',
+    'print(json.dumps({"sum": s}, ensure_ascii=False))',
+  ].join('\n');
+
+  const proc = Bun.spawn(['python3', '-c', pyCode, String(a), String(b)], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const code = await proc.exited;
+  if (code !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    throw new Error(`Python 执行失败（exit=${code}）${stderr?.trim() ? `: ${stderr.trim()}` : ''}`);
+  }
+
+  const raw = (await new Response(proc.stdout).text()).trim();
+  const parsed = JSON.parse(raw || '{}');
+  const sum = Number(parsed?.sum);
+  if (!Number.isFinite(sum)) throw new Error('Python 输出解析失败');
+  return { a, b, sum, engine: 'python3' };
+}
+
 export function createApiRouter(deps: {
   mjApi: MJApi;
   chatApi: YunwuChatApi;
@@ -954,16 +983,40 @@ export function createApiRouter(deps: {
         if (!deps.auth.geminiConfigured) {
           return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
         }
-        const body = await readJson<{ messages?: Array<{ role?: string; content?: string }> }>(req);
+        const body = await readJson<{ messages?: Array<{ role?: string; content?: string }>; model?: string }>(req);
         const messages = Array.isArray(body.messages) ? body.messages : [];
         if (!messages.length) return jsonError({ status: 400, description: 'messages 不能为空' });
+        const modelRaw = String(body.model || '').trim();
+        const model = modelRaw === 'gemini-3-pro-preview' || modelRaw === 'gemini-3-flash-preview' ? modelRaw : 'gemini-3-flash-preview';
         const text = await deps.gemini.chat(
-          messages.map((m) => ({ role: String(m.role || 'user'), content: String(m.content || '') }))
+          messages.map((m) => ({ role: String(m.role || 'user'), content: String(m.content || '') })),
+          model
         );
         return json({ code: 0, description: '成功', result: { text } });
       } catch (error) {
         console.error('Gemini chat error:', error);
         return jsonError({ status: 500, description: 'Gemini 对话失败', error });
+      }
+    }
+
+    if (pathname === '/api/gemini/planner' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+        const body = await readJson<{ messages?: Array<{ role?: string; content?: string }>; model?: string }>(req);
+        const messages = Array.isArray(body.messages) ? body.messages : [];
+        if (!messages.length) return jsonError({ status: 400, description: 'messages 不能为空' });
+        const modelRaw = String(body.model || '').trim();
+        const model = modelRaw === 'gemini-3-pro-preview' || modelRaw === 'gemini-3-flash-preview' ? modelRaw : 'gemini-3-flash-preview';
+        const text = await deps.gemini.plannerChat(
+          messages.map((m) => ({ role: String(m.role || 'user'), content: String(m.content || '') })),
+          model
+        );
+        return json({ code: 0, description: '成功', result: { text } });
+      } catch (error) {
+        console.error('Gemini planner error:', error);
+        return jsonError({ status: 500, description: 'Gemini 规划失败', error });
       }
     }
 
@@ -1195,6 +1248,143 @@ export function createApiRouter(deps: {
       } catch (error) {
         console.error('Gemini edit error:', error);
         return jsonError({ status: 500, description: 'Gemini 编辑失败', error });
+      }
+    }
+
+    if (pathname === '/api/ai/chat' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+
+        const body = await readJson<{ messages?: Array<{ role?: string; content?: string }>; model?: string }>(req);
+        const baseMessages = Array.isArray(body.messages)
+          ? body.messages.map((m) => ({ role: String(m.role || 'user'), content: String(m.content || '').trim() })).filter((m) => Boolean(m.content))
+          : [];
+        if (!baseMessages.length) return jsonError({ status: 400, description: 'messages 不能为空' });
+
+        const modelRaw = String(body.model || '').trim();
+        const model = modelRaw === 'gemini-3-pro-preview' || modelRaw === 'gemini-3-flash-preview' ? modelRaw : 'gemini-3-flash-preview';
+
+        const system = [
+          'You are a helpful assistant.',
+          'You can decide whether to use tools via function calling.',
+          '',
+          'Available tool:',
+          '- py_add(a:number, b:number): returns exact numeric sum.',
+          '',
+          'Decision policy:',
+          '- For numeric addition requests, especially decimal precision like "1.2+3.22313", always call py_add.',
+          '- For non-addition requests, answer directly unless a tool is necessary.',
+          '',
+          'Reply in the user language.',
+        ].join('\n');
+
+        let finalText = '';
+        const toolTrace: Array<{ name: string; arguments: Record<string, unknown>; result?: unknown; error?: string }> = [];
+        const firstTurn = await deps.gemini.chatWithTools({
+          messages: baseMessages,
+          model,
+          system,
+          functionDeclarations: [
+            {
+              name: 'py_add',
+              description: 'Perform exact numeric addition for two numbers and return the sum.',
+              parametersJsonSchema: {
+                type: 'object',
+                properties: {
+                  a: { type: 'number', description: 'First addend' },
+                  b: { type: 'number', description: 'Second addend' },
+                },
+                required: ['a', 'b'],
+              },
+            },
+          ],
+          mode: 'AUTO',
+        });
+
+        const calls = firstTurn.functionCalls.slice(0, 8);
+        if (!calls.length) {
+          finalText = String(firstTurn.text || '').trim();
+        } else {
+          const toolResults: Array<Record<string, unknown>> = [];
+
+          for (const call of calls) {
+            const name = String(call?.name || '').trim();
+            const args = call?.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args : {};
+
+            if (name !== 'py_add') {
+              const err = `未知工具: ${name || '(empty)'}`;
+              toolTrace.push({ name: name || 'unknown', arguments: args, error: err });
+              toolResults.push({ id: call.id, name, ok: false, error: err });
+              continue;
+            }
+
+            const a = Number((args as any)?.a);
+            const b = Number((args as any)?.b);
+            if (!Number.isFinite(a) || !Number.isFinite(b)) {
+              const err = 'py_add 参数非法，a/b 必须是数字';
+              toolTrace.push({ name: 'py_add', arguments: args, error: err });
+              toolResults.push({ id: call.id, name: 'py_add', ok: false, error: err, arguments: args });
+              continue;
+            }
+
+            try {
+              const result = await runPythonAdd(a, b);
+              toolTrace.push({ name: 'py_add', arguments: { a, b }, result });
+              toolResults.push({ id: call.id, name: 'py_add', ok: true, result });
+            } catch (error) {
+              const err = (error as Error)?.message || 'py_add 执行失败';
+              toolTrace.push({ name: 'py_add', arguments: { a, b }, error: err });
+              toolResults.push({ id: call.id, name: 'py_add', ok: false, error: err, arguments: { a, b } });
+            }
+          }
+
+          const followUpSystem = [
+            'You are a helpful assistant.',
+            'Tool execution results are authoritative.',
+            'Use tool results to answer naturally and accurately.',
+            'Do not output JSON unless the user explicitly requests JSON.',
+            'If any tool failed, explain the issue briefly and ask for corrected input.',
+            'Reply in the user language.',
+          ].join('\n');
+
+          const followUpMessages: Array<{ role: string; content: string }> = [...baseMessages];
+          if (String(firstTurn.text || '').trim()) {
+            followUpMessages.push({ role: 'assistant', content: String(firstTurn.text || '').trim() });
+          }
+          followUpMessages.push({
+            role: 'user',
+            content: `TOOL_EXECUTION_RESULTS_JSON:\n${JSON.stringify(toolResults)}`,
+          });
+
+          finalText = await deps.gemini.chat(followUpMessages, model, followUpSystem);
+        }
+
+        if (!finalText) {
+          finalText = '我尝试了技能调度，但没有得到稳定的最终回答。请再描述一次或直接给出数字。';
+        }
+
+        return json({ code: 0, description: '成功', result: { text: finalText, toolTrace } });
+      } catch (error) {
+        console.error('AI chat error:', error);
+        return jsonError({ status: 500, description: 'AI 对话失败', error });
+      }
+    }
+
+    if (pathname === '/api/ai/skill/py-add' && req.method === 'POST') {
+      try {
+        const body = await readJson<{ a?: unknown; b?: unknown }>(req);
+        const a = Number(body?.a);
+        const b = Number(body?.b);
+        if (!Number.isFinite(a) || !Number.isFinite(b)) {
+          return jsonError({ status: 400, description: 'a 和 b 必须是数字' });
+        }
+        const result = await runPythonAdd(a, b);
+        return json({ code: 0, description: '成功', result });
+      } catch (error) {
+        console.error('AI py-add skill error:', error);
+        return jsonError({ status: 500, description: 'Python 加法技能失败', error });
       }
     }
 

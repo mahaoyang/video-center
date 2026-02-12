@@ -589,7 +589,7 @@ export function createPlannerChat(params: { api: ApiClient; store: Store<Workflo
         const msgs = params.store.get().plannerMessages
           .filter((m) => m.id !== aiId)
           .map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
-        res = await params.api.geminiChat({ messages: msgs });
+        res = await params.api.geminiPlanner({ messages: msgs });
       }
       if (res?.code !== 0) throw new Error(res?.description || '对话失败');
       const out = String(res?.result?.text || '').trim();

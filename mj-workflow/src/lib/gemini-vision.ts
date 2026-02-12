@@ -2,13 +2,38 @@
  * Gemini 3 多模态识图 & 图片编辑
  */
 
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { FunctionCallingConfigMode, GoogleGenAI, ThinkingLevel } from '@google/genai';
 import sharp from 'sharp';
 import { SUNO_METATAGS_GUIDE } from './suno-metatags-guide';
 
+export interface GeminiFunctionDeclaration {
+  name: string;
+  description?: string;
+  parametersJsonSchema?: unknown;
+}
+
+export interface GeminiFunctionCall {
+  id?: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface GeminiToolChatResult {
+  text: string;
+  functionCalls: GeminiFunctionCall[];
+}
+
 export interface GeminiVisionClient {
   imageToPrompt(imageUrl: string): Promise<string>;
-  chat(messages: Array<{ role: string; content: string }>): Promise<string>;
+  chat(messages: Array<{ role: string; content: string }>, model?: string, system?: string): Promise<string>;
+  chatWithTools(params: {
+    messages: Array<{ role: string; content: string }>;
+    model?: string;
+    system?: string;
+    functionDeclarations: GeminiFunctionDeclaration[];
+    mode?: 'AUTO' | 'ANY' | 'NONE' | 'VALIDATED';
+  }): Promise<GeminiToolChatResult>;
+  plannerChat(messages: Array<{ role: string; content: string }>, model?: string): Promise<string>;
   generateText(system: string, user: string): Promise<string>;
   mvStoryboard(params: { requirement: string }): Promise<string>;
   sunoPrompt(params: { requirement: string; imageUrls?: string[]; mode?: string; language?: string }): Promise<string>;
@@ -25,6 +50,22 @@ export interface GeminiVisionClient {
 
 function isImageContentType(contentType: string | null): boolean {
   return Boolean(contentType && contentType.toLowerCase().startsWith('image/'));
+}
+
+function normalizeGeminiModel(model?: string): 'gemini-3-flash-preview' | 'gemini-3-pro-preview' {
+  return model === 'gemini-3-pro-preview' || model === 'gemini-3-flash-preview' ? model : 'gemini-3-flash-preview';
+}
+
+function buildTranscript(messages: Array<{ role: string; content: string }>): string {
+  return (messages || [])
+    .map((m) => {
+      const role = String(m?.role || 'user').toUpperCase();
+      const content = String(m?.content || '').trim();
+      if (!content) return '';
+      return `${role}: ${content}`;
+    })
+    .filter(Boolean)
+    .join('\n');
 }
 
 function inferSunoLanguagePreference(requirement: string): 'EN' | 'ZH-CN' | 'ZH-TW' | 'JA' | 'KO' {
@@ -170,17 +211,69 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
       return response.text?.trim() || '';
     },
 
-    async chat(messages: Array<{ role: string; content: string }>): Promise<string> {
-      const transcript = (messages || [])
-        .map((m) => {
-          const role = String(m?.role || 'user').toUpperCase();
-          const content = String(m?.content || '').trim();
-          if (!content) return '';
-          return `${role}: ${content}`;
-        })
-        .filter(Boolean)
-        .join('\n');
+    async chat(messages: Array<{ role: string; content: string }>, model?: string, system?: string): Promise<string> {
+      const transcript = buildTranscript(messages);
+      const useModel = normalizeGeminiModel(model);
 
+      const prompt = [String(system || '').trim(), transcript].filter(Boolean).join('\n\n').trim();
+
+      const response = await getAi().models.generateContent({
+        model: useModel,
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
+      });
+
+      return response.text?.trim() || '';
+    },
+
+    async chatWithTools(params): Promise<GeminiToolChatResult> {
+      const transcript = buildTranscript(params.messages || []);
+      const useModel = normalizeGeminiModel(params.model);
+      const prompt = [String(params.system || '').trim(), transcript].filter(Boolean).join('\n\n').trim();
+
+      const modeRaw = String(params.mode || 'AUTO').trim().toUpperCase();
+      const mode =
+        modeRaw === 'ANY'
+          ? FunctionCallingConfigMode.ANY
+          : modeRaw === 'NONE'
+            ? FunctionCallingConfigMode.NONE
+            : modeRaw === 'VALIDATED'
+              ? FunctionCallingConfigMode.VALIDATED
+              : FunctionCallingConfigMode.AUTO;
+
+      const response = await getAi().models.generateContent({
+        model: useModel,
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          toolConfig: { functionCallingConfig: { mode } },
+          tools: [{ functionDeclarations: (params.functionDeclarations || []).map((d) => ({ ...d })) }],
+        },
+      });
+
+      const functionCalls = Array.isArray(response.functionCalls)
+        ? response.functionCalls
+            .map((c) => ({
+              id: typeof c?.id === 'string' ? c.id : undefined,
+              name: String(c?.name || '').trim(),
+              args: c?.args && typeof c.args === 'object' && !Array.isArray(c.args) ? (c.args as Record<string, unknown>) : {},
+            }))
+            .filter((c) => Boolean(c.name))
+        : [];
+
+      return {
+        text: response.text?.trim() || '',
+        functionCalls,
+      };
+    },
+
+    async plannerChat(messages: Array<{ role: string; content: string }>, model?: string): Promise<string> {
       const system = [
         'You are a storyboard and prompt-planning assistant.',
         '',
@@ -216,20 +309,7 @@ export function createGeminiVisionClient(opts: { apiKey: string | undefined }): 
         '',
         'Do not wrap in code blocks.',
       ].join('\n');
-
-      const response = await getAi().models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [
-          {
-            parts: [{ text: `${system}\n\n${transcript}`.trim() }],
-          },
-        ],
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        },
-      });
-
-      return response.text?.trim() || '';
+      return await this.chat(messages, model, system);
     },
 
     async generateText(system: string, user: string): Promise<string> {

@@ -30,24 +30,35 @@ type StaticHandler = (req: Request) => Promise<Response | null>;
 export function createStaticHandler(params: {
   publicDir: string;
   devFrontendEntrypoint?: string;
+  devFrontendEntrypoints?: Record<string, string>;
 }): StaticHandler {
   const publicDir = params.publicDir;
-  const devEntrypoint = params.devFrontendEntrypoint;
+  const devEntrypointMap: Record<string, string> = {
+    ...(params.devFrontendEntrypoints || {}),
+  };
+  if (params.devFrontendEntrypoint && !devEntrypointMap['/assets/app.js']) {
+    devEntrypointMap['/assets/app.js'] = params.devFrontendEntrypoint;
+  }
 
-  let lastDevBuildAt = 0;
-  let lastDevBuild: { code: string; headers: Headers } | null = null;
-  let devBuildInFlight: Promise<{ code: string; headers: Headers }> | null = null;
+  const lastDevBuildAt = new Map<string, number>();
+  const lastDevBuild = new Map<string, { code: string; headers: Headers }>();
+  const devBuildInFlight = new Map<string, Promise<{ code: string; headers: Headers }>>();
 
-  async function buildFrontendForDev(): Promise<{ code: string; headers: Headers }> {
-    if (!devEntrypoint) throw new Error('未配置 devFrontendEntrypoint');
+  async function buildFrontendForDev(assetPath: string): Promise<{ code: string; headers: Headers }> {
+    const entry = devEntrypointMap[assetPath];
+    if (!entry) throw new Error(`未配置 devFrontendEntrypoint: ${assetPath}`);
 
     const now = Date.now();
-    if (lastDevBuild && now - lastDevBuildAt < 250) return lastDevBuild;
-    if (devBuildInFlight) return await devBuildInFlight;
+    const cached = lastDevBuild.get(assetPath);
+    const cachedAt = lastDevBuildAt.get(assetPath) || 0;
+    if (cached && now - cachedAt < 250) return cached;
 
-    devBuildInFlight = (async () => {
+    const inFlight = devBuildInFlight.get(assetPath);
+    if (inFlight) return await inFlight;
+
+    const nextBuild = (async () => {
       const result = await Bun.build({
-        entrypoints: [devEntrypoint],
+        entrypoints: [entry],
         target: 'browser',
         format: 'esm',
         sourcemap: 'inline',
@@ -63,15 +74,17 @@ export function createStaticHandler(params: {
       headers.set('Content-Type', 'text/javascript; charset=utf-8');
       headers.set('Cache-Control', 'no-store');
 
-      lastDevBuildAt = Date.now();
-      lastDevBuild = { code: js, headers };
-      return lastDevBuild;
+      const built = { code: js, headers };
+      lastDevBuildAt.set(assetPath, Date.now());
+      lastDevBuild.set(assetPath, built);
+      return built;
     })();
+    devBuildInFlight.set(assetPath, nextBuild);
 
     try {
-      return await devBuildInFlight;
+      return await nextBuild;
     } finally {
-      devBuildInFlight = null;
+      devBuildInFlight.delete(assetPath);
     }
   }
 
@@ -81,10 +94,11 @@ export function createStaticHandler(params: {
     const url = new URL(req.url);
     let pathname = decodeURIComponent(url.pathname);
     if (pathname === '/') pathname = '/index.html';
+    if (pathname === '/ai' || pathname === '/ai/') pathname = '/ai.html';
     if (pathname.includes('..')) return new Response('Not Found', { status: 404 });
 
-    if (devEntrypoint && pathname === '/assets/app.js') {
-      const built = await buildFrontendForDev();
+    if (devEntrypointMap[pathname]) {
+      const built = await buildFrontendForDev(pathname);
       return new Response(built.code, { headers: built.headers });
     }
 
@@ -98,4 +112,3 @@ export function createStaticHandler(params: {
     return new Response(Bun.file(filePath), { headers });
   };
 }
-

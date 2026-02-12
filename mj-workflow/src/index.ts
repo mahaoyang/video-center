@@ -57,7 +57,12 @@ const handleApi = createApiRouter({
 });
 const handleStatic = createStaticHandler({
   publicDir,
-  devFrontendEntrypoint: isDistRuntime ? undefined : `${publicDir}/app.ts`,
+  devFrontendEntrypoints: isDistRuntime
+    ? undefined
+    : {
+        '/assets/app.js': `${publicDir}/app.ts`,
+        '/assets/ai-app.js': `${publicDir}/ai-app.ts`,
+      },
 });
 
 const serveOptions = {

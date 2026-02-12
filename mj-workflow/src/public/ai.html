@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Chat</title>
+  <style>
+    :root {
+      --bg-0: #06090f;
+      --bg-1: #0d1521;
+      --panel: #121c2a;
+      --panel-2: #182435;
+      --line: #2b3d56;
+      --fg: #eaf1fb;
+      --muted: #93a5bf;
+      --accent: #6ed9a4;
+      --accent-2: #7cb5ff;
+      --danger: #f36f7f;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "JetBrains Mono", "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--fg);
+      background:
+        radial-gradient(1200px 700px at -10% -10%, #213654 0%, transparent 60%),
+        radial-gradient(900px 600px at 120% -20%, #233322 0%, transparent 62%),
+        linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
+      padding: 18px;
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      min-height: calc(100vh - 36px);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .panel {
+      background: color-mix(in oklab, var(--panel) 92%, black 8%);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .top {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 220px;
+    }
+
+    .kicker {
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(20px, 4vw, 30px);
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      max-width: 70ch;
+    }
+
+    .btn {
+      border: 1px solid color-mix(in oklab, var(--line) 92%, #4b627f 8%);
+      color: var(--fg);
+      background: #101826;
+      border-radius: 12px;
+      padding: 10px 12px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 140ms ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      border-color: var(--accent-2);
+      transform: translateY(-1px);
+    }
+
+    .btn.primary {
+      border-color: color-mix(in oklab, var(--accent) 70%, #28415c 30%);
+      color: #062014;
+      background: linear-gradient(135deg, #8af2b7 0%, var(--accent) 100%);
+    }
+
+    .btn.danger:hover {
+      border-color: var(--danger);
+      color: #ffd4dc;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: color-mix(in oklab, var(--panel-2) 92%, black 8%);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 7px 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .select {
+      background: transparent;
+      color: var(--fg);
+      border: none;
+      outline: none;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      padding-right: 4px;
+    }
+
+    .status {
+      padding: 0 2px;
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 18px;
+    }
+
+    .chat {
+      min-height: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 18px;
+    }
+
+    .messages {
+      flex: 1;
+      min-height: 260px;
+      overflow: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background:
+        radial-gradient(900px 400px at 20% 0%, rgba(110, 217, 164, 0.07) 0%, transparent 60%),
+        radial-gradient(700px 500px at 90% 20%, rgba(124, 181, 255, 0.06) 0%, transparent 62%),
+        color-mix(in oklab, var(--panel) 86%, black 14%);
+    }
+
+    .empty {
+      margin: auto;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.75;
+      max-width: 52ch;
+      padding: 20px;
+    }
+
+    .msg {
+      display: flex;
+    }
+
+    .msg.user {
+      justify-content: flex-end;
+    }
+
+    .bubble {
+      max-width: min(78ch, 90%);
+      border-radius: 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.62;
+      background: #152130;
+    }
+
+    .msg-meta {
+      display: inline-block;
+      margin-bottom: 8px;
+      border: 1px solid #3b5578;
+      color: #b8d4ff;
+      background: #1a2c44;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 11px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .msg.user .bubble {
+      background: #1e2f45;
+      border-color: #39577d;
+    }
+
+    .msg.assistant .bubble {
+      background: #142232;
+      border-color: #2e4868;
+    }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      background: color-mix(in oklab, var(--panel-2) 92%, black 8%);
+    }
+
+    .input {
+      width: 100%;
+      min-height: 92px;
+      max-height: 260px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: #0e1623;
+      color: var(--fg);
+      font: inherit;
+      line-height: 1.6;
+      outline: none;
+    }
+
+    .input:focus {
+      border-color: var(--accent-2);
+    }
+
+    .composer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .tip {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .right-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 10px;
+      }
+
+      .wrap {
+        min-height: calc(100vh - 20px);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header class="panel top">
+      <div class="brand">
+        <div class="kicker">AI Main</div>
+        <h1>/ai 对话页</h1>
+        <div class="hint">模型可选 Gemini 3 Flash / 3 Pro，默认 Flash。技能由 Gemini 在后端自主调度，页面只做通用对话。</div>
+      </div>
+      <div class="toolbar">
+        <label class="field">
+          <span>Model</span>
+          <select id="modelSelect" class="select">
+            <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
+            <option value="gemini-3-pro-preview">Gemini 3 Pro</option>
+          </select>
+        </label>
+        <button id="clearBtn" class="btn danger" type="button">清空本地会话</button>
+        <a id="openStudioBtn" class="btn primary" href="/">打开原工作台</a>
+      </div>
+    </header>
+
+    <div id="statusText" class="status"></div>
+
+    <main class="panel chat">
+      <div id="messages" class="messages"></div>
+      <div class="composer">
+        <textarea id="inputText" class="input" placeholder="输入消息，Ctrl+Enter 发送..."></textarea>
+        <div class="composer-row">
+          <div class="tip">本地存储 key: <code>mj-workflow:ai-chat:v1</code></div>
+          <div class="right-actions">
+            <button id="sendBtn" class="btn primary" type="button">发送</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="/assets/ai-app.js"></script>
+</body>
+
+</html>
