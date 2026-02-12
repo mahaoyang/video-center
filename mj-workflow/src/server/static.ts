@@ -107,7 +107,7 @@ export function createStaticHandler(params: {
 
     const headers = new Headers();
     headers.set('Content-Type', guessContentType(filePath));
-    if (pathname.startsWith('/assets/')) headers.set('Cache-Control', 'public, max-age=3600');
+    if (pathname.startsWith('/assets/')) headers.set('Cache-Control', 'no-store');
 
     return new Response(Bun.file(filePath), { headers });
   };

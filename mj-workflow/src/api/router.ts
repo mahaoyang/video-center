@@ -324,6 +324,14 @@ async function runPythonAdd(a: number, b: number): Promise<{ a: number; b: numbe
   return { a, b, sum, engine: 'python3' };
 }
 
+function isLikelyAdditionQuery(text: string): boolean {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const normalized = raw.replace(/\s+/g, '').replace(/[＝]/g, '=').replace(/[？]/g, '?');
+  // Match patterns like: 1+2, 1.2+3.22313=?, -10+2？
+  return /^[-+]?\d+(?:\.\d+)?\+[-+]?\d+(?:\.\d+)?(?:[=?])?$/.test(normalized);
+}
+
 export function createApiRouter(deps: {
   mjApi: MJApi;
   chatApi: YunwuChatApi;
@@ -1265,6 +1273,8 @@ export function createApiRouter(deps: {
 
         const modelRaw = String(body.model || '').trim();
         const model = modelRaw === 'gemini-3-pro-preview' || modelRaw === 'gemini-3-flash-preview' ? modelRaw : 'gemini-3-flash-preview';
+        const latestUserContent = [...baseMessages].reverse().find((m) => m.role === 'user')?.content || '';
+        const forceToolForMath = isLikelyAdditionQuery(latestUserContent);
 
         const system = [
           'You are a helpful assistant.',
@@ -1300,7 +1310,7 @@ export function createApiRouter(deps: {
               },
             },
           ],
-          mode: 'AUTO',
+          mode: forceToolForMath ? 'ANY' : 'AUTO',
         });
 
         const calls = firstTurn.functionCalls.slice(0, 8);
