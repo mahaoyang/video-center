@@ -10,7 +10,7 @@ import { sha256HexFromBlob } from '../atoms/blob-hash';
 import { toAppImageSrc } from '../atoms/image-src';
 import { isHttpUrl } from '../atoms/url';
 import { readSelectedReferenceIds, toggleId } from '../state/material';
-import { attachDownloadProcessor } from '../atoms/download';
+import { attachDownloadProcessor, buildDownloadFilename } from '../atoms/download';
 
 export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   const uploadInput = document.getElementById('imageUpload') as HTMLInputElement | null;
@@ -18,8 +18,10 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
   const commandHub = document.getElementById('commandHub') as HTMLElement | null;
   const tray = byId('referenceTray');
   const padCount = document.getElementById('padCount') as HTMLElement | null;
+  const padZipDownloadBtn = document.getElementById('padZipDownloadBtn') as HTMLButtonElement | null;
   const copyBusy = new Set<string>();
   const copyOk = new Set<string>();
+  let zipBusy = false;
 
   function hasDraggedFiles(e: DragEvent): boolean {
     const types = Array.from(e.dataTransfer?.types || []);
@@ -63,6 +65,53 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     return '';
   }
 
+  function extFromName(name: string): string {
+    const m = String(name || '').trim().match(/\.([a-zA-Z0-9]{2,8})$/);
+    if (!m?.[1]) return '';
+    const ext = m[1].toLowerCase();
+    if (ext === 'jpeg') return '.jpg';
+    return `.${ext}`;
+  }
+
+  function normalizeBundleExt(rawExt: string): string {
+    const cleaned = String(rawExt || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^\./, '');
+    if (!cleaned) return '.png';
+    if (!/^[a-z0-9]{2,8}$/.test(cleaned)) return '.png';
+    return cleaned === 'jpeg' ? '.jpg' : `.${cleaned}`;
+  }
+
+  function normalizeBundleName(rawName: string, fallback: string): string {
+    const nameNoExt = String(rawName || '').trim().replace(/\.[a-zA-Z0-9]{2,8}$/, '');
+    const cleaned = nameNoExt
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return cleaned || fallback;
+  }
+
+  function makeUniqueBundleName(baseName: string, ext: string, used: Set<string>): string {
+    let candidate = `${baseName}${ext}`;
+    let n = 2;
+    while (used.has(candidate)) {
+      candidate = `${baseName}-${n}${ext}`;
+      n += 1;
+    }
+    used.add(candidate);
+    return candidate;
+  }
+
+  function pickBundleSourceUrl(ref: {
+    localUrl?: string;
+    dataUrl?: string;
+    cdnUrl?: string;
+    url?: string;
+  }): string {
+    return String(ref.localUrl || ref.dataUrl || ref.cdnUrl || ref.url || '').trim();
+  }
+
   function safeFileName(name: string): string {
     const cleaned = String(name || '').trim().replace(/[^\w.-]+/g, '_');
     return cleaned || 'image';
@@ -77,6 +126,70 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     if (isHttpUrl(ref.cdnUrl)) return ref.cdnUrl;
     if (isHttpUrl(ref.url)) return ref.url;
     return '';
+  }
+
+  async function downloadMaterialsZip(): Promise<void> {
+    if (zipBusy) return;
+    const JSZipCtor = (window as any).JSZip as
+      | (new () => { file(name: string, data: Blob): void; generateAsync(opts: Record<string, unknown>): Promise<Blob> })
+      | undefined;
+    if (typeof JSZipCtor !== 'function') {
+      showError('ZIP 组件未加载，请刷新页面后重试');
+      return;
+    }
+
+    const current = store.get();
+    const selectedIds = readSelectedReferenceIds(current, 24);
+    const selectedSet = new Set(selectedIds);
+    const refs = selectedIds.length ? current.referenceImages.filter((r) => selectedSet.has(r.id)) : current.referenceImages.slice();
+    if (!refs.length) {
+      showError('没有可打包的素材');
+      return;
+    }
+
+    zipBusy = true;
+    renderTray();
+    try {
+      const zip = new JSZipCtor();
+      const usedNames = new Set<string>();
+
+      for (let i = 0; i < refs.length; i++) {
+        const ref = refs[i]!;
+        const srcRaw = pickBundleSourceUrl(ref);
+        if (!srcRaw) throw new Error(`素材 ${i + 1} 缺少可下载地址`);
+
+        const src = toAppImageSrc(srcRaw);
+        const res = await fetch(src, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(`素材 ${i + 1} 拉取失败（HTTP ${res.status}）`);
+
+        const blob = await res.blob();
+        const ext = normalizeBundleExt(extFromName(ref.name) || extFromName(srcRaw) || extFromMime(blob.type) || '.png');
+        const baseName = normalizeBundleName(ref.name, `material-${i + 1}`);
+        const entryName = makeUniqueBundleName(baseName, ext, usedNames);
+        zip.file(entryName, blob);
+      }
+
+      const zipBlob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      });
+      const objectUrl = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = buildDownloadFilename({ prefix: 'postprocess-materials', ext: 'zip' });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+
+      showMessage(selectedIds.length ? `已打包下载 ${refs.length} 个勾选素材` : `已打包下载 ${refs.length} 个素材`);
+    } catch (error) {
+      showError((error as Error)?.message || '素材打包下载失败');
+    } finally {
+      zipBusy = false;
+      renderTray();
+    }
   }
 
   function getLocalKeyForRef(ref: { localKey?: string; localUrl?: string; url?: string }): string | undefined {
@@ -189,6 +302,13 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
 
     const selectedImageIds = readSelectedReferenceIds(s, 24);
     if (padCount) padCount.textContent = String(selectedImageIds.length);
+    if (padZipDownloadBtn) {
+      const disabled = zipBusy || !s.referenceImages.length;
+      padZipDownloadBtn.disabled = disabled;
+      padZipDownloadBtn.classList.toggle('opacity-40', disabled);
+      padZipDownloadBtn.classList.toggle('cursor-not-allowed', disabled);
+      padZipDownloadBtn.textContent = zipBusy ? 'ZIP…' : 'ZIP';
+    }
 
     s.referenceImages.forEach((img) => {
       const isSelected = selectedImageIds.includes(img.id);
@@ -468,6 +588,12 @@ export function initUpload(store: Store<WorkflowState>, api: ApiClient) {
     // Do not preventDefault here: if the click lands on the transparent <input type="file">,
     // we want the browser's native picker to work reliably.
     uploadInput.click();
+  });
+
+  padZipDownloadBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void downloadMaterialsZip();
   });
 
   // Prevent accidental page navigation when dropping files near the command hub.

@@ -433,6 +433,11 @@
               class="absolute -bottom-1 -right-1 z-20 px-2 py-1 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest text-white/70 hover:text-studio-accent hover:border-studio-accent/30 transition-all">
               素材 <span id="padCount" class="ml-1 text-studio-accent">0</span>
             </button>
+            <button type="button" id="padZipDownloadBtn"
+              class="absolute -top-1 -right-1 z-20 px-2 py-1 rounded-full bg-black/60 border border-white/10 text-[7px] font-black uppercase tracking-widest text-white/70 hover:text-studio-accent hover:border-studio-accent/30 transition-all"
+              title="打包下载素材（ZIP）" aria-label="打包下载素材（ZIP）">
+              ZIP
+            </button>
           </div>
           <div class="relative flex-1">
             <textarea id="promptInput"
@@ -1142,6 +1147,7 @@
 
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script type="module" src="/assets/app.js"></script>
 </body>
 
