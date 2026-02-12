@@ -411,6 +411,42 @@ const AI_SKILLS: AiSkillDefinition[] = [
       },
     },
   },
+  {
+    name: 'suno_prompt',
+    title: 'Suno 提示词生成',
+    description: '根据需求生成 Suno 的歌词控制提示词与风格提示词。',
+    keywords: ['suno', 'music', 'song', '歌词', '作曲', '编曲', 'style prompt', 'control prompt'],
+    functionDeclaration: {
+      name: 'suno_prompt',
+      description: 'Generate Suno CONTROL_PROMPT and STYLE_PROMPT from requirement.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          requirement: { type: 'string', description: 'Music requirement and style direction.' },
+          mode: { type: 'string', enum: ['lyrics', 'instrumental'], description: 'lyrics or instrumental' },
+          language: { type: 'string', enum: ['en', 'zh-cn', 'zh-tw', 'ja', 'ko'], description: 'optional output language' },
+        },
+        required: ['requirement'],
+      },
+    },
+  },
+  {
+    name: 'mv_single_shot',
+    title: '单个分镜提示词',
+    description: '根据需求生成一个单镜头分镜提示词（中文）。',
+    keywords: ['mv', 'shot', 'storyboard', '分镜', '镜头', '画面', '提示词'],
+    functionDeclaration: {
+      name: 'mv_single_shot',
+      description: 'Generate exactly one MV storyboard shot prompt in Chinese.',
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          requirement: { type: 'string', description: 'Shot requirement and scene direction.' },
+        },
+        required: ['requirement'],
+      },
+    },
+  },
 ];
 
 function getAiSkillByName(nameRaw: string): AiSkillDefinition | undefined {
@@ -441,7 +477,30 @@ function parseAssistantJsonObject(raw: string): Record<string, unknown> | null {
   return null;
 }
 
-async function executeAiSkill(nameRaw: string, args: Record<string, unknown>): Promise<{ result?: unknown; error?: string; normalizedArgs?: Record<string, unknown> }> {
+function cleanSingleShotText(raw: string): string {
+  const lines = String(raw || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (!lines.length) return '';
+
+  for (const line0 of lines) {
+    let line = line0;
+    if (/^shots?\s*[:：]?$/i.test(line)) continue;
+    line = line.replace(/^shots?\s*[:：]\s*/i, '').trim();
+    line = line.replace(/^\d+\s*[.)、]\s*/, '').trim();
+    if (!line || /^style_prompt\s*[:：]/i.test(line) || /^lyrics_prompt\s*[:：]/i.test(line)) continue;
+    return line;
+  }
+  return lines[0]!.replace(/^\d+\s*[.)、]\s*/, '').trim();
+}
+
+async function executeAiSkill(
+  nameRaw: string,
+  args: Record<string, unknown>,
+  deps: { gemini: GeminiVisionClient; model?: string }
+): Promise<{ result?: unknown; error?: string; normalizedArgs?: Record<string, unknown> }> {
   const skill = getAiSkillByName(nameRaw);
   if (!skill) return { error: `未知工具: ${String(nameRaw || '(empty)')}` };
 
@@ -453,6 +512,47 @@ async function executeAiSkill(nameRaw: string, args: Record<string, unknown>): P
       return { result, normalizedArgs: { expression } };
     } catch (error) {
       return { error: (error as Error)?.message || 'py_math 执行失败', normalizedArgs: { expression } };
+    }
+  }
+
+  if (skill.name === 'suno_prompt') {
+    const requirement = String((args as any)?.requirement || '').trim();
+    const modeRaw = String((args as any)?.mode || '').trim().toLowerCase();
+    const languageRaw = String((args as any)?.language || '').trim().toLowerCase();
+    const mode = modeRaw === 'instrumental' || modeRaw === 'lyrics' ? modeRaw : undefined;
+    const language =
+      languageRaw === 'en' || languageRaw === 'zh-cn' || languageRaw === 'zh-tw' || languageRaw === 'ja' || languageRaw === 'ko'
+        ? languageRaw
+        : undefined;
+    if (!requirement) return { error: 'suno_prompt 参数非法，requirement 不能为空', normalizedArgs: args };
+    try {
+      const text = await deps.gemini.sunoPrompt({ requirement, mode, language });
+      return {
+        result: { requirement, mode: mode || null, language: language || null, text },
+        normalizedArgs: { requirement, mode: mode || null, language: language || null },
+      };
+    } catch (error) {
+      return { error: (error as Error)?.message || 'suno_prompt 执行失败', normalizedArgs: { requirement, mode: mode || null, language: language || null } };
+    }
+  }
+
+  if (skill.name === 'mv_single_shot') {
+    const requirement = String((args as any)?.requirement || '').trim();
+    if (!requirement) return { error: 'mv_single_shot 参数非法，requirement 不能为空', normalizedArgs: args };
+    try {
+      const system = [
+        'You are an MV storyboard prompt writer.',
+        'Task: generate EXACTLY ONE shot prompt in Simplified Chinese.',
+        'Output only one line, no numbering, no heading, no markdown.',
+        'The line should include: subject/action, scene, camera language, lighting, and mood.',
+        'You may include Midjourney params like --ar/--v/--style, but do not include URLs.',
+      ].join('\n');
+      const raw = await deps.gemini.chat([{ role: 'user', content: requirement }], deps.model, system);
+      const shot = cleanSingleShotText(raw);
+      if (!shot) return { error: 'mv_single_shot 结果为空', normalizedArgs: { requirement } };
+      return { result: { requirement, shot, raw }, normalizedArgs: { requirement } };
+    } catch (error) {
+      return { error: (error as Error)?.message || 'mv_single_shot 执行失败', normalizedArgs: { requirement } };
     }
   }
 
@@ -1555,7 +1655,7 @@ export function createApiRouter(deps: {
             const name = String(call?.name || '').trim();
             const args = call?.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args : {};
 
-            const executed = await executeAiSkill(name, args);
+            const executed = await executeAiSkill(name, args, { gemini: deps.gemini, model });
             if (executed.error) {
               toolTrace.push({ name: name || 'unknown', arguments: executed.normalizedArgs || args, error: executed.error });
               toolResults.push({ id: call.id, name, ok: false, error: executed.error, arguments: executed.normalizedArgs || args });
@@ -1569,6 +1669,8 @@ export function createApiRouter(deps: {
             'You are a helpful assistant.',
             'Tool execution results are authoritative.',
             'Use tool results to answer naturally and accurately.',
+            'If tool output already contains usable prompt text, return it directly with minimal extra wording.',
+            forcedSkillDef ? 'This is forced-skill rerun mode: keep response short and directly return the generated skill output.' : '',
             'Do not output JSON unless the user explicitly requests JSON.',
             'If any tool failed, explain the issue briefly and ask for corrected input.',
             'Reply in the user language.',
@@ -1623,6 +1725,54 @@ export function createApiRouter(deps: {
       } catch (error) {
         console.error('AI py-math skill error:', error);
         return jsonError({ status: 500, description: 'Python 数学技能失败', error });
+      }
+    }
+
+    if (pathname === '/api/ai/skill/suno-prompt' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+        const body = await readJson<{ requirement?: unknown; mode?: unknown; language?: unknown }>(req);
+        const requirement = String(body?.requirement || '').trim();
+        const mode = String(body?.mode || '').trim().toLowerCase();
+        const language = String(body?.language || '').trim().toLowerCase();
+        if (!requirement) return jsonError({ status: 400, description: 'requirement 不能为空' });
+
+        const out = await executeAiSkill(
+          'suno_prompt',
+          {
+            requirement,
+            mode: mode || undefined,
+            language: language || undefined,
+          },
+          { gemini: deps.gemini, model: 'gemini-3-flash-preview' }
+        );
+        if (out.error) return jsonError({ status: 500, description: out.error });
+        return json({ code: 0, description: '成功', result: out.result });
+      } catch (error) {
+        console.error('AI suno-prompt skill error:', error);
+        return jsonError({ status: 500, description: 'Suno 提示词技能失败', error });
+      }
+    }
+
+    if (pathname === '/api/ai/skill/mv-single-shot' && req.method === 'POST') {
+      try {
+        if (!deps.auth.geminiConfigured) {
+          return jsonError({ status: 500, description: '未配置 Gemini_KEY' });
+        }
+        const body = await readJson<{ requirement?: unknown; model?: unknown }>(req);
+        const requirement = String(body?.requirement || '').trim();
+        const modelRaw = String(body?.model || '').trim();
+        const model = modelRaw === 'gemini-3-pro-preview' || modelRaw === 'gemini-3-flash-preview' ? modelRaw : 'gemini-3-flash-preview';
+        if (!requirement) return jsonError({ status: 400, description: 'requirement 不能为空' });
+
+        const out = await executeAiSkill('mv_single_shot', { requirement }, { gemini: deps.gemini, model });
+        if (out.error) return jsonError({ status: 500, description: out.error });
+        return json({ code: 0, description: '成功', result: out.result });
+      } catch (error) {
+        console.error('AI mv-single-shot skill error:', error);
+        return jsonError({ status: 500, description: '单分镜技能失败', error });
       }
     }
 
